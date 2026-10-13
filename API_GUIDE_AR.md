@@ -1,7 +1,7 @@
-# صدى العراق — دليل API للموزعين (1.6.36)
+# صدى العراق — دليل API للموزعين (1.6.37)
 
 ## التحقق من الإصدار بعد النشر
-افتح `/api/health` على نطاق Railway نفسه. يجب أن تتطابق القيم `version` و`uiVersion` مع `1.6.36`، وأن تتطابق `buildId` و`uiBuildId` مع معرّف البناء الموجود في `BUILD_ID.txt`، وأن تكون `deploymentConsistent: true`.
+افتح `/api/health` على نطاق Railway نفسه. يجب أن تتطابق القيم `version` و`uiVersion` مع `1.6.37`، وأن تتطابق `buildId` و`uiBuildId` مع معرّف البناء الموجود في `BUILD_ID.txt`، وأن تكون `deploymentConsistent: true`.
 
 إذا أظهر `/api/health` إصداراً قديماً، فتحقق من أن ملفات `server.js` و`index.html` و`version.txt` و`BUILD_ID.txt` استُبدلت مباشرة في جذر المستودع الذي تتبعه خدمة Railway، وأن `Root Directory` مضبوط للمجلد الصحيح. رفع ملف ZIP إلى GitHub بوصفه ملفاً منفرداً لا يستبدل ملفات التطبيق.
 
