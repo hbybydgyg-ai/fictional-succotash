@@ -20,7 +20,7 @@ const checks=[
  ['supplier price guard fails closed per order without persisting transient provider errors into catalog state',s.includes("'provider_catalog_unverified'")&&s.includes("'live_price_check_failed'")&&s.includes("'live_price_guard_disabled'")&&s.includes('transientProviderCheckFailure')],
  ['API and website orders apply the 100 percent markup floor after account discounts',s.includes("stage:'sale_below_required_markup'")&&s.includes('minimumChargeUsd')&&s.includes("notifyTelegramNewOrder(order,{source:'public-api'})")],
  ['public API orders persist actual supplier costs and profit figures before Telegram notification',s.includes('const grossProfitUsd=Number((total-providerCostUsd).toFixed(6))')&&s.includes('providerCostIQD:Number((providerCostUsd*FIXED_RATE).toFixed(4))')&&s.includes("notifyTelegramNewOrder(order,{source:'public-api'})")],
- ['Telegram order message includes provider cost, actual sale, gross profit and profit ratios',s.includes('تكلفة المزود للكمية:')&&s.includes('المبلغ الفعلي على المستخدم:')&&s.includes('الربح المتوقع بعد الخصم:')&&s.includes('الزيادة الفعلية على التكلفة:')],
+ ['Telegram order message is clean and distinguishes in-app/API/provider origins',s.includes('📍 من داخل التطبيق')&&s.includes('🌐 عبر API / رابط الربط الخارجي')&&s.includes('🏢 طلب مباشر من رابط المزود')&&s.includes('رقم الطلب داخل التطبيق:')&&s.includes('طلب المزود:')&&s.includes('function telegramOrderReplyMarkup')],
  ['global pricing enforces at least 100 percent markup on the provider cost',s.includes('DEFAULT_GLOBAL_PRICING={markupPct:100')&&s.includes('Math.max(100,Math.min(1000,pct))')],
 
  ['AsiaCell checkout state is encrypted and verified in Firebase',s.includes("const ASIACELL_SESSION_NODE = 'asiacellSessions'")&&s.includes('async function loadAsiacellSession(stateKey)')&&s.includes('async function saveAsiacellSession(stateKey,value)')&&s.includes('encryptSecret(JSON.stringify(value))')&&s.includes("check.encrypted!==encrypted")&&s.includes("firebaseGetJson(ASIACELL_SESSION_NODE+'/'+stateKey")],
@@ -36,6 +36,7 @@ const checks=[
  ['Telegram send requests are serialized',/TELEGRAM_ORDER_SENDS_IN_FLIGHT/.test(s)],
  ['Telegram duplicate-send guard includes fallback deliveries',s.includes('function telegramOrderWasDelivered(entry)')&&/if\(telegramOrderWasDelivered\(previous\)\)/.test(s)&&/adminFallbackDelivered===true/.test(s)&&/const delivered=!!\(result\.primaryOk\|\|result\.delivered/.test(s)],
  ['Telegram monitor uses canonical order identity',/telegramOrderIdentity\(\{\.\.\.row,id:row\.siteOrderId/.test(s)],
+ ['Telegram order audit normalization preserves source and member metadata for retries',s.includes("orderSource:String(o.orderSource||o.origin||o.sourceType||o.source||'').trim()")&&s.includes('apiCreated:!!o.apiCreated,externalProviderOrder:!!o.externalProviderOrder,providerDirect:!!o.providerDirect')&&s.includes("free:!!(o.free||o.isFree),memberId:String(o.memberId||o.userId||o.uid||o.firebaseUid||o.telegramUserId||'')")],
  ['missing service prices are blocked before provider dispatch',/stage:'service_price'/.test(s)],
  ['customer order UI never displays REQ IDs as public numbers',/قيد الترقيم/.test(h)&&h.includes('Number(o.id)>=3000')],
  ['wallet directory joins a local alias to the verified Firebase child key',/const localMatches=localEntries\.filter/.test(s)&&/remoteIds=new Set\(\[\.\.\.ids\(u\),fold\(key\),fold\(decoded\)\]/.test(s)&&/firebase\+local/.test(s)],
@@ -46,6 +47,8 @@ const checks=[
  ['order audit reports a useful error after Railway network retry',/تعذر الوصول إلى خادم Railway/.test(h)],
  ['Realtime Database is pinned to REST OAuth so wallet and health use one driver',s.includes("function firebaseAdminEnabled(){return false;")&&s.includes("return (await firebaseRequest(pathname,'GET',undefined,timeoutMs)).data;")&&s.includes("const got=await firebaseRequest(pathname,'GET',undefined,timeoutMs,{'X-Firebase-ETag':'true'});")&&s.includes("firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth'")],
  ['UI and server deployment build IDs match',/const BUILD_ID = 'SADA-1\.6\.41-ASIACELL-EXIT-RESET-20261013'/.test(s)&&/name="sada-build-id" content="SADA-1\.6\.41-ASIACELL-EXIT-RESET-20261013"/.test(h)],
+ ['visible app version 2.1 appears in the sidebar only while legacy page and splash badges are removed',h.includes('id="sada-sidebar-version"')&&h.includes('<b>2.1</b>')&&h.includes("document.title='صدى العراق'")&&h.includes("foot.textContent='SADA IRAQ'")&&h.includes('#sadairaq-version-badge{display:none!important;visibility:hidden!important')],
+ ['API page deployment test never displays version numbers',!h.includes("الإصدار '+String(health.version)")&&!h.includes("String(health.version||'?')+'، الواجهة")&&!h.includes("الخادم والإصدار متطابقان ('+String(health.version)")],
  ['wallet resolver accepts an exact selected-child email match despite a stale username hint',/emailMatches\)return direct|emailMatches\)\s*\{/.test(s)&&s.includes('findAdminWalletUserLegacy')],
  ['Telegram monitor no longer dereferences an undefined result object',(()=>{const p=s.indexOf('async function runTelegramNewOrdersMonitor'),e=s.indexOf('let TELEGRAM_ORDER_MONITOR_RUNNING',p);const block=s.slice(p,e);return block.includes('const visibleNo=')&&!block.includes('result.order.publicOrderNo')})()],
  ['session signing fallback is stable across ephemeral Railway deploys when service credentials exist',s.includes('stableSessionSecretFromEnvironment')&&s.includes("SESSION_SECRET_SOURCE='firebase-service-credential'")],
@@ -318,10 +321,27 @@ async function testTelegramFinanceMessage(){
   const start=s.indexOf('function telegramOrderMessage('),end=s.indexOf('\nfunction telegramOrderWasDelivered',start);
   assert(start>=0&&end>start,'Telegram order message formatter should exist');
   const source=s.slice(start,end)+'\nglobalThis.__formatTelegramOrder=telegramOrderMessage;';
-  const sandbox={Number,String,Date,nowISO:()=> '2026-10-13T00:00:00.000Z'};vm.runInNewContext(source,sandbox);
-  const message=sandbox.__formatTelegramOrder({publicOrderNo:'3007',user:'tester',serviceName:'Mock service',quantity:100,providerRateUsd:5,providerCostUsd:0.5,unitSellingUsd:10,sellingPriceUsd:1,grossProfitUsd:0.5,actualMarkupPct:100,profitMarginPct:50,providerName:'Mock Provider',providerOrderId:'MOCK-90001',status:'pending'});
-  for(const fragment of ['#3007','تكلفة المزود لكل 1000: $5.0000','تكلفة المزود للكمية: $0.5000','سعر الموقع لكل 1000 قبل الخصم: $10.0000','المبلغ الفعلي على المستخدم: $1.0000','الربح المتوقع بعد الخصم: $0.5000','الزيادة الفعلية على التكلفة: 100.00%','هامش الربح من المبيع: 50.00%'])assert(message.includes(fragment),'Telegram message should contain '+fragment);
-  console.log('PASS runtime Telegram finance message: supplier cost, site sale, gross profit, markup and margin are correctly rendered');
+  const sandbox={Number,String,Date,Intl,URL,nowISO:()=> '2026-10-13T00:00:00.000Z'};vm.runInNewContext(source,sandbox);
+  const message=sandbox.__formatTelegramOrder({publicOrderNo:'3007',id:'API_example',user:'tester',userName:'Test Member',memberId:'592186',orderSource:'app',serviceName:'Mock service',category:'الخدمات المجانية',quantity:50,providerName:'Mock Provider',providerOrderId:'MOCK-90001',link:'https://example.com/reel',createdAt:'2026-10-13T20:38:00.000Z',free:true});
+  for(const fragment of ['#3007','📍 من داخل التطبيق','رقم الطلب داخل التطبيق: 3007','📁 | الخدمة: Mock service','📱 | المنصة / القسم: الخدمات المجانية','♨️ | الكمية: 50','افتح الرابط من الزر أدناه','المزود: Mock Provider','رقم الطلب داخل المزود: MOCK-90001','مجاني 🎁','🆔 | المعرف: 592186','⌚ | الوقت: 13-10-2026 23:38'])assert(message.includes(fragment),'Telegram message should contain '+fragment);
+  const apiMessage=sandbox.__formatTelegramOrder({publicOrderNo:'3008',user:'tester',apiCreated:true,link:'https://example.com'});assert(apiMessage.includes('🌐 عبر API / رابط الربط الخارجي'),'API orders must be labeled distinctly');
+  const providerMessage=sandbox.__formatTelegramOrder({publicOrderNo:'3009',user:'tester',externalProviderOrder:true});assert(providerMessage.includes('🏢 طلب مباشر من رابط المزود'),'direct provider orders must be labeled distinctly');
+  console.log('PASS runtime Telegram order message: formatted sections, link hint, Baghdad time, free type and source classification');
+}
+
+async function testCategoryServiceDescriptions(){
+  const start=h.indexOf(' function descriptionFor(s){'),end=h.indexOf('\n function ensureDescriptionPanel',start);
+  assert(start>=0&&end>start,'service description resolver should exist');
+  const source=h.slice(start,end)+'\nglobalThis.__descriptionFor=descriptionFor;';
+  const clean=v=>String(v??'').replace(/[\u200B-\u200F\uFEFF]/g,'').replace(/\s+/g,' ').trim();
+  const fold=v=>clean(v).toLowerCase().normalize('NFKC').replace(/[أإآٱ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/[ًٌٍَُِّْـ]/g,'').replace(/[\s._-]+/g,' ');
+  const sandbox={window:{SECTION_META:{Instagram:{name:'Instagram',description:'تعليمات القسم العامة'}}},clean,fold,String};
+  vm.runInNewContext(source,sandbox);
+  const combined=sandbox.__descriptionFor({categories:['Instagram'],description:'تفاصيل الخدمة من المزود'});
+  assert.equal(combined,'تعليمات القسم العامة\n\nتفاصيل الخدمة من المزود','category description should appear before provider description for all services in that category');
+  const manual=sandbox.__descriptionFor({categories:['Instagram'],description:'تفاصيل المزود',manualDescription:'الوصف اليدوي للخدمة'});
+  assert.equal(manual,'الوصف اليدوي للخدمة','a service-specific manual description should take priority');
+  console.log('PASS category descriptions: common description flows into every category service and service-specific manual text wins');
 }
 
 async function testCategoryImagePersistenceMerge(){
@@ -359,4 +379,4 @@ async function testInternalSiteServiceMapping(){
   console.log('PASS runtime internal service mapping: stable site ID, canonical provider ID and hosting price stay distinct');
 }
 
-Promise.all([testFirebaseDriverSelection(),testPublicCounterRuntime(),testFirebaseUidKeyWalletCharge(),testCategoryImagePersistenceMerge(),testTelegramFallbackIsExactlyOnce(),testInternalSiteServiceMapping(),testTelegramFinanceMessage()]).then(()=>console.log('PASS '+(checks.length+7)+' release checks')).catch(e=>{console.error('FAIL runtime regression test:',e.stack||e);process.exit(1);});
+Promise.all([testFirebaseDriverSelection(),testPublicCounterRuntime(),testFirebaseUidKeyWalletCharge(),testCategoryImagePersistenceMerge(),testCategoryServiceDescriptions(),testTelegramFallbackIsExactlyOnce(),testInternalSiteServiceMapping(),testTelegramFinanceMessage()]).then(()=>console.log('PASS '+(checks.length+8)+' release checks')).catch(e=>{console.error('FAIL runtime regression test:',e.stack||e);process.exit(1);});

@@ -193,6 +193,36 @@ async function main(){
     assert.equal(orderWithProfit.providerRateUsd,5);assert.equal(orderWithProfit.providerCostUsd,0.5);assert.equal(orderWithProfit.chargeUsd,1);assert.equal(orderWithProfit.grossProfitUsd,0.5);assert.equal(orderWithProfit.actualMarkupPct,100);assert.equal(orderWithProfit.profitMarginPct,50);
     assert(Number(rootDb.users.tester.balance)<beforeWebsiteOrderBalance,'valid website order should reserve the actual customer charge');
     console.log('PASS runtime: website order persisted live supplier cost, charged sale, gross profit, 100% markup and 50% margin');
+
+    // Administrator-funded free offers live in a separate store; supplier-free/paid catalog services remain unchanged.
+    const addFreeService=await req('/api/admin/free-services',{method:'POST',headers:{...adminCookie,'Content-Type':'application/json'},body:JSON.stringify({action:'save',providerId:'mock-provider',providerServiceId:'77',name:'Admin funded free mock',category:'Test',platform:'Instagram',min:10,max:20,perAccountLimit:2,description:'Free to users; supplier cost paid by site.'})});
+    assert.equal(addFreeService.status,200,`admin should be able to save an admin-funded free service: ${JSON.stringify(addFreeService.data)}`);
+    assert.equal(addFreeService.data.service.adminFreeService,true);assert.equal(addFreeService.data.service.sellingUsd,0);assert.equal(addFreeService.data.service.providerRateUsd,5);assert.equal(addFreeService.data.service.perAccountLimit,2);
+    const customFree=addFreeService.data.service,customFreeKey=String(customFree.key),customSiteId=String(customFree.siteServiceId);
+    const publicCatalog=await req('/api/catalog?path=services',{headers:{Cookie:cookie}});assert.equal(publicCatalog.status,200);
+    const publicFree=publicCatalog.data.value[customFreeKey];assert(publicFree,'admin-funded free offer should appear in the website catalog');assert.equal(publicFree.adminFreeService,true);assert.equal(publicFree.sellingUsd,0);assert.equal(publicFree.providerRateUsd,undefined,'supplier USD rate must not leak to public catalog');assert.equal(publicFree.basePrice,undefined,'supplier converted cost must not leak to public catalog');
+    const callsBeforeInvalidFree=providerAddCalls;
+    const invalidFreeQty=await req('/api/order/create',{method:'POST',headers:{Cookie:cookie,'Content-Type':'application/json'},body:JSON.stringify({providerId:'mock-provider',siteServiceId:customSiteId,providerServiceId:'77',firebaseServiceKey:customSiteId,link:'https://example.com/free-min-invalid',quantity:9,localId:'free-min-invalid'})});
+    assert.equal(invalidFreeQty.status,422,'a custom free service must enforce its own minimum quantity');assert.equal(providerAddCalls,callsBeforeInvalidFree,'invalid free quantity must not reach provider');
+    const freeBalanceBefore=Number(rootDb.users.tester.balance),freeCallsBefore=providerAddCalls;
+    const freeOrder1=await req('/api/order/create',{method:'POST',headers:{Cookie:cookie,'Content-Type':'application/json'},body:JSON.stringify({providerId:'mock-provider',siteServiceId:customSiteId,providerServiceId:'77',firebaseServiceKey:customSiteId,link:'https://example.com/free-order-1',quantity:10,localId:'admin-free-order-1'})});
+    assert.equal(freeOrder1.status,200,`first admin-funded free order should succeed: ${JSON.stringify(freeOrder1.data)}`);assert.equal(freeOrder1.data.chargeUsd,0);assert.equal(freeOrder1.data.providerServiceId,'77');assert.equal(Number(rootDb.users.tester.balance),freeBalanceBefore,'admin-funded free order must not debit the member');assert.equal(providerAddCalls,freeCallsBefore+1,'free offer still must call the upstream supplier');
+    const freeOrder2=await req('/api/order/create',{method:'POST',headers:{Cookie:cookie,'Content-Type':'application/json'},body:JSON.stringify({providerId:'mock-provider',siteServiceId:customSiteId,providerServiceId:'77',firebaseServiceKey:customSiteId,link:'https://example.com/free-order-2',quantity:20,localId:'admin-free-order-2'})});
+    assert.equal(freeOrder2.status,200,`second admin-funded free order should still be allowed within the limit: ${JSON.stringify(freeOrder2.data)}`);assert.equal(freeOrder2.data.chargeUsd,0);assert.equal(providerAddCalls,freeCallsBefore+2);
+    const limitedFree=await req('/api/order/create',{method:'POST',headers:{Cookie:cookie,'Content-Type':'application/json'},body:JSON.stringify({providerId:'mock-provider',siteServiceId:customSiteId,providerServiceId:'77',firebaseServiceKey:customSiteId,link:'https://example.com/free-order-3',quantity:10,localId:'admin-free-order-3'})});
+    assert.equal(limitedFree.status,429,`third order should be limited for this specific service within 24 hours: ${JSON.stringify(limitedFree.data)}`);assert.equal(limitedFree.data.stage,'free_service_limit');assert.equal(providerAddCalls,freeCallsBefore+2,'over-limit request must never reach the provider');
+    const freeOrderRows=JSON.parse(fs.readFileSync(path.join(dataDir,'orders.json'),'utf8'));const savedFreeOrder=freeOrderRows.find(o=>String(o.id)==='admin-free-order-1');assert(savedFreeOrder);assert.equal(savedFreeOrder.serviceKind,'admin_funded_free');assert.equal(savedFreeOrder.providerRateUsd,5);assert.equal(savedFreeOrder.providerCostUsd,0.05);assert.equal(savedFreeOrder.chargeUsd,0);assert.equal(savedFreeOrder.providerServiceId,'77');
+    assert(Array.isArray(rootDb.users.tester.sadaAdminFreeServiceUsage?.[crypto.createHash('sha256').update(customFreeKey).digest('hex').slice(0,40)]),'per-account service usage must be stored atomically on that account in Firebase');
+    console.log('PASS runtime: admin-funded free service sends paid provider orders, charges users zero, hides supplier cost and enforces its own Firebase-backed 24-hour limit');
+
+    const afterFreeBalance=Number(rootDb.users.tester.balance),callsBeforePaidAfterFree=providerAddCalls;
+    const paidAfterFree=await req('/api/order/create',{method:'POST',headers:{Cookie:cookie,'Content-Type':'application/json'},body:JSON.stringify({providerId:'mock-provider',siteServiceId:'1001',providerServiceId:'77',firebaseServiceKey:'svc-test',link:'https://example.com/paid-after-free',quantity:100,localId:'paid-after-free-test'})});
+    assert.equal(paidAfterFree.status,200,`ordinary paid service must still work after setting up a separate free offer: ${JSON.stringify(paidAfterFree.data)}`);assert.equal(paidAfterFree.data.chargeUsd,1);assert.equal(providerAddCalls,callsBeforePaidAfterFree+1);assert(Number(rootDb.users.tester.balance)<afterFreeBalance,'ordinary paid service still debits the user according to its normal price');
+    const deleteFree=await req('/api/admin/free-services',{method:'POST',headers:{...adminCookie,'Content-Type':'application/json'},body:JSON.stringify({action:'delete',key:customFreeKey})});assert.equal(deleteFree.status,200);
+    const callsBeforeStaleFree=providerAddCalls;
+    const staleFreeOrder=await req('/api/order/create',{method:'POST',headers:{Cookie:cookie,'Content-Type':'application/json'},body:JSON.stringify({providerId:'mock-provider',siteServiceId:customSiteId,providerServiceId:'77',firebaseServiceKey:customSiteId,link:'https://example.com/stale-deleted-free-offer',quantity:10,localId:'deleted-free-stale-test'})});
+    assert.equal(staleFreeOrder.status,409,'a stale deleted free-service listing must not fall through to a same-provider paid catalog service');assert.equal(providerAddCalls,callsBeforeStaleFree,'deleted service stale request must not be forwarded');
+    console.log('PASS runtime: deleting custom free offer does not delete or redirect the matching normal provider service');
     const syncedServices=await req('/api/v1',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({action:'services',key:freshKey}).toString()});
     assert.equal(syncedServices.status,200);assert(syncedServices.data.some(x=>x.id==='1002'),'catalog service must not disappear just because provider sync omitted it');
     const apiRemovedBalance=Number(rootDb.users.tester.balance),apiRemovedCalls=providerAddCalls;
@@ -245,7 +275,7 @@ async function main(){
     app.kill('SIGTERM');await Promise.race([new Promise(resolve=>app.once('exit',resolve)),wait(3000)]);if(app.exitCode===null)app.kill('SIGKILL');
     await close(provider);await close(db);fs.rmSync(tempDir,{recursive:true,force:true});
   }
-  if(providerAddCalls!==2)throw new Error('Mock provider should receive exactly two add actions total: one API test and one verified site order');
+  if(providerAddCalls!==5)throw new Error('Mock provider should receive five add actions total: API order, two admin-funded free requests, and two ordinary paid website orders');
   console.log(`PASS end-to-end API runtime checks including summary, Telegram URL, admin API listing/revocation; mock provider actions: ${providerSeen.join(', ')}`);
 }
 main().catch(error=>{console.error('FAIL API runtime smoke:',error&&error.stack||error);process.exitCode=1;});
