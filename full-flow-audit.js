@@ -224,7 +224,7 @@ async function main() {
     const spoof = await call('GET', '/api/v1/balance', { xff: '10.0.0.2, 9.9.9.9' });
     check('rate limit works (>=1 request limited after 60/min)', limited >= 1, 'limited ' + limited);
     check('rate limit CANNOT be reset by changing a client-supplied X-Forwarded-For prefix', spoof.status === 429, 'spoofed request got ' + spoof.status + ' (429 = still limited)');
-    for (const f of ['/START_HERE_AR.txt', '/database.rules.json', '/release-smoke-1.6.29.js', '/api-runtime-smoke-1.6.29.js', '/railway.json', '/server.js', '/package.json', '/data/users.json', '/.env']) { r = await call('GET', f); check('static: ' + f + ' is not publicly downloadable', r.status === 403 || r.status === 404, r.status); }
+    for (const f of ['/START_HERE_AR.txt', '/database.rules.json', '/release-smoke-1.6.29.js', '/api-runtime-smoke-1.6.29.js', '/release-smoke-1.6.31.js', '/api-runtime-smoke-1.6.31.js', '/asiacell-runtime-smoke-1.6.31.js', '/railway.json', '/server.js', '/package.json', '/data/users.json', '/.env']) { r = await call('GET', f); check('static: ' + f + ' is not publicly downloadable', r.status === 403 || r.status === 404, r.status); }
     r = await call('GET', '/index.html'); check('static: index.html is still served', r.status === 200, r.status);
     const src = fs.readFileSync(path.join(SERVER_DIR, 'server.js'), 'utf8');
     const m = src.match(/process\.env\.ADMIN_PASSWORD\s*\|\|\s*'([^']+)'/);
@@ -240,12 +240,17 @@ async function main() {
     if (String(e && e.message) !== '__done__') check('audit crashed', false, String(e && e.stack || e).slice(0, 300));
   } finally {
     app.kill('SIGTERM'); await Promise.race([new Promise(function (r) { app.once('exit', r); }), wait(3000)]); if (app.exitCode === null) app.kill('SIGKILL');
-    await new Promise(function (r) { provider.close(r); }); await new Promise(function (r) { db.close(r); });
+    for (const srv of [provider, db]) {
+      if (!srv || !srv.listening) continue;
+      const closed = new Promise(function (resolve) { try { srv.close(resolve); } catch (_) { resolve(); } });
+      try { srv.closeAllConnections?.(); } catch (_) {}
+      await Promise.race([closed, wait(1200)]);
+    }
     try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (e) {}
   }
   const failed = results.filter(function (x) { return !x.ok; });
   for (const x of results) console.log((x.ok ? 'PASS ' : 'FAIL ') + x.name + (x.ok || !x.detail ? '' : '  -> ' + x.detail));
   console.log('\nRESULT ' + (results.length - failed.length) + '/' + results.length + ' checks passed');
-  process.exitCode = failed.length ? 1 : 0;
+  process.exit(failed.length ? 1 : 0);
 }
 main().catch(function (e) { console.error(e); process.exit(2); });

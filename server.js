@@ -27,11 +27,11 @@ function readStaticAssetBuffer(assetPath){
 const DATA = path.resolve(process.env.SADA_DATA_DIR || process.env.DATA_DIR || (process.env.RAILWAY_VOLUME_MOUNT_PATH ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, 'sada-data') : LEGACY_DATA));
 const DATA_IS_EXTERNAL = path.resolve(DATA) !== path.resolve(LEGACY_DATA);
 const APP_NAME = 'صدى العراق';
-const APP_VERSION = '1.6.30';
-const BUILD_ID = 'SADA-1.6.30-DESIGN-TELEGRAM-20261013';
+const APP_VERSION = '1.6.31';
+const BUILD_ID = 'SADA-1.6.31-FIXED-ASIACELL-NOTIFICATIONS-20261013';
 const ADMIN_USER = process.env.ADMIN_EMAIL || 'hsydgyg5@gmail.com';
-// Emergency compatibility credential requested by the project owner; override via Railway ADMIN_PASSWORD.
-const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || 'SrIraq!9vQ#4mL7@xK2');
+// Never ship a default admin password in source. Configure ADMIN_PASSWORD or ADMIN_PASSWORD_HASH in Railway.
+const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || '').trim();
 const FIXED_RECEIVER = process.env.ASIACELL_RECEIVER || '07763308188';
 const FIXED_RATE = 1250; // 1 USD = 1,250 IQD
 // v1.5.40: signed stateless sessions survive Railway restarts/instance changes.
@@ -70,7 +70,64 @@ const RATE_BUCKETS = new Map();
 // Keep access tokens server-side, keyed by a hash of the site's session token; never put them in the cookie.
 const ASIACELL_SESSIONS = new Map();
 const ASIACELL_SESSION_TTL_MS = 20 * 60 * 1000;
+const ASIACELL_SESSION_NODE = 'asiacellSessions';
+const ASIACELL_OPERATION_LOCK_NODE = 'asiacellOperationLocks';
 setInterval(()=>{const now=Date.now();for(const [k,v] of ASIACELL_SESSIONS){if(now-Number(v.updatedAt||v.createdAt||0)>ASIACELL_SESSION_TTL_MS)ASIACELL_SESSIONS.delete(k);}if(ASIACELL_SESSIONS.size>5000){for(const [k,v] of ASIACELL_SESSIONS){if(now-Number(v.updatedAt||v.createdAt||0)>ASIACELL_SESSION_TTL_MS)ASIACELL_SESSIONS.delete(k);}}},60_000).unref();
+// OTP and transfer bearer tokens are encrypted before being saved to Firebase so a Railway
+// restart or instance switch does not silently destroy an in-progress AsiaCell checkout.
+// The Firebase key is only a SHA-256 of the signed site session; no session token is stored as a path.
+async function loadAsiacellSession(stateKey){
+  let local=ASIACELL_SESSIONS.get(stateKey)||null;
+  try{
+    const stored=await firebaseGetJson(ASIACELL_SESSION_NODE+'/'+stateKey,3500);
+    if(stored&&typeof stored.encrypted==='string'&&stored.encrypted){
+      const plain=decryptSecret(stored.encrypted);let remote=null;
+      try{remote=plain?JSON.parse(plain):null}catch(_){}
+      if(remote&&typeof remote==='object'&&Number(stored.expiresAt||0)>Date.now()&&Date.now()-Number(remote.updatedAt||remote.createdAt||0)<=ASIACELL_SESSION_TTL_MS){
+        // A failed read-back save may leave a newer, authoritative state in this live process.
+        // Do not replace it with an older Firebase snapshot (notably after provider confirmation).
+        if(local&&Number(local.updatedAt||local.createdAt||0)>Number(remote.updatedAt||remote.createdAt||0))return local;
+        ASIACELL_SESSIONS.set(stateKey,remote);return remote;
+      }
+      if(Number(stored.expiresAt||0)<=Date.now())firebaseDeleteJson(ASIACELL_SESSION_NODE+'/'+stateKey,2500).catch(()=>{});
+    }
+  }catch(_){}
+  if(local&&Date.now()-Number(local.updatedAt||local.createdAt||0)<=ASIACELL_SESSION_TTL_MS)return local;
+  ASIACELL_SESSIONS.delete(stateKey);return null;
+}
+async function saveAsiacellSession(stateKey,value){
+  if(!value||typeof value!=='object')return false;
+  value.updatedAt=Date.now();ASIACELL_SESSIONS.set(stateKey,value);
+  if(!FIREBASE_DATABASE_URL||!firebaseServiceAccountConfigured()||!telegramEncryptionReady())return false;
+  try{
+    const expiresAt=Date.now()+ASIACELL_SESSION_TTL_MS;
+    const encrypted=encryptSecret(JSON.stringify(value));
+    await firebaseWriteJson(ASIACELL_SESSION_NODE+'/'+stateKey,{version:1,expiresAt,updatedAt:value.updatedAt,encrypted},5000);
+    const check=await firebaseGetJson(ASIACELL_SESSION_NODE+'/'+stateKey,5000);
+    if(!check||check.encrypted!==encrypted||Number(check.expiresAt)!==expiresAt)throw new Error('encrypted session read-back did not match');
+    return true;
+  }catch(e){console.warn('AsiaCell encrypted-session persistence failed:',String(e.message||e).slice(0,120));return false;}
+}
+async function deleteAsiacellSession(stateKey){
+  ASIACELL_SESSIONS.delete(stateKey);
+  if(FIREBASE_DATABASE_URL&&firebaseServiceAccountConfigured())try{await firebaseDeleteJson(ASIACELL_SESSION_NODE+'/'+stateKey,3500)}catch(_){}
+}
+// Distributed lease per session + action around money-moving AsiaCell operations. This is an RTDB compare-and-swap,
+// so two Railway instances cannot duplicate one action, while the next valid checkout step is not blocked.
+async function acquireAsiacellOperationLock(stateKey,action){
+  if(!FIREBASE_DATABASE_URL||!firebaseServiceAccountConfigured())return null;
+  const lockId=sha256(String(stateKey)+'|'+String(action||''));const lockPath=ASIACELL_OPERATION_LOCK_NODE+'/'+lockId,owner=crypto.randomUUID(),started=Date.now();
+  const tx=await firebaseTransaction(lockPath,current=>{
+    if(current&&Number(current.expiresAt||0)>Date.now())return {write:false,result:{acquired:false,expiresAt:Number(current.expiresAt||0)}};
+    const value={owner,action:String(action||''),createdAt:Date.now(),expiresAt:Date.now()+120000};
+    return {write:true,value,result:{acquired:true,expiresAt:value.expiresAt}};
+  },6000,8);
+  return tx.result?.acquired?{path:lockPath,owner,action,started}:null;
+}
+async function releaseAsiacellOperationLock(lock){
+  if(!lock?.path||!lock.owner)return;
+  try{await firebaseTransaction(lock.path,current=>current&&current.owner===lock.owner?{write:true,value:null,result:{released:true}}:{write:false,result:{released:false}},4000,4)}catch(_){/* The lease expires automatically; never retry a money-moving provider call here. */}
+}
 const RATE_RULES = { auth:{window:60_000,max:12}, captcha:{window:60_000,max:30}, email:{window:10*60_000,max:5}, registerEmail:{window:10*60_000,max:10}, provider:{window:60_000,max:20}, order:{window:60_000,max:20}, api:{window:60_000,max:60}, general:{window:60_000,max:60} };
 // SECURITY (1.6.29-p1): the left-most X-Forwarded-For value is chosen by the caller and let attackers reset every
 // rate limit (login, register, API) by changing it. Railway's proxy appends the real client IP on the right, so
@@ -1209,11 +1266,17 @@ async function apiAsiacell(req,res){
   const webSession=session(req), rawSid=String(sid(req)||'').trim();
   if(!webSession||!rawSid) return json(res,401,{error:'سجّل الدخول إلى حساب صدى العراق أولاً ثم أعد عملية الشحن.'});
   const stateKey=sha256(rawSid);
-  let s=ASIACELL_SESSIONS.get(stateKey);
-  if(s&&(s.owner!==String(webSession.username||'')||Date.now()-Number(s.updatedAt||s.createdAt||0)>ASIACELL_SESSION_TTL_MS)){
-    ASIACELL_SESSIONS.delete(stateKey);s=null;
+  let operationLock=null;
+  if(action==='start_transfer'||action==='confirm_transfer'){
+    try{operationLock=await acquireAsiacellOperationLock(stateKey,action)}catch(e){return json(res,503,{error:'لم نبدأ أي طلب تحويل لأن الخادم لم يستطع حجز العملية بأمان في Firebase. تحقق من الاتصال ثم أعد المحاولة بعد التأكد من حالة الجلسة.'});}
+    if(!operationLock)return json(res,409,{error:'هناك خطوة تحويل قيد التنفيذ لهذه الجلسة. انتظر قليلاً ولا ترسل طلب تحويل مكرراً.'});
   }
-  if(action==='reset'){ASIACELL_SESSIONS.delete(stateKey);return json(res,200,{ok:true});}
+  try{
+  let s=await loadAsiacellSession(stateKey);
+  if(s&&(s.owner!==String(webSession.username||'')||Date.now()-Number(s.updatedAt||s.createdAt||0)>ASIACELL_SESSION_TTL_MS)){
+    await deleteAsiacellSession(stateKey);s=null;
+  }
+  if(action==='reset'){await deleteAsiacellSession(stateKey);return json(res,200,{ok:true});}
   if(action==='login'){
     const phone=cleanPhone(inBody.phone); if(!phone) return json(res,422,{error:'رقم آسياسيل غير صحيح. استخدم 077xxxxxxxx'});
     const headers=acHeaders();
@@ -1221,11 +1284,12 @@ async function apiAsiacell(req,res){
       const d=await acPost(`${ASIACELL_API_BASE}/login?lang=en`,headers,{captchaCode:'',username:phone});
       const next=String(d.nextUrl||''); const m=next.match(/PID=([a-f0-9-]+)/i);
       if(!m) throw new Error(d.message || 'فشل إرسال رمز SMS');
-      ASIACELL_SESSIONS.set(stateKey,{owner:String(webSession.username),phone,headers,pid:m[1],step:'sms',createdAt:Date.now(),updatedAt:Date.now()});
-      return json(res,200,{ok:true,message:'تم إرسال رمز SMS إلى الرقم.'});
-    }catch(e){ return json(res,502,{error:e.message}); }
+      s={owner:String(webSession.username),phone,headers,pid:m[1],step:'sms',createdAt:Date.now(),updatedAt:Date.now()};
+      const durable=await saveAsiacellSession(stateKey,s);
+      return json(res,200,{ok:true,sessionPersisted:durable,message:'تم إرسال رمز SMS إلى الرقم.',warning:durable?'':'تعذر حفظ الجلسة المشفّرة بشكل دائم؛ لن يبدأ التحويل المالي ما لم ينجح حفظ الجلسة. تحقق من إعدادات Firebase والتشفير.'});
+    }catch(e){ return json(res,502,{error:String(e.message||e).slice(0,200)}); }
   }
-  if(!s) return json(res,409,{error:'انتهت جلسة آسياسيل أو أعيد تشغيل الخادم. ابدأ بخطوة إرسال رمز SMS من جديد.'});
+  if(!s) return json(res,409,{error:'انتهت جلسة آسياسيل أو تعذر استعادتها. أرسل رمز SMS من جديد؛ لا يوجد تحويل مالي مؤكد بهذه الجلسة.'});
   if(action==='verify_sms'){
     if(s.step!=='sms') return json(res,409,{error:'خطوة التحقق غير متاحة؛ أعد إرسال رمز SMS.'});
     const code=String(inBody.passcode||'').trim(); if(!/^\d{4,8}$/.test(code)) return json(res,422,{error:'رمز SMS غير صحيح'});
@@ -1233,55 +1297,80 @@ async function apiAsiacell(req,res){
       const d=await acPost(`${ASIACELL_API_BASE}/smsvalidation?lang=en`,s.headers,{PID:s.pid,passcode:code,token:''});
       if(!d.success || !d.access_token) throw new Error(d.message || 'رمز SMS غير صحيح');
       s.headers.Authorization='Bearer '+d.access_token; s.step='amount'; s.updatedAt=Date.now();
-      return json(res,200,{ok:true,message:'تم التحقق من الرقم بنجاح.'});
-    }catch(e){ return json(res,502,{error:e.message}); }
+      const durable=await saveAsiacellSession(stateKey,s);
+      return json(res,200,{ok:true,sessionPersisted:durable,message:'تم التحقق من الرقم بنجاح.',warning:durable?'':'تم التحقق من الرقم، لكن لم يُحفظ رمز الجلسة بشكل دائم؛ أصلح إعداد Firebase قبل بدء التحويل.'});
+    }catch(e){ return json(res,502,{error:String(e.message||e).slice(0,200)}); }
   }
   if(action==='start_transfer'){
-    if(s.step!=='amount') return json(res,409,{error:'تحقق من رقم آسياسيل أولاً.'});
+    if(s.step!=='amount') return json(res,409,{error:s.step==='starting_transfer'?'طلب بدء التحويل قيد التحقق؛ لا تعاود بدء تحويل آخر قبل مراجعة حالة العملية.':'تحقق من رقم آسياسيل أولاً.'});
     if(webSession.role!=='user')return json(res,403,{error:'شحن آسياسيل التلقائي متاح لحساب المستخدم فقط.'});
     if(!firebaseServiceAccountConfigured()&&!(process.env.NODE_ENV==='test'&&process.env.FIREBASE_ALLOW_UNAUTHENTICATED==='true'))return json(res,503,{error:'لم يبدأ التحويل لأن اعتماد خادم Firebase غير صالح؛ لم يتم إرسال طلب تحويل آسياسيل. أصلح اعتماد الخادم أولاً.'});
     let accountCheck;try{accountCheck=await findRemoteUserByUsername(webSession.username)}catch(e){return json(res,503,{error:'لم يبدأ التحويل لتعذر التحقق من حسابك في Firebase: '+String(e.message||e).slice(0,140)});}
     if(!accountCheck?.user||!accountCheck.firebasePath)return json(res,404,{error:'لم يبدأ التحويل لأن حسابك غير موجود في قاعدة المستخدمين الحالية.'});
-    s.firebaseUserPath=accountCheck.firebasePath;
     const amount=Number(inBody.amount||0);
     if(!Number.isInteger(amount) || amount<1000 || amount>10000 || amount%1000!==0) return json(res,422,{error:'المبلغ يجب أن يكون بين 1,000 و10,000 د.ع وبمضاعفات 1,000'});
+    s.firebaseUserPath=accountCheck.firebasePath;s.amount=amount;s.step='starting_transfer';s.updatedAt=Date.now();
+    if(!await saveAsiacellSession(stateKey,s)){s.step='amount';delete s.amount;delete s.firebaseUserPath;ASIACELL_SESSIONS.set(stateKey,s);return json(res,503,{error:'لم يبدأ التحويل. تعذر حفظ جلسة آسياسيل مشفّرة في Firebase، لذلك لم نرسل طلب تحويل مالي. تحقق من رابط قاعدة البيانات وحساب الخدمة ومفتاح التشفير ثم أعد المحاولة.'});}
     try{
       const d=await acPost(`${ASIACELL_API_BASE}/credit-transfer/start?lang=ar`,s.headers,{amount,receiverMsisdn:FIXED_RECEIVER});
-      if(!d.PID) throw new Error(d.message || 'فشل بدء التحويل');
-      s.pid_transfer=String(d.PID); s.amount=amount; s.step='transfer_sms'; s.updatedAt=Date.now();
+      if(!d.PID) throw new Error(d.message || 'لم يؤكد مزود آسياسيل إنشاء طلب التحويل.');
+      s.pid_transfer=String(d.PID);s.amount=amount;s.step='transfer_sms';s.updatedAt=Date.now();
+      const durable=await saveAsiacellSession(stateKey,s);
+      if(!durable)return json(res,503,{error:'طلب التحويل بدأ لدى آسياسيل، لكن تعذر حفظ رقم العملية بشكل دائم. لا تبدأ تحويلاً آخر؛ احتفظ بالرسالة وتواصل مع الدعم قبل إعادة المحاولة.',transferStarted:true});
       return json(res,200,{ok:true,message:'تم إرسال رمز تأكيد التحويل.',usd:amount/FIXED_RATE,transferPid:s.pid_transfer});
-    }catch(e){ return json(res,502,{error:e.message}); }
+    }catch(e){
+      const message=String(e.message||e).slice(0,200);
+      if(/^HTTP (400|401|403|422)\b/i.test(message)||/رمز|مبلغ غير صالح|invalid amount/i.test(message)){s.step='amount';delete s.pid_transfer;delete s.amount;delete s.firebaseUserPath;await saveAsiacellSession(stateKey,s);}
+      return json(res,502,{error:s.step==='starting_transfer'?'لم يتأكد الخادم هل أنشأ مزود آسياسيل طلب التحويل أم لا. لا تضغط بدء التحويل مرة أخرى؛ راجع الدعم لتجنب تكرار التحويل. تفاصيل المزود: '+message:message,transferStateUncertain:s.step==='starting_transfer'});
+    }
   }
   if(action==='confirm_transfer'){
-    if(s.step!=='transfer_sms') return json(res,409,{error:'لا توجد عملية تحويل بانتظار التأكيد أو سبق تأكيدها.'});
-    const code=String(inBody.passcode||'').trim(); if(!/^\d{4,8}$/.test(code)) return json(res,422,{error:'رمز التأكيد غير صحيح'});
-    try{
-      const d=await acPost(`${ASIACELL_API_BASE}/credit-transfer/do-transfer?lang=ar`,s.headers,{PID:s.pid_transfer,passcode:code});
-      if(!d.success) throw new Error(d.message || 'فشل التحويل');
-      const amount=Number(s.amount),username=String(webSession.username||''),transferPid=String(s.pid_transfer||'');
-      if(!Number.isInteger(amount)||amount<1000||!transferPid||!s.firebaseUserPath)throw new Error('بيانات عملية الشحن غير مكتملة؛ احتفظ برقم العملية وراجع الدعم.');
-      const key='AC_'+transferPid.replace(/[^A-Za-z0-9_-]/g,'_');let tx;
-      try{tx=await firebaseTransaction(s.firebaseUserPath,current=>{
-        if(!current||typeof current!=='object'||Array.isArray(current))return {write:false,result:{error:'user-not-found'}};
-        const ids=current.asiacellTransferIds&&typeof current.asiacellTransferIds==='object'?current.asiacellTransferIds:{};
-        if(ids[key])return {write:false,result:{alreadyCredited:true,record:ids[key],balanceIQD:Number(current.balance||0)}};
-        const before=Number(current.balance||0),after=Number((before+amount).toFixed(4)),createdAt=nowISO();
-        const receipt={id:key,transferPid,amountIQD:amount,amountUSD:Number((amount/FIXED_RATE).toFixed(6)),createdAt,method:'asiacell',status:'completed'};
-        current.balance=after;current.lastRecharge=createdAt;current.asiacellTransferIds={...ids,[key]:receipt};current.updatedAt=createdAt;
-        const history=Array.isArray(current.rechargeHistory)?current.rechargeHistory.slice(-99):[];history.push(receipt);current.rechargeHistory=history;
-        return {write:true,value:current,result:{alreadyCredited:false,beforeIQD:before,balanceIQD:after,record:receipt}};
-      },12000,8)}catch(e){return json(res,503,{error:'أكدت آسياسيل التحويل، لكن تعذر تثبيت الرصيد مركزياً. لا تعِد التحويل؛ احتفظ برقم العملية '+transferPid+' وتواصل مع الدعم. التفاصيل: '+String(e.message||e).slice(0,100),transferConfirmed:true,transferPid,amountIQD:amount});}
-      if(tx.result?.error)return json(res,503,{error:'تم تأكيد التحويل لدى آسياسيل لكن لم يُعثر على حساب المستخدم لتثبيت الرصيد. لا تعِد التحويل؛ رقم العملية '+transferPid,transferConfirmed:true,transferPid,amountIQD:amount});
-      const record=tx.result.record||{};const createdAt=record.createdAt||nowISO();
-      const receipt={id:key,user:username,username,amount,amountIQD:amount,amountUSD:Number((amount/FIXED_RATE).toFixed(6)),rate:FIXED_RATE,method:'asiacell',methodName:'آسياسيل',provider:'asiacell',source:'asiacell-auto',type:'deposit',receiver:'backend-only',status:'completed',state:'completed',automatic:true,transferPid,createdAt,beforeIQD:tx.result.beforeIQD,balanceIQD:tx.result.balanceIQD};
-      let receiptSaved=true,receiptError='';
-      try{await firebasePatchJson('',{['asiacellTransfers/'+key]:receipt,['payments/'+key]:receipt,['balanceLedger/'+key]:receipt,['users/'+String(s.firebaseUserPath).replace(/^users\//,'')+'/asiacellTransferIds/'+key]:record},10000)}catch(e){receiptSaved=false;receiptError=String(e.message||e).slice(0,120);console.warn('AsiaCell receipt mirror failed; user receipt remains authoritative:',receiptError)}
-      if(!tx.result.alreadyCredited){try{appendJsonLedger('balance_ledger.json',{...receipt,user:username,amountUSD:receipt.amountUSD,type:'deposit',source:'asiacell-auto'});}catch(_){} }
-      s.step='completed'; s.updatedAt=Date.now(); s.creditedTransferPid=transferPid;
-      return json(res,200,{ok:true,credited:true,alreadyCredited:!!tx.result.alreadyCredited,receiptSaved,balanceIQD:Number(tx.value?.balance||tx.result.balanceIQD||0),balanceUSD:Number((Number(tx.value?.balance||tx.result.balanceIQD||0)/FIXED_RATE).toFixed(6)),message:tx.result.alreadyCredited?'هذه العملية مسجلة سابقاً ولم يُضف الرصيد مرة ثانية.':'تم تأكيد التحويل وإضافة الرصيد إلى حسابك بنجاح.',usd:amount/FIXED_RATE,amountIQD:amount,phone:s.phone||'',transferPid,createdAt,receiptWarning:receiptError||undefined});
-    }catch(e){ return json(res,502,{error:e.message}); }
+    if(s.step==='confirming_transfer')return json(res,409,{error:'طلب تأكيد التحويل السابق نتيجته غير محسومة. لا تعاود إرسال الرمز أو التحويل؛ احتفظ برقم العملية وتواصل مع الدعم.',transferStateUncertain:true,transferPid:s.pid_transfer||''});
+    if(s.step==='transfer_sms'){
+      const code=String(inBody.passcode||'').trim();if(!/^\d{4,8}$/.test(code))return json(res,422,{error:'رمز التأكيد غير صحيح'});
+      // Persist intent before the provider call. If the server restarts mid-request, it will not
+      // blindly submit the same money-transfer confirmation a second time.
+      s.step='confirming_transfer';s.confirmStartedAt=Date.now();s.updatedAt=Date.now();
+      if(!await saveAsiacellSession(stateKey,s)){s.step='transfer_sms';delete s.confirmStartedAt;await saveAsiacellSession(stateKey,s);return json(res,503,{error:'لم يُرسل رمز التأكيد للتحويل لأن الخادم لم يستطع حفظ حالة العملية بأمان. تحقق من Firebase ثم أعد المحاولة.'});}
+      try{
+        const d=await acPost(`${ASIACELL_API_BASE}/credit-transfer/do-transfer?lang=ar`,s.headers,{PID:s.pid_transfer,passcode:code});
+        if(!d.success){s.step='transfer_sms';delete s.confirmStartedAt;await saveAsiacellSession(stateKey,s);throw new Error(d.message||'فشل التحويل');}
+        s.step='provider_confirmed';s.transferConfirmedAt=Date.now();s.updatedAt=Date.now();
+        // Keep the confirmed state encrypted until credit is durably applied. A retry then only
+        // retries the idempotent Firebase credit transaction, never the provider transfer.
+        await saveAsiacellSession(stateKey,s);
+      }catch(e){
+        const message=String(e.message||e).slice(0,180);
+        if(s.step==='confirming_transfer'&&(/^HTTP (400|401|403|422)\b/i.test(message)||/رمز.*(خطأ|غير صحيح)|passcode.*invalid/i.test(message))){s.step='transfer_sms';delete s.confirmStartedAt;await saveAsiacellSession(stateKey,s);}
+        return json(res,502,{error:s.step==='confirming_transfer'?'لم يتأكد الخادم من نتيجة التحويل. لا تعاود التحويل؛ احتفظ برقم العملية وتواصل مع الدعم. تفاصيل المزود: '+message:message,transferStateUncertain:s.step==='confirming_transfer',transferPid:s.pid_transfer||''});
+      }
+    }
+    if(s.step!=='provider_confirmed')return json(res,409,{error:'لا توجد عملية تحويل مؤكدة بانتظار تثبيت الرصيد. ابدأ بخطوة إرسال رمز SMS.'});
+    const amount=Number(s.amount),username=String(webSession.username||''),transferPid=String(s.pid_transfer||'');
+    if(!Number.isInteger(amount)||amount<1000||!transferPid||!s.firebaseUserPath)return json(res,503,{error:'أكدت آسياسيل التحويل، لكن بيانات تثبيت الرصيد غير مكتملة. لا تعِد التحويل؛ احتفظ برقم العملية '+transferPid+' وتواصل مع الدعم.',transferConfirmed:true,transferPid,amountIQD:amount});
+    const key='AC_'+transferPid.replace(/[^A-Za-z0-9_-]/g,'_');let tx;
+    try{tx=await firebaseTransaction(s.firebaseUserPath,current=>{
+      if(!current||typeof current!=='object'||Array.isArray(current))return {write:false,result:{error:'user-not-found'}};
+      const ids=current.asiacellTransferIds&&typeof current.asiacellTransferIds==='object'?current.asiacellTransferIds:{};
+      if(ids[key])return {write:false,result:{alreadyCredited:true,record:ids[key],balanceIQD:Number(current.balance||0)}};
+      const before=Number(current.balance||0),after=Number((before+amount).toFixed(4)),createdAt=nowISO();
+      const receipt={id:key,transferPid,amountIQD:amount,amountUSD:Number((amount/FIXED_RATE).toFixed(6)),createdAt,method:'asiacell',status:'completed'};
+      current.balance=after;current.lastRecharge=createdAt;current.asiacellTransferIds={...ids,[key]:receipt};current.updatedAt=createdAt;
+      const history=Array.isArray(current.rechargeHistory)?current.rechargeHistory.slice(-99):[];history.push(receipt);current.rechargeHistory=history;
+      return {write:true,value:current,result:{alreadyCredited:false,beforeIQD:before,balanceIQD:after,record:receipt}};
+    },12000,8)}catch(e){return json(res,503,{error:'أكدت آسياسيل التحويل، لكن تعذر تثبيت الرصيد مركزياً. لا تعِد التحويل؛ أعد المحاولة من نفس نافذة التأكيد لتثبيت الرصيد فقط أو تواصل مع الدعم. رقم العملية '+transferPid+'. التفاصيل: '+String(e.message||e).slice(0,100),transferConfirmed:true,transferPid,amountIQD:amount});}
+    if(tx.result?.error)return json(res,503,{error:'تم تأكيد آسياسيل لكن لم يُعثر على حساب المستخدم لتثبيت الرصيد. لا تعِد التحويل؛ رقم العملية '+transferPid,transferConfirmed:true,transferPid,amountIQD:amount});
+    const record=tx.result.record||{};const createdAt=record.createdAt||nowISO();
+    const balanceIQD=Number(tx.value?.balance??tx.result.balanceIQD??0);
+    const receipt={id:key,user:username,username,amount,amountIQD:amount,amountUSD:Number((amount/FIXED_RATE).toFixed(6)),rate:FIXED_RATE,method:'asiacell',methodName:'آسياسيل',provider:'asiacell',source:'asiacell-auto',type:'deposit',receiver:'backend-only',status:'completed',state:'completed',automatic:true,transferPid,createdAt,beforeIQD:tx.result.beforeIQD,balanceIQD};
+    let receiptSaved=true,receiptError='';
+    try{await firebasePatchJson('',{['asiacellTransfers/'+key]:receipt,['payments/'+key]:receipt,['balanceLedger/'+key]:receipt,['users/'+String(s.firebaseUserPath).replace(/^users\//,'')+'/asiacellTransferIds/'+key]:record},10000)}catch(e){receiptSaved=false;receiptError=String(e.message||e).slice(0,120);console.warn('AsiaCell receipt mirror failed; user receipt remains authoritative:',receiptError)}
+    if(!tx.result.alreadyCredited){try{appendJsonLedger('balance_ledger.json',{...receipt,user:username,amountUSD:receipt.amountUSD,type:'deposit',source:'asiacell-auto'});}catch(_){} }
+    await deleteAsiacellSession(stateKey);
+    return json(res,200,{ok:true,credited:true,alreadyCredited:!!tx.result.alreadyCredited,receiptSaved,balanceIQD,balanceUSD:Number((balanceIQD/FIXED_RATE).toFixed(6)),message:tx.result.alreadyCredited?'هذه العملية مسجلة سابقاً ولم يُضف الرصيد مرة ثانية.':'تم تأكيد التحويل وإضافة الرصيد إلى حسابك بنجاح.',usd:amount/FIXED_RATE,amountIQD:amount,phone:s.phone||'',transferPid,createdAt,receiptWarning:receiptError||undefined});
   }
   return json(res,422,{error:'عملية غير معروفة'});
+  }finally{await releaseAsiacellOperationLock(operationLock);}
 }
 
 async function apiSmm(req,res,urlObj){
@@ -1356,7 +1445,7 @@ function writeNotifications(v){ writeJSON('notifications.json',Array.isArray(v)?
 function readNotificationSeen(){ return readJSON('notification_seen.json',{}); }
 function writeNotificationSeen(v){ writeJSON('notification_seen.json',v&&typeof v==='object'?v:{}); }
 function notifId(){ return 'N'+Date.now().toString(36)+crypto.randomBytes(3).toString('hex'); }
-function sanitizeNotification(n){ return {id:String(n.id||''),title:String(n.title||''),message:String(n.message||''),url:String(n.url||''),required:!!n.required,active:n.active!==false,createdAt:n.createdAt||new Date().toISOString(),updatedAt:n.updatedAt||n.createdAt||new Date().toISOString(),...(n.orderId?{orderId:String(n.orderId)}:{}),...(n.type?{type:String(n.type)}:{}),...(n.status?{status:String(n.status)}:{}),read:!!n.read}; }
+function sanitizeNotification(n){ const m=n.meta&&typeof n.meta==='object'?n.meta:{};const meta={};for(const k of ['serviceName','providerName'])if(m[k]!==undefined)meta[k]=String(m[k]||'').slice(0,140);if(m.quantity!==undefined&&Number.isFinite(Number(m.quantity)))meta.quantity=Number(m.quantity);if(m.providerOrderId!==undefined)meta.providerOrderId=String(m.providerOrderId||'').slice(0,80);return {id:String(n.id||''),title:String(n.title||''),message:String(n.message||''),url:String(n.url||''),required:!!n.required,active:n.active!==false,createdAt:n.createdAt||new Date().toISOString(),updatedAt:n.updatedAt||n.createdAt||new Date().toISOString(),...(n.orderId?{orderId:String(n.orderId)}:{}),...(n.type?{type:String(n.type)}:{}),...(n.status?{status:String(n.status)}:{}),...(Object.keys(meta).length?{meta}:{}),read:!!n.read}; }
 function userNotifId(username,type,orderId,status=''){return 'UN'+sha256([username,type,orderId,status].map(x=>String(x||'')).join('|')).slice(0,24)}
 function createUserNotification(username, data={}){
   const user=String(username||'').trim();if(!user)return null;
@@ -3522,7 +3611,9 @@ async function routeAPI(req,res,urlObj){
   if(p==='/api/public/site-order-count'&&req.method==='GET'){
     let remoteOrders;try{remoteOrders=await firebaseGetJson('orders',9000);}catch(e){return json(res,503,{ok:false,error:'تعذر قراءة عدّاد الطلبات الحقيقي من قاعدة الموقع. لم نعرض رقماً تخمينياً.',complete:false});}
     const rows=uniqueActualOrders(remoteOrders,readJSON('orders.json',[]));
-    return json(res,200,{ok:true,count:rows.length,source:'firebase+server-ledger',complete:true,updatedAt:nowISO()});
+    const numeric=v=>/^\d{1,9}$/.test(String(v??'').trim())?Number(String(v).trim()):0;
+    const latestPublicOrderNo=rows.reduce((max,o)=>Math.max(max,numeric(o?.publicOrderNo),numeric(o?.publicOrderNumber),numeric(o?.orderNumber)),0);
+    return json(res,200,{ok:true,count:latestPublicOrderNo||rows.length,totalOrders:rows.length,latestPublicOrderNo:latestPublicOrderNo||null,source:'firebase+server-ledger',complete:true,updatedAt:nowISO()});
   }
 
   if(p==='/api/admin/users-directory'&&req.method==='GET'){
@@ -4267,7 +4358,7 @@ async function routeAPI(req,res,urlObj){
       return json(res,200,{ok:true,imported:true,paths:report,totalAdded:report.reduce((n,x)=>n+x.added,0),excluded:['users','orders','payments','transactions','balanceLedger','userNotifications'],message:'تم دمج خدمات ومزودين فقط؛ لم تُستورد الحسابات أو الطلبات أو المعاملات، ولم تُستبدل البيانات الموجودة في القاعدة الجديدة.'});
     }catch(e){return json(res,503,{ok:false,error:'توقف استيراد الكتالوج قبل تأكيد جميع الكتابات: '+String(e.message||e).slice(0,220),partial:report});}
   }
-  if(p==='/api/config'){ const cfg=readJSON('settings.json',{}); const waUrl=normalizeWhatsAppUrl(cfg.waUrl||cfg.waNum||'https://wa.me/9647762267959'); return json(res,200,{appName:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,firebase:firebaseWebConfig(),firebaseVapidKey:String(process.env.FIREBASE_WEB_PUSH_VAPID_KEY||'').trim(),maintenance:(()=>{const m=readJSON('settings.json',{}).maintenance||{};return {enabled:m.enabled===true,title:String(m.title||'التطبيق متوقف مؤقتاً'),message:String(m.message||''),reason:String(m.reason||''),imageUrl:String(m.imageUrl||'')}})(),currency:'USD',exchangeRate:FIXED_RATE,fixedRecharge:'5000 IQD = 4 USD',rateTable:[1000,2000,3000,4000,5000,6000,7000,8000,9000,10000].map(i=>({iqd:i,usd:i/FIXED_RATE})),supportWhatsappUrl:waUrl,supportWhatsappNumber:normalizeWhatsAppNumber(waUrl),telegramChannelUrl:'https://t.me/jbhbhg58'}); }
+  if(p==='/api/config'){ const cfg=readJSON('settings.json',{}); const waUrl=normalizeWhatsAppUrl(cfg.waUrl||cfg.waNum||'https://wa.me/9647762267959'); return json(res,200,{appName:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,firebase:firebaseWebConfig(),firebaseVapidKey:String(process.env.FIREBASE_WEB_PUSH_VAPID_KEY||'').trim(),maintenance:(()=>{const m=readJSON('settings.json',{}).maintenance||{};return {enabled:m.enabled===true,title:String(m.title||'التطبيق متوقف مؤقتاً'),message:String(m.message||''),reason:String(m.reason||''),imageUrl:String(m.imageUrl||'')}})(),currency:'USD',exchangeRate:FIXED_RATE,fixedRecharge:'5000 IQD = 4 USD',rateTable:[1000,2000,3000,4000,5000,6000,7000,8000,9000,10000].map(i=>({iqd:i,usd:i/FIXED_RATE})),supportWhatsappUrl:waUrl,supportWhatsappNumber:normalizeWhatsAppNumber(waUrl),telegramChannelUrl:'https://t.me/jgkhfcvn'}); }
   if(p==='/api/auth/google-config'&&req.method==='GET'){return json(res,200,{ok:true,enabled:!!String(process.env.GOOGLE_CLIENT_ID||'').trim(),clientId:String(process.env.GOOGLE_CLIENT_ID||'').trim()});}
   if(p==='/api/auth/captcha'&&req.method==='GET'){const wait=rateLimit(req,'captcha');if(wait)return json(res,429,{ok:false,error:'طلبات تحقق كثيرة؛ أعد المحاولة بعد قليل.'},{'Retry-After':String(wait)});return json(res,200,{ok:true,...issueMathCaptcha(req)});}
   if(p==='/api/auth/google'&&req.method==='POST'){
@@ -4898,7 +4989,7 @@ async function routeAPI(req,res,urlObj){
     try { buildFile=fs.readFileSync(path.join(ROOT,'BUILD_ID.txt'),'utf8').trim(); } catch(_) {}
     const deploymentConsistent=uiVersion===APP_VERSION && uiBuildId===BUILD_ID && versionFile===APP_VERSION && buildFile===BUILD_ID;
     const dbInfo=firebaseDatabaseDiagnosticInfo();
-    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.29-p1',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
+    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.31',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
     // Keep operational configuration details private; only an authenticated admin can inspect them.
     if(isAdmin(req)){const credentialStatus=firebaseServiceAccountStatus();health.firebaseDatabase={host:dbInfo.host,source:dbInfo.source,databaseProjectHint:dbInfo.databaseProjectHint,serviceAccountProjectId:dbInfo.serviceAccountProjectId||null,configuredWebProjectId:dbInfo.configuredWebProjectId||null,serviceAccountProjectMatch:dbInfo.serviceAccountProjectMatch};health.securityConfig={sessionSecretConfigured:!!String(process.env.SESSION_SECRET||'').trim(),dedicatedEncryptionKeyConfigured:!!String(process.env.SADA_ENCRYPTION_KEY||'').trim(),stableEncryptionAvailable:telegramEncryptionReady(),firebaseConfigured:!!FIREBASE_DATABASE_URL,firebaseServiceAccountConfigured:credentialStatus.ok,firebaseCredentialStatus:{ok:credentialStatus.ok,code:credentialStatus.code,source:credentialStatus.source,message:credentialStatus.message},firebaseDatabaseSecretConfigured:!!String(process.env.FIREBASE_DATABASE_SECRET||'').trim(),firebaseAuthAvailable:firebaseAuthAvailable(),emailServiceConfigured:!!(String(process.env.RESEND_API_KEY||'').trim()&&String(process.env.RESEND_FROM_EMAIL||process.env.EMAIL_FROM||'').trim()),telegramTokenFromEnvironment:!!String(process.env.TELEGRAM_BOT_TOKEN||'').trim(),adminPasswordFromEnvironment:!!(String(process.env.ADMIN_PASSWORD||'').trim()||String(process.env.ADMIN_PASSWORD_HASH||'').trim())};}
     return json(res,200,health);
@@ -4938,7 +5029,7 @@ function serveStatic(req,res,urlObj){
   if(bundled){res.statusCode=200;res.setHeader('Content-Type',bundled.contentType);res.setHeader('Cache-Control','public, max-age=300, must-revalidate');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Content-Length',String(bundled.buffer.length));res.setHeader('ETag','"'+crypto.createHash('sha1').update(bundled.buffer).digest('hex')+'"');return req.method==='HEAD'?res.end():res.end(bundled.buffer);}
   const baseName=path.posix.basename(p).toLowerCase();
   const blockedFiles=new Set(['server.js','package.json','package-lock.json','bundled-assets.json','config.json','authproviders.json','login.json','noauth.json','cookies.txt','firebase-service-account.json']);
-  if(blockedFiles.has(baseName) || /^\/(?:data|tests|node_modules)(?:\/|$)/i.test(p) || /(?:^|\/)\.(?:env|git|npmrc)/i.test(p) || /(?:^|\/)(?:start_here|readme|release-smoke|api-runtime-smoke|full-flow-audit)[^/]*$/i.test(p) || /(?:^|\/)(?:database\.rules\.json|railway\.json|nixpacks\.toml|dockerfile)$/i.test(p)) return json(res,403,{error:'Forbidden'});
+  if(blockedFiles.has(baseName) || /^\/(?:data|tests|node_modules)(?:\/|$)/i.test(p) || /(?:^|\/)\.(?:env|git|npmrc)/i.test(p) || /(?:^|\/)(?:start_here|readme|release-smoke|api-runtime-smoke|asiacell-runtime-smoke|full-flow-audit)[^/]*$/i.test(p) || /(?:^|\/)(?:database\.rules\.json|railway\.json|nixpacks\.toml|dockerfile)$/i.test(p)) return json(res,403,{error:'Forbidden'});
   const file=path.resolve(ROOT,'.'+p);
   const relative=path.relative(ROOT,file);
   if(relative==='..'||relative.startsWith('..'+path.sep)||path.isAbsolute(relative)) return json(res,403,{error:'Forbidden'});
@@ -5141,7 +5232,7 @@ const server=http.createServer(async (req,res)=>{
 });
 server.listen(PORT,'0.0.0.0',()=>{
   console.log(`${APP_NAME} v${APP_VERSION} build ${BUILD_ID} running on port ${PORT}`);
-  if(!process.env.ADMIN_PASSWORD&&!String(process.env.ADMIN_PASSWORD_HASH||'').startsWith('scrypt$')&&!String(readJSON('settings.json',{}).adminPasswordHash||'').startsWith('scrypt$')) console.warn('SECURITY WARNING: ADMIN_PASSWORD/ADMIN_PASSWORD_HASH are not configured in Railway; a legacy application-code fallback may be active. Configure a secret in Railway Variables before production.');
+  if(!process.env.ADMIN_PASSWORD&&!String(process.env.ADMIN_PASSWORD_HASH||'').startsWith('scrypt$')&&!String(readJSON('settings.json',{}).adminPasswordHash||'').startsWith('scrypt$')) console.warn('SECURITY WARNING: ADMIN_PASSWORD/ADMIN_PASSWORD_HASH are not configured in Railway; environment-based admin login is disabled until a secret is configured.');
   if(!process.env.SESSION_SECRET){if(SESSION_SECRET_SOURCE==='firebase-service-credential')console.warn('SECURITY NOTICE: SESSION_SECRET is not set; using a stable, purpose-separated key derived from the server-only Firebase service credential. Set SESSION_SECRET explicitly for independent key rotation.');else console.warn('SECURITY WARNING: configure a long random SESSION_SECRET for stable, multi-instance signed sessions.');}
   if(!process.env.SADA_ENCRYPTION_KEY && !telegramEncryptionReady()) console.warn('SECURITY WARNING: could not create a stable encryption key; set a strong fixed SESSION_SECRET or attach persistent Railway storage.');
   // Bind HTTP before any remote Firebase hydration so saved sessions respond immediately.
