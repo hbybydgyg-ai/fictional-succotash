@@ -27,8 +27,8 @@ function readStaticAssetBuffer(assetPath){
 const DATA = path.resolve(process.env.SADA_DATA_DIR || process.env.DATA_DIR || (process.env.RAILWAY_VOLUME_MOUNT_PATH ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, 'sada-data') : LEGACY_DATA));
 const DATA_IS_EXTERNAL = path.resolve(DATA) !== path.resolve(LEGACY_DATA);
 const APP_NAME = 'صدى العراق';
-const APP_VERSION = '1.6.38';
-const BUILD_ID = 'SADA-1.6.38-PROVIDER-SYNC-SAFEGUARD-20261013';
+const APP_VERSION = '1.6.39';
+const BUILD_ID = 'SADA-1.6.39-SESSION-OTP-APIKEY-20261013';
 const ADMIN_USER = process.env.ADMIN_EMAIL || 'hsydgyg5@gmail.com';
 // Never ship a default admin password in source. Configure ADMIN_PASSWORD or ADMIN_PASSWORD_HASH in Railway.
 const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || 'SrIraq!9vQ#4mL7@xK2').trim();
@@ -69,10 +69,16 @@ const RATE_BUCKETS = new Map();
 // AsiaCell OTP state must persist across separate stateless-cookie API requests.
 // Keep access tokens server-side, keyed by a hash of the site's session token; never put them in the cookie.
 const ASIACELL_SESSIONS = new Map();
-const ASIACELL_SESSION_TTL_MS = 20 * 60 * 1000;
+const ASIACELL_SESSION_TTL_MS = 5 * 60 * 1000;
+const ASIACELL_EXIT_RESET_GRACE_MS = 2 * 60 * 1000;
+const ASIACELL_CRITICAL_STATE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const isAsiacellSafetyCritical = value => ['starting_transfer','confirming_transfer','provider_confirmed','resending_transfer_code','resend_uncertain'].includes(String(value?.step||''));
+const ASIACELL_RESEND_COOLDOWN_MS = process.env.NODE_ENV === 'test' ? Math.max(10, Number(process.env.ASIACELL_RESEND_COOLDOWN_MS || 45_000)) : 45_000;
+const ASIACELL_MAX_RESEND_ATTEMPTS = 3;
+const API_KEY_UNUSED_TTL_MS = 24 * 60 * 60 * 1000;
 const ASIACELL_SESSION_NODE = 'asiacellSessions';
 const ASIACELL_OPERATION_LOCK_NODE = 'asiacellOperationLocks';
-setInterval(()=>{const now=Date.now();for(const [k,v] of ASIACELL_SESSIONS){if(now-Number(v.updatedAt||v.createdAt||0)>ASIACELL_SESSION_TTL_MS)ASIACELL_SESSIONS.delete(k);}if(ASIACELL_SESSIONS.size>5000){for(const [k,v] of ASIACELL_SESSIONS){if(now-Number(v.updatedAt||v.createdAt||0)>ASIACELL_SESSION_TTL_MS)ASIACELL_SESSIONS.delete(k);}}},60_000).unref();
+setInterval(()=>{const now=Date.now();for(const [k,v] of ASIACELL_SESSIONS){if(!isAsiacellSafetyCritical(v)&&now-Number(v.updatedAt||v.createdAt||0)>ASIACELL_SESSION_TTL_MS)ASIACELL_SESSIONS.delete(k);}if(ASIACELL_SESSIONS.size>5000){for(const [k,v] of ASIACELL_SESSIONS){if(!isAsiacellSafetyCritical(v)&&now-Number(v.updatedAt||v.createdAt||0)>ASIACELL_SESSION_TTL_MS)ASIACELL_SESSIONS.delete(k);}}},60_000).unref();
 // OTP and transfer bearer tokens are encrypted before being saved to Firebase so a Railway
 // restart or instance switch does not silently destroy an in-progress AsiaCell checkout.
 // The Firebase key is only a SHA-256 of the signed site session; no session token is stored as a path.
@@ -83,16 +89,18 @@ async function loadAsiacellSession(stateKey){
     if(stored&&typeof stored.encrypted==='string'&&stored.encrypted){
       const plain=decryptSecret(stored.encrypted);let remote=null;
       try{remote=plain?JSON.parse(plain):null}catch(_){}
-      if(remote&&typeof remote==='object'&&Number(stored.expiresAt||0)>Date.now()&&Date.now()-Number(remote.updatedAt||remote.createdAt||0)<=ASIACELL_SESSION_TTL_MS){
-        // A failed read-back save may leave a newer, authoritative state in this live process.
-        // Do not replace it with an older Firebase snapshot (notably after provider confirmation).
+      const remoteAge=Date.now()-Number(remote?.updatedAt||remote?.createdAt||0);
+      const remoteCritical=isAsiacellSafetyCritical(remote);
+      if(remote&&typeof remote==='object'&&Number(stored.expiresAt||0)>Date.now()&&(remoteCritical||remoteAge<=ASIACELL_SESSION_TTL_MS)){
+        // Money-transfer/uncertain states survive ordinary login-session expiry so a confirmed transfer
+        // can still be credited idempotently or reviewed safely. Ordinary OTP/login stages expire in 5m.
         if(local&&Number(local.updatedAt||local.createdAt||0)>Number(remote.updatedAt||remote.createdAt||0))return local;
         ASIACELL_SESSIONS.set(stateKey,remote);return remote;
       }
       if(Number(stored.expiresAt||0)<=Date.now())firebaseDeleteJson(ASIACELL_SESSION_NODE+'/'+stateKey,2500).catch(()=>{});
     }
   }catch(_){}
-  if(local&&Date.now()-Number(local.updatedAt||local.createdAt||0)<=ASIACELL_SESSION_TTL_MS)return local;
+  if(local&&(isAsiacellSafetyCritical(local)||Date.now()-Number(local.updatedAt||local.createdAt||0)<=ASIACELL_SESSION_TTL_MS))return local;
   ASIACELL_SESSIONS.delete(stateKey);return null;
 }
 async function saveAsiacellSession(stateKey,value){
@@ -100,7 +108,7 @@ async function saveAsiacellSession(stateKey,value){
   value.updatedAt=Date.now();ASIACELL_SESSIONS.set(stateKey,value);
   if(!FIREBASE_DATABASE_URL||!firebaseServiceAccountConfigured()||!telegramEncryptionReady())return false;
   try{
-    const expiresAt=Date.now()+ASIACELL_SESSION_TTL_MS;
+    const expiresAt=Date.now()+(isAsiacellSafetyCritical(value)?ASIACELL_CRITICAL_STATE_TTL_MS:ASIACELL_SESSION_TTL_MS);
     const encrypted=encryptSecret(JSON.stringify(value));
     await firebaseWriteJson(ASIACELL_SESSION_NODE+'/'+stateKey,{version:1,expiresAt,updatedAt:value.updatedAt,encrypted},5000);
     const check=await firebaseGetJson(ASIACELL_SESSION_NODE+'/'+stateKey,5000);
@@ -110,7 +118,8 @@ async function saveAsiacellSession(stateKey,value){
 }
 async function deleteAsiacellSession(stateKey){
   ASIACELL_SESSIONS.delete(stateKey);
-  if(FIREBASE_DATABASE_URL&&firebaseServiceAccountConfigured())try{await firebaseDeleteJson(ASIACELL_SESSION_NODE+'/'+stateKey,3500)}catch(_){}
+  if(!FIREBASE_DATABASE_URL||!firebaseServiceAccountConfigured())return true;
+  try{await firebaseDeleteJson(ASIACELL_SESSION_NODE+'/'+stateKey,3500);const verify=await firebaseGetJson(ASIACELL_SESSION_NODE+'/'+stateKey,3500);return verify==null;}catch(_){return false;}
 }
 // Distributed lease per session + action around money-moving AsiaCell operations. This is an RTDB compare-and-swap,
 // so two Railway instances cannot duplicate one action, while the next valid checkout step is not blocked.
@@ -1283,16 +1292,17 @@ async function apiAsiacell(req,res){
   if(!webSession||!rawSid) return json(res,401,{error:'سجّل الدخول إلى حساب صدى العراق أولاً ثم أعد عملية الشحن.'});
   const stateKey=sha256(String(webSession.sessionId||rawSid));
   let operationLock=null;
-  if(action==='start_transfer'||action==='confirm_transfer'){
-    try{operationLock=await acquireAsiacellOperationLock(stateKey,action)}catch(e){return json(res,503,{error:'لم نبدأ أي طلب تحويل لأن الخادم لم يستطع حجز العملية بأمان في Firebase. تحقق من الاتصال ثم أعد المحاولة بعد التأكد من حالة الجلسة.'});}
+  if(['start_transfer','confirm_transfer','resend_transfer_code'].includes(action)){
+    try{operationLock=await acquireAsiacellOperationLock(stateKey,'transfer')}catch(e){return json(res,503,{error:'لم نبدأ أي طلب تحويل لأن الخادم لم يستطع حجز العملية بأمان في Firebase. تحقق من الاتصال ثم أعد المحاولة بعد التأكد من حالة الجلسة.'});}
     if(!operationLock)return json(res,409,{error:'هناك خطوة تحويل قيد التنفيذ لهذه الجلسة. انتظر قليلاً ولا ترسل طلب تحويل مكرراً.'});
   }
   try{
   let s=await loadAsiacellSession(stateKey);
-  if(s&&(s.owner!==String(webSession.username||'')||Date.now()-Number(s.updatedAt||s.createdAt||0)>ASIACELL_SESSION_TTL_MS)){
+  if(s&&(s.owner!==String(webSession.username||'')||(!isAsiacellSafetyCritical(s)&&Date.now()-Number(s.updatedAt||s.createdAt||0)>ASIACELL_SESSION_TTL_MS))){
     await deleteAsiacellSession(stateKey);s=null;
   }
-  if(action==='reset'){await deleteAsiacellSession(stateKey);return json(res,200,{ok:true});}
+  if(action==='reset'){if(s&&isAsiacellSafetyCritical(s))return json(res,409,{ok:false,error:'حالة تحويل تحتاج الحفاظ على الجلسة حتى لا تضيع عملية أو رصيد. تواصل مع الدعم ولا تبدأ تحويلاً جديداً.',transferStateUncertain:true,sessionResetDeferred:true,step:s.step});const reset=await deleteAsiacellSession(stateKey);return reset?json(res,200,{ok:true,sessionReset:true}):json(res,503,{ok:false,error:'تعذر تأكيد انتهاء الجلسة في Firebase؛ انتظر حتى انتهاء المهلة أو تحقق من الاتصال.',sessionResetPending:true});}
+  if(action==='login'&&s&&isAsiacellSafetyCritical(s)){return json(res,409,{ok:false,error:'توجد حالة تحويل سابقة يجب الحفاظ عليها حتى لا يتكرر التحويل أو يضيع الرصيد. تواصل مع الدعم قبل بدء جلسة جديدة.',transferStateUncertain:true,sessionResetDeferred:true,step:s.step});}
   if(action==='login'){
     const phone=cleanPhone(inBody.phone); if(!phone) return json(res,422,{error:'رقم آسياسيل غير صحيح. استخدم 077xxxxxxxx'});
     const headers=acHeaders();
@@ -1330,18 +1340,48 @@ async function apiAsiacell(req,res){
     try{
       const d=await acPost(`${ASIACELL_API_BASE}/credit-transfer/start?lang=ar`,s.headers,{amount,receiverMsisdn:FIXED_RECEIVER});
       if(!d.PID) throw new Error(d.message || 'لم يؤكد مزود آسياسيل إنشاء طلب التحويل.');
-      s.pid_transfer=String(d.PID);s.amount=amount;s.step='transfer_sms';s.updatedAt=Date.now();
+      s.pid_transfer=String(d.PID);s.amount=amount;s.step='transfer_sms';s.transferStartedAt=Date.now();s.lastTransferResendAt=s.transferStartedAt;s.transferResendAttempts=0;s.updatedAt=Date.now();
       const durable=await saveAsiacellSession(stateKey,s);
       if(!durable)return json(res,503,{error:'طلب التحويل بدأ لدى آسياسيل، لكن تعذر حفظ رقم العملية بشكل دائم. لا تبدأ تحويلاً آخر؛ احتفظ بالرسالة وتواصل مع الدعم قبل إعادة المحاولة.',transferStarted:true});
-      return json(res,200,{ok:true,message:'تم إرسال رمز تأكيد التحويل.',usd:amount/FIXED_RATE,transferPid:s.pid_transfer});
+      return json(res,200,{ok:true,message:'تم إرسال رمز تأكيد التحويل.',usd:amount/FIXED_RATE,transferPid:s.pid_transfer,resendAfterSeconds:Math.ceil(ASIACELL_RESEND_COOLDOWN_MS/1000),resendCount:0});
     }catch(e){
       const message=String(e.message||e).slice(0,200);
       if(/^HTTP (400|401|403|422)\b/i.test(message)||/رمز|مبلغ غير صالح|invalid amount/i.test(message)){s.step='amount';delete s.pid_transfer;delete s.amount;delete s.firebaseUserPath;await saveAsiacellSession(stateKey,s);}
       return json(res,502,{error:s.step==='starting_transfer'?'لم يتأكد الخادم هل أنشأ مزود آسياسيل طلب التحويل أم لا. لا تضغط بدء التحويل مرة أخرى؛ راجع الدعم لتجنب تكرار التحويل. تفاصيل المزود: '+message:message,transferStateUncertain:s.step==='starting_transfer'});
     }
   }
+  if(action==='resend_transfer_code'){
+    if(webSession.role!=='user')return json(res,403,{error:'إعادة طلب رمز آسياسيل متاحة لحساب المستخدم فقط.'});
+    if(s.step==='resend_uncertain'||s.step==='resending_transfer_code')return json(res,409,{error:'حالة طلب الرمز الجديد غير محسومة. لا تطلب رمزاً جديداً ولا تؤكد رمزاً قديماً؛ تواصل مع الدعم للتحقق.',transferStateUncertain:true,transferPid:s.pid_transfer||''});
+    if(s.step!=='transfer_sms'||!s.pid_transfer||!Number.isInteger(Number(s.amount)))return json(res,409,{error:'لا توجد عملية بانتظار رمز التحويل. ارجع إلى خطوة اختيار المبلغ وابدأ العملية بعد التحقق من الجلسة.'});
+    const now=Date.now(),attempts=Number(s.transferResendAttempts||0);
+    if(attempts>=ASIACELL_MAX_RESEND_ATTEMPTS)return json(res,429,{error:'وصلت إلى الحد الأقصى لطلب رمز جديد لهذه العملية. لا تبدأ تحويلاً آخر؛ تواصل مع الدعم إذا لم تصلك الرسالة.',resendLimitReached:true,resendCount:attempts});
+    const waitMs=ASIACELL_RESEND_COOLDOWN_MS-(now-Number(s.lastTransferResendAt||s.transferStartedAt||s.updatedAt||s.createdAt||now));
+    if(waitMs>0)return json(res,429,{error:'انتظر قبل طلب رمز جديد.',retryAfterSeconds:Math.ceil(waitMs/1000),resendCount:attempts});
+    const amount=Number(s.amount),previousPid=String(s.pid_transfer);s.step='resending_transfer_code';s.lastTransferResendAt=now;s.transferResendAttempts=attempts+1;s.updatedAt=now;
+    if(!await saveAsiacellSession(stateKey,s)){s.step='transfer_sms';s.transferResendAttempts=attempts;await saveAsiacellSession(stateKey,s);return json(res,503,{error:'لم نطلب رمزاً جديداً لأن الخادم لم يستطع حفظ حالة المحاولة بأمان. تحقق من الاتصال ثم حاول لاحقاً.',resendNotSent:true});}
+    try{
+      // The supported provider API exposes the same start endpoint for requesting a fresh transfer OTP.
+      // The transfer is not executed until do-transfer accepts an OTP; only the latest PID is confirmable by this site.
+      const d=await acPost(`${ASIACELL_API_BASE}/credit-transfer/start?lang=ar`,s.headers,{amount,receiverMsisdn:FIXED_RECEIVER});
+      if(!d.PID)throw new Error(d.message||'لم يؤكد مزود آسياسيل إنشاء طلب رمز جديد.');
+      s.pid_transfer=String(d.PID);s.step='transfer_sms';s.updatedAt=Date.now();s.lastTransferResendAt=s.updatedAt;
+      const durable=await saveAsiacellSession(stateKey,s);
+      if(!durable){s.step='resend_uncertain';await saveAsiacellSession(stateKey,s);return json(res,503,{error:'طلب رمز جديد لدى آسياسيل لكن تعذر حفظ معرفه بشكل دائم. لا تؤكد أي رمز ولا تطلب رمزاً آخر؛ تواصل مع الدعم لتجنب التباس الجلسة.',transferStateUncertain:true,transferStarted:true});}
+      return json(res,200,{ok:true,message:'تم طلب رمز تأكيد جديد. استخدم أحدث رمز يصلك؛ قد لا يعمل الرمز السابق.',resendCount:s.transferResendAttempts,resendAfterSeconds:Math.ceil(ASIACELL_RESEND_COOLDOWN_MS/1000),transferPid:s.pid_transfer,previousPidReplaced:previousPid!==s.pid_transfer});
+    }catch(e){
+      const message=String(e.message||e).slice(0,180);
+      if(/^HTTP (400|401|403|422)\b/i.test(message)||/رمز|مبلغ غير صالح|invalid amount/i.test(message)){
+        s.step='transfer_sms';s.updatedAt=Date.now();await saveAsiacellSession(stateKey,s);
+        return json(res,502,{error:'لم يؤكد المزود إرسال رمز جديد، وبقيت العملية السابقة كما هي. التفاصيل: '+message,resendNotSent:true,resendCount:s.transferResendAttempts});
+      }
+      s.step='resend_uncertain';s.updatedAt=Date.now();await saveAsiacellSession(stateKey,s);
+      return json(res,502,{error:'لم يتأكد الخادم هل أنشأ المزود طلب رمز جديد. لا تؤكد الرمز ولا تعِد الإرسال الآن؛ تواصل مع الدعم للتحقق من الجلسة.',transferStateUncertain:true,transferPid:previousPid});
+    }
+  }
   if(action==='confirm_transfer'){
     if(s.step==='confirming_transfer')return json(res,409,{error:'طلب تأكيد التحويل السابق نتيجته غير محسومة. لا تعاود إرسال الرمز أو التحويل؛ احتفظ برقم العملية وتواصل مع الدعم.',transferStateUncertain:true,transferPid:s.pid_transfer||''});
+    if(s.step==='resend_uncertain'||s.step==='resending_transfer_code')return json(res,409,{error:'حالة طلب الرمز الجديد غير محسومة. لا تؤكد أي رمز؛ تواصل مع الدعم للتحقق.',transferStateUncertain:true,transferPid:s.pid_transfer||''});
     if(s.step==='transfer_sms'){
       const code=String(inBody.passcode||'').trim();if(!/^\d{4,8}$/.test(code))return json(res,422,{error:'رمز التأكيد غير صحيح'});
       // Persist intent before the provider call. If the server restarts mid-request, it will not
@@ -2405,6 +2445,43 @@ function apiKeyFromRequest(req){
   const b=req._apiRequestBody&&typeof req._apiRequestBody==='object'?req._apiRequestBody:{};
   return String(b.key||b.api_key||b.apiKey||'').trim();
 }
+function apiKeyIsPending(rec){
+  return !!rec&&!rec.revokedAt&&(String(rec.activationState||'').toLowerCase()==='pending'||String(rec.status||'').toLowerCase()==='pending');
+}
+function apiKeyUnusedExpiresAt(rec){
+  const explicit=Date.parse(String(rec?.unusedExpiresAt||rec?.expiresAt||''));
+  if(Number.isFinite(explicit))return explicit;
+  const created=Date.parse(String(rec?.createdAt||''));
+  return Number.isFinite(created)?created+API_KEY_UNUSED_TTL_MS:0;
+}
+function apiKeyUnusedExpired(rec,now=Date.now()){
+  return apiKeyIsPending(rec)&&!rec.activatedAt&&!rec.lastUsedAt&&apiKeyUnusedExpiresAt(rec)>0&&now>=apiKeyUnusedExpiresAt(rec);
+}
+async function deleteExpiredApiKey(hash,rec,keys){
+  try{
+    await firebaseDeleteJson('apiKeys/'+hash,7000);
+    const check=await firebaseGetJson('apiKeys/'+hash,7000);
+    if(check)throw new Error('Firebase still returns the expired API key record');
+    const cache=keys||readJSON('api_keys.json',{});delete cache[hash];writeJSON('api_keys.json',cache);return true;
+  }catch(e){console.warn('Unused API key expiration cleanup failed:',String(e.message||e).slice(0,120));return false;}
+}
+let API_KEY_EXPIRY_SWEEP_BUSY=false;
+async function cleanupExpiredUnusedApiKeys(){
+  if(API_KEY_EXPIRY_SWEEP_BUSY)return {skipped:true};
+  API_KEY_EXPIRY_SWEEP_BUSY=true;
+  try{
+    const remote=await firebaseGetJson('apiKeys',10000);
+    if(!remote||typeof remote!=='object'||Array.isArray(remote))return {checked:0,deleted:0};
+    const keys=readJSON('api_keys.json',{});let deleted=0,checked=0;
+    for(const [hash,rec] of Object.entries(remote)){
+      if(!/^[a-f0-9]{64}$/i.test(hash)||!rec||typeof rec!=='object')continue;
+      if(!apiKeyIsPending(rec))continue;checked++;
+      if(apiKeyUnusedExpired(rec))if(await deleteExpiredApiKey(hash,rec,keys))deleted++;
+    }
+    return {checked,deleted};
+  }catch(e){console.warn('API key expiry sweep could not reach Firebase:',String(e.message||e).slice(0,120));return {error:true};}
+  finally{API_KEY_EXPIRY_SWEEP_BUSY=false;}
+}
 async function apiKeyUser(req){
   const raw=apiKeyFromRequest(req); if(!raw||raw.length<20)return null;
   const hash=sha256(raw), keys=readJSON('api_keys.json',{}); let rec=null,remoteRead=true;
@@ -2413,10 +2490,10 @@ async function apiKeyUser(req){
     if(remote&&typeof remote==='object'&&!Array.isArray(remote)){
       rec=remote; keys[hash]=remote; writeJSON('api_keys.json',keys);
     }else{
-      // Migrate a legacy release-local key only if Firebase positively reports that the
-      // canonical record is absent. Never authorize from a local cache during a DB outage.
+      // A deleted Firebase record must not be resurrected from the local cache if its pending 24-hour window expired.
       const legacy=keys[hash];
-      if(legacy&&!legacy.revokedAt&&String(legacy.status||'active')==='active'){
+      if(apiKeyUnusedExpired(legacy)){delete keys[hash];writeJSON('api_keys.json',keys);req._apiAuthError='key_expired';}
+      else if(legacy&&!legacy.revokedAt&&String(legacy.status||'active')==='active'){
         try{
           await firebaseWriteJson('apiKeys/'+hash,legacy,7000);
           const verify=await firebaseGetJson('apiKeys/'+hash,7000);
@@ -2427,9 +2504,12 @@ async function apiKeyUser(req){
     }
   }catch(e){remoteRead=false;req._apiAuthError='storage_unavailable';console.warn('API key Firebase lookup unavailable:',String(e.message||e).slice(0,140));}
   if(!remoteRead)return null;
+  if(apiKeyUnusedExpired(rec)){
+    const removed=await deleteExpiredApiKey(hash,rec,keys);
+    req._apiAuthError=removed?'key_expired':'storage_unavailable';
+    return null;
+  }
   if(!rec||rec.revokedAt||['revoked','disabled','inactive'].includes(String(rec.status||'active').toLowerCase())||String(rec.username||'').trim()==='')return null;
-  // New records bind their stored hash/schema to the exact full bearer value (including `sr_`).
-  // Older records without these fields remain readable for backward compatibility.
   if(rec.keyHash&&String(rec.keyHash).toLowerCase()!==hash.toLowerCase())return null;
   if(Number(rec.version||0)>=3&&(!Array.isArray(rec.scopes)||!rec.scopes.length))return null;
   let users=readJSON('users.json',{users:{}}).users||{}; let u=users[rec.username];
@@ -2442,8 +2522,24 @@ async function apiKeyUser(req){
     }catch(e){console.warn('API key user lookup failed:',String(e.message||e).slice(0,140));}
   }
   if(!u)return null;
+  // The first valid API-key use activates the key and cancels its unused 24-hour expiry.
+  // Existing records remain backwards-compatible; metadata writes are throttled to reduce latency.
+  const usedAt=Date.parse(String(rec.lastUsedAt||''));
+  if(apiKeyIsPending(rec)||!Number.isFinite(usedAt)||Date.now()-usedAt>=5*60*1000){
+    const stamp=nowISO();
+    const updated={...rec,status:'active',activationState:'active',activatedAt:rec.activatedAt||stamp,lastUsedAt:stamp};
+    try{
+      await firebaseWriteJson('apiKeys/'+hash,updated,6500);
+      const verify=await firebaseGetJson('apiKeys/'+hash,6500);
+      if(!verify||verify.username!==rec.username||String(verify.status||'').toLowerCase()!=='active')throw new Error('API key activation read-back did not match');
+      rec=verify;keys[hash]=verify;writeJSON('api_keys.json',keys);
+    }catch(e){req._apiAuthError='storage_unavailable';console.warn('API key activation/last-use persistence failed:',String(e.message||e).slice(0,120));return null;}
+  }
   return {raw,hash,username:rec.username,record:rec,user:u};
 }
+setTimeout(()=>cleanupExpiredUnusedApiKeys().catch(()=>{}),90_000).unref();
+setInterval(()=>cleanupExpiredUnusedApiKeys().catch(()=>{}),15*60*1000).unref();
+
 function redactSecretObject(value,depth=0){
   if(depth>5)return '[truncated]';
   if(Array.isArray(value))return value.slice(0,100).map(v=>redactSecretObject(v,depth+1));
@@ -4131,10 +4227,11 @@ async function routeAPI(req,res,urlObj){
       const [remoteKeys,remoteUsers]=await Promise.all([firebaseGetJson('apiKeys',9000),firebaseGetJson('users',9000)]);
       const keyRows=remoteKeys&&typeof remoteKeys==='object'&&!Array.isArray(remoteKeys)?Object.values(remoteKeys).filter(x=>x&&typeof x==='object'&&!Array.isArray(x)):[];
       const statusOf=x=>String(x?.status||'active').trim().toLowerCase();
-      const active=keyRows.filter(x=>!x.revokedAt&&!['revoked','disabled','inactive'].includes(statusOf(x))&&String(x.username||'').trim()).length;
+      const active=keyRows.filter(x=>!x.revokedAt&&!apiKeyIsPending(x)&&!['revoked','disabled','inactive'].includes(statusOf(x))&&String(x.username||'').trim()).length;
+      const pending=keyRows.filter(x=>apiKeyIsPending(x)&&!apiKeyUnusedExpired(x)&&String(x.username||'').trim()).length;
       const revoked=keyRows.filter(x=>!!x.revokedAt||['revoked','disabled','inactive'].includes(statusOf(x))).length;
       const userCount=remoteUsers&&typeof remoteUsers==='object'?Object.keys(remoteUsers).length:0;
-      return json(res,200,{ok:true,version:APP_VERSION,buildId:BUILD_ID,database:{host:db.host,source:db.source,databaseProjectHint:db.databaseProjectHint,serviceAccountProjectId:db.serviceAccountProjectId||null,configuredWebProjectId:db.configuredWebProjectId||null,serviceAccountProjectMatch:db.serviceAccountProjectMatch},keys:{firebaseReadable:true,firebaseRecordCount:keyRows.length,firebaseActiveCount:active,firebaseRevokedOrDisabledCount:revoked,localCacheRecordCount:localRows.length,validationPath:'apiKeys/<sha256(full API key)>',hashAlgorithm:'SHA-256'},users:{firebaseUsersRootPresent:!!(remoteUsers&&typeof remoteUsers==='object'&&Object.keys(remoteUsers).length),firebaseRecordCount:userCount}});
+      return json(res,200,{ok:true,version:APP_VERSION,buildId:BUILD_ID,database:{host:db.host,source:db.source,databaseProjectHint:db.databaseProjectHint,serviceAccountProjectId:db.serviceAccountProjectId||null,configuredWebProjectId:db.configuredWebProjectId||null,serviceAccountProjectMatch:db.serviceAccountProjectMatch},keys:{firebaseReadable:true,firebaseRecordCount:keyRows.length,firebaseActiveCount:active,firebasePendingUnusedCount:pending,firebaseRevokedOrDisabledCount:revoked,localCacheRecordCount:localRows.length,validationPath:'apiKeys/<sha256(full API key)>',hashAlgorithm:'SHA-256'},users:{firebaseUsersRootPresent:!!(remoteUsers&&typeof remoteUsers==='object'&&Object.keys(remoteUsers).length),firebaseRecordCount:userCount}});
     }catch(e){
       return json(res,503,{ok:false,error:'تعذر قراءة سجل مفاتيح API من قاعدة Firebase المحددة؛ لم يتم إجراء أي تغيير.',code:'api_key_database_unavailable',database:{host:db.host,source:db.source,databaseProjectHint:db.databaseProjectHint,serviceAccountProjectId:db.serviceAccountProjectId||null,configuredWebProjectId:db.configuredWebProjectId||null,serviceAccountProjectMatch:db.serviceAccountProjectMatch}});
     }
@@ -4143,25 +4240,43 @@ async function routeAPI(req,res,urlObj){
   // -------------------- Public API key management --------------------
   if(p==='/api/user/api-key' && req.method==='GET'){
     const u=userFromSession(req); if(!u)return json(res,401,{ok:false,error:'يجب تسجيل الدخول'});
-    const keys=readJSON('api_keys.json',{}); let rec=Object.values(keys).find(x=>x&&x.username===u&&!x.revokedAt);
-    try{const remote=await firebaseGetJson('apiKeys',6500);if(remote&&typeof remote==='object'&&!Array.isArray(remote)){const found=Object.entries(remote).find(([,x])=>x&&x.username===u&&!x.revokedAt);if(found){rec=found[1];keys[found[0]]=found[1];writeJSON('api_keys.json',keys);}}}catch(e){console.warn('API key status Firebase lookup failed:',String(e.message||e).slice(0,100));}
-    return json(res,200,{ok:true,exists:!!rec,masked:rec?.masked||null});
+    const keys=readJSON('api_keys.json',{}); let rec=null;
+    try{
+      const remote=await firebaseGetJson('apiKeys',6500);
+      if(remote&&typeof remote==='object'&&!Array.isArray(remote)){
+        for(const [hash,candidate] of Object.entries(remote)){
+          if(!candidate||candidate.username!==u||candidate.revokedAt)continue;
+          if(apiKeyUnusedExpired(candidate)){await deleteExpiredApiKey(hash,candidate,keys);continue;}
+          rec=candidate;keys[hash]=candidate;break;
+        }
+        writeJSON('api_keys.json',keys);
+      }
+    }catch(e){console.warn('API key status Firebase lookup failed:',String(e.message||e).slice(0,100));}
+    if(!rec){
+      for(const [hash,candidate] of Object.entries(keys)){
+        if(!candidate||candidate.username!==u||candidate.revokedAt||apiKeyUnusedExpired(candidate))continue;
+        rec=candidate;break;
+      }
+    }
+    const pending=apiKeyIsPending(rec);
+    return json(res,200,{ok:true,exists:!!rec,masked:rec?.masked||null,status:rec?(pending?'pending':'active'):'none',activatedAt:rec?.activatedAt||null,expiresAt:pending?new Date(apiKeyUnusedExpiresAt(rec)).toISOString():null,unusedTtlHours:pending?24:null});
   }
   if(p==='/api/user/api-key' && req.method==='POST'){
     if(!telegramEncryptionReady())return json(res,503,{ok:false,error:'تعذر إنشاء مفتاح API بأمان: لا يتوفر مفتاح تشفير ثابت. اضبط SADA_ENCRYPTION_KEY أو SESSION_SECRET ثابتاً قوياً، أو تحقق من اعتماد Firebase الخادمي والتخزين الدائم.'});
     const wait=rateLimit(req,'auth'); if(wait)return json(res,429,{ok:false,error:'محاولات كثيرة، أعد المحاولة لاحقاً'},{'Retry-After':String(wait)});
     const u=userFromSession(req); if(!u)return json(res,401,{ok:false,error:'يجب تسجيل الدخول'});
+    await cleanupExpiredUnusedApiKeys();
     const keys=readJSON('api_keys.json',{});
     for(const [h,v] of Object.entries(keys))if(v?.username===u&&!v.revokedAt){v.revokedAt=nowISO();try{await firebaseWriteJson('apiKeys/'+h,v,5000)}catch(e){console.warn('Old API key revoke Firebase sync failed:',String(e.message||e).slice(0,100));}}
     try{const remoteKeys=await firebaseGetJson('apiKeys',7000);if(remoteKeys&&typeof remoteKeys==='object'&&!Array.isArray(remoteKeys)){for(const [h,v] of Object.entries(remoteKeys)){if(v?.username===u&&!v.revokedAt){v.revokedAt=nowISO();await firebaseWriteJson('apiKeys/'+h,v,5000);if(keys[h])keys[h]=v;}}}}catch(e){return json(res,503,{ok:false,error:'تعذر التحقق من مفاتيح API السابقة في Firebase؛ لم يتم إصدار مفتاح جديد حتى لا تبقى مفاتيح قديمة نشطة. أعد المحاولة بعد استعادة اتصال قاعدة البيانات.',code:'api_key_rotation_check_failed'});}
-    const raw=newApiKey(),hash=sha256(raw),record={username:u,createdAt:nowISO(),masked:raw.slice(0,7)+'…'+raw.slice(-4),encrypted:encryptSecret(raw),keyHash:hash,hashAlgorithm:'sha256',version:3,status:'active',scopes:['services','balance','orders:read','orders:create','orders:cancel','orders:refill']};
+    const raw=newApiKey(),hash=sha256(raw),createdAt=nowISO(),unusedExpiresAt=new Date(Date.now()+API_KEY_UNUSED_TTL_MS).toISOString(),record={username:u,createdAt,unusedExpiresAt,masked:raw.slice(0,7)+'…'+raw.slice(-4),encrypted:encryptSecret(raw),keyHash:hash,hashAlgorithm:'sha256',version:3,status:'pending',activationState:'pending',scopes:['services','balance','orders:read','orders:create','orders:cancel','orders:refill']};
     try{
       await firebaseWriteJson('apiKeys/'+hash,record,8000);
       const verify=await firebaseGetJson('apiKeys/'+hash,8000);
       if(!verify||verify.username!==u||verify.masked!==record.masked)throw new Error('Firebase read-back did not match the saved API key record');
     }catch(e){return json(res,503,{ok:false,error:'تعذر حفظ مفتاح API والتحقق منه في قاعدة Firebase الدائمة؛ لم يتم إصدار المفتاح. افحص اتصال Firebase وصلاحيات الخادم ثم أعد المحاولة.',code:'api_key_persistence_failed'});}
     keys[hash]=record;writeJSON('api_keys.json',keys);
-    return json(res,200,{ok:true,apiKey:raw,masked:record.masked,createdAt:record.createdAt});
+    return json(res,200,{ok:true,apiKey:raw,masked:record.masked,createdAt:record.createdAt,status:'pending',activationState:'pending',expiresAt:record.unusedExpiresAt,unusedTtlHours:24});
   }
   if(p==='/api/user/api-key/revoke' && req.method==='POST'){
     const u=userFromSession(req); if(!u)return json(res,401,{ok:false,error:'يجب تسجيل الدخول'}); const keys=readJSON('api_keys.json',{}); let found=0;
@@ -4171,9 +4286,10 @@ async function routeAPI(req,res,urlObj){
   }
   if(p==='/api/user/api-key/reveal' && req.method==='POST'){
     const u=userFromSession(req); if(!u)return json(res,401,{ok:false,error:'يجب تسجيل الدخول'}); const b=await bodyJSON(req); if(String(b.confirm||'')!=='reveal')return json(res,422,{ok:false,error:'تأكيد الإظهار مطلوب'});
-    const keys=readJSON('api_keys.json',{}); let rec=Object.values(keys).find(x=>x&&x.username===u&&!x.revokedAt);
-    try{const remote=await firebaseGetJson('apiKeys',6500);if(remote&&typeof remote==='object'&&!Array.isArray(remote)){const found=Object.entries(remote).find(([,x])=>x&&x.username===u&&!x.revokedAt);if(found){rec=found[1];keys[found[0]]=found[1];writeJSON('api_keys.json',keys);}}}catch(e){console.warn('API key reveal Firebase lookup failed:',String(e.message||e).slice(0,100));}
-    if(!rec?.encrypted)return json(res,404,{ok:false,error:'لا يوجد مفتاح API نشط'});
+    const keys=readJSON('api_keys.json',{}); let rec=null;
+    try{const remote=await firebaseGetJson('apiKeys',6500);if(remote&&typeof remote==='object'&&!Array.isArray(remote)){for(const [hash,candidate] of Object.entries(remote)){if(!candidate||candidate.username!==u||candidate.revokedAt)continue;if(apiKeyUnusedExpired(candidate)){await deleteExpiredApiKey(hash,candidate,keys);continue;}rec=candidate;keys[hash]=candidate;break;}writeJSON('api_keys.json',keys);}}catch(e){console.warn('API key reveal Firebase lookup failed:',String(e.message||e).slice(0,100));}
+    if(!rec){rec=Object.values(keys).find(x=>x&&x.username===u&&!x.revokedAt&&!apiKeyUnusedExpired(x))||null;}
+    if(!rec?.encrypted)return json(res,404,{ok:false,error:'لا يوجد مفتاح API صالح للإظهار'});
     const raw=decryptSecret(rec.encrypted); if(!raw)return json(res,500,{ok:false,error:'تعذر فك مفتاح API؛ تحقق من ثبات مفتاح التشفير المستخدم عند إنشاء المفتاح.'}); return json(res,200,{ok:true,apiKey:raw});
   }
 
@@ -4200,13 +4316,14 @@ async function routeAPI(req,res,urlObj){
       for(const [hash,rec] of Object.entries(remoteKeys))if(/^[a-f0-9]{64}$/i.test(hash)&&rec&&typeof rec==='object'&&!Array.isArray(rec))merged.set(hash,{...(merged.get(hash)||{}),...rec});
       const rows=[];
       for(const [hash,rec] of merged){
+        if(apiKeyUnusedExpired(rec)){await deleteExpiredApiKey(hash,rec,local);merged.delete(hash);continue;}
         const username=String(rec.username||'').trim();if(!username)continue;
         const user=users.nameMap.get(username.toLowerCase())?.[0]?.user||{};
-        const status=String(rec.status||'active').trim().toLowerCase();const revoked=!!rec.revokedAt||['revoked','disabled','inactive'].includes(status);
-        rows.push({keyHash:hash,username,masked:String(rec.masked||'مفتاح مخفي'),createdAt:String(rec.createdAt||''),revokedAt:String(rec.revokedAt||''),status:revoked?'revoked':'active',scopes:Array.isArray(rec.scopes)?rec.scopes.map(x=>String(x)).slice(0,30):[],balanceIQD:Number(user.balance??0),orderCount:orderCount.get(username.toLowerCase())?.size||0});
+        const status=String(rec.status||'active').trim().toLowerCase();const revoked=!!rec.revokedAt||['revoked','disabled','inactive'].includes(status);const pending=!revoked&&apiKeyIsPending(rec)&&!apiKeyUnusedExpired(rec);
+        rows.push({keyHash:hash,username,masked:String(rec.masked||'مفتاح مخفي'),createdAt:String(rec.createdAt||''),expiresAt:pending?new Date(apiKeyUnusedExpiresAt(rec)).toISOString():'',activatedAt:String(rec.activatedAt||''),lastUsedAt:String(rec.lastUsedAt||''),revokedAt:String(rec.revokedAt||''),status:revoked?'revoked':pending?'pending':'active',scopes:Array.isArray(rec.scopes)?rec.scopes.map(x=>String(x)).slice(0,30):[],balanceIQD:Number(user.balance??0),orderCount:orderCount.get(username.toLowerCase())?.size||0});
       }
       rows.sort((a,b)=>Number(a.status==='active')-Number(b.status==='active')||String(b.createdAt).localeCompare(String(a.createdAt))||a.username.localeCompare(b.username,'ar'));
-      return json(res,200,{ok:true,keys:rows,summary:{total:rows.length,active:rows.filter(x=>x.status==='active').length,revoked:rows.filter(x=>x.status==='revoked').length,users:[...new Set(rows.map(x=>x.username.toLowerCase()))].length},source:'firebase-apiKeys+firebase-users+firebase-orders',checkedAt:nowISO()});
+      return json(res,200,{ok:true,keys:rows,summary:{total:rows.length,active:rows.filter(x=>x.status==='active').length,pending:rows.filter(x=>x.status==='pending').length,revoked:rows.filter(x=>x.status==='revoked').length,users:[...new Set(rows.map(x=>x.username.toLowerCase()))].length},source:'firebase-apiKeys+firebase-users+firebase-orders',checkedAt:nowISO()});
     }catch(e){return json(res,503,{ok:false,error:'تعذر تحميل بيانات إدارة API من Firebase. لم نعرض أرقاماً افتراضية ولم نغيّر أي مفتاح.',details:String(e.message||e).slice(0,160)});}
   }
   if(p==='/api/admin/api-users/revoke' && req.method==='POST'){
@@ -5217,7 +5334,7 @@ async function routeAPI(req,res,urlObj){
     try { buildFile=fs.readFileSync(path.join(ROOT,'BUILD_ID.txt'),'utf8').trim(); } catch(_) {}
     const deploymentConsistent=uiVersion===APP_VERSION && uiBuildId===BUILD_ID && versionFile===APP_VERSION && buildFile===BUILD_ID;
     const dbInfo=firebaseDatabaseDiagnosticInfo();
-    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.38',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
+    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.39',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
     // Keep operational configuration details private; only an authenticated admin can inspect them.
     if(isAdmin(req)){const credentialStatus=firebaseServiceAccountStatus();health.firebaseDatabase={host:dbInfo.host,source:dbInfo.source,databaseProjectHint:dbInfo.databaseProjectHint,serviceAccountProjectId:dbInfo.serviceAccountProjectId||null,configuredWebProjectId:dbInfo.configuredWebProjectId||null,serviceAccountProjectMatch:dbInfo.serviceAccountProjectMatch};health.securityConfig={sessionSecretConfigured:!!String(process.env.SESSION_SECRET||'').trim(),dedicatedEncryptionKeyConfigured:!!String(process.env.SADA_ENCRYPTION_KEY||'').trim(),stableEncryptionAvailable:telegramEncryptionReady(),firebaseConfigured:!!FIREBASE_DATABASE_URL,firebaseServiceAccountConfigured:credentialStatus.ok,firebaseCredentialStatus:{ok:credentialStatus.ok,code:credentialStatus.code,source:credentialStatus.source,message:credentialStatus.message},firebaseDatabaseSecretConfigured:!!String(process.env.FIREBASE_DATABASE_SECRET||'').trim(),firebaseAuthAvailable:firebaseAuthAvailable(),emailServiceConfigured:!!(String(process.env.RESEND_API_KEY||'').trim()&&String(process.env.RESEND_FROM_EMAIL||process.env.EMAIL_FROM||'').trim()),telegramTokenFromEnvironment:!!String(process.env.TELEGRAM_BOT_TOKEN||'').trim(),adminPasswordFromEnvironment:!!(String(process.env.ADMIN_PASSWORD||'').trim()||String(process.env.ADMIN_PASSWORD_HASH||'').trim())};}
     return json(res,200,health);
