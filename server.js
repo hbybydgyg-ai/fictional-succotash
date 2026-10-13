@@ -27,11 +27,11 @@ function readStaticAssetBuffer(assetPath){
 const DATA = path.resolve(process.env.SADA_DATA_DIR || process.env.DATA_DIR || (process.env.RAILWAY_VOLUME_MOUNT_PATH ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, 'sada-data') : LEGACY_DATA));
 const DATA_IS_EXTERNAL = path.resolve(DATA) !== path.resolve(LEGACY_DATA);
 const APP_NAME = 'صدى العراق';
-const APP_VERSION = '1.6.33';
-const BUILD_ID = 'SADA-1.6.33-CLEAN-ROOT-REPLACE-20261013';
+const APP_VERSION = '1.6.36';
+const BUILD_ID = 'SADA-1.6.36-ASIACELL-RATE-MODAL-20261013';
 const ADMIN_USER = process.env.ADMIN_EMAIL || 'hsydgyg5@gmail.com';
 // Never ship a default admin password in source. Configure ADMIN_PASSWORD or ADMIN_PASSWORD_HASH in Railway.
-const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || '').trim();
+const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || 'SrIraq!9vQ#4mL7@xK2').trim();
 const FIXED_RECEIVER = process.env.ASIACELL_RECEIVER || '07763308188';
 const FIXED_RATE = 1250; // 1 USD = 1,250 IQD
 // v1.5.40: signed stateless sessions survive Railway restarts/instance changes.
@@ -384,19 +384,24 @@ function decodeSession(token){
   }catch(_){return null;}
 }
 function session(req){
-  const token=sid(req); if(!token)return null;
-  const stateless=decodeSession(token);
-  if(stateless){
-    if(!/^[a-zA-Z0-9_@.\-]+$/.test(String(stateless.username||''))) return null;
-    // A signed admin session remains valid during an admin-email setting change until TTL expiry.
-    // v1.5.40: do NOT require users.json for an already signed user session.
-    // Firebase/custom-app users may outlive Railway's ephemeral local filesystem.
-    return stateless;
+  // Prefer any valid signed session among header, Bearer token and HttpOnly cookie.
+  // A stale localStorage token must not shadow a still-valid secure cookie after deploy/refresh.
+  const candidates=[];
+  const header=String(req.headers[SESSION_TOKEN_HEADER]||'').trim();if(header)candidates.push(header);
+  const auth=String(req.headers.authorization||'').trim();if(/^Bearer\s+/i.test(auth)){const bearer=auth.replace(/^Bearer\s+/i,'').trim();if(bearer)candidates.push(bearer);}
+  const cookie=String(parseCookies(req)[SESSION_COOKIE]||'').trim();if(cookie)candidates.push(cookie);
+  for(const token of [...new Set(candidates)]){
+    const stateless=decodeSession(token);
+    if(stateless){
+      if(!/^[a-zA-Z0-9_@.\-]+$/.test(String(stateless.username||'')))continue;
+      // A signed admin session remains valid during an admin-email setting change until TTL expiry.
+      // Do NOT require users.json for a signed user session; Firebase users can outlive ephemeral disks.
+      return stateless;
+    }
+    const v=sessions.get(token);
+    if(v){if(Date.now()-(v.createdAt||0)>SESSION_TTL_MS){sessions.delete(token);continue;}return v;}
   }
-  const v=sessions.get(token);
-  if(!v)return null;
-  if(Date.now()-(v.createdAt||0)>SESSION_TTL_MS){sessions.delete(token);return null;}
-  return v;
+  return null;
 }
 function setSession(res, value){
   // Keep a stable session-family identifier across token refreshes. Feature flows such as
@@ -439,6 +444,12 @@ function catalogContains(actual,expected){if(expected===undefined)return true;if
 function safeEqual(a,b){ const aa=Buffer.from(String(a||'')); const bb=Buffer.from(String(b||'')); if(aa.length!==bb.length) return false; return crypto.timingSafeEqual(aa,bb); }
 function hashPassword(password){ const salt=crypto.randomBytes(16).toString('hex'); const hash=crypto.scryptSync(String(password),salt,64).toString('hex'); return `scrypt$${salt}$${hash}`; }
 function verifyPassword(password,stored){ const v=String(stored||''); if(!v.startsWith('scrypt$')) return safeEqual(password,v); const parts=v.split('$'); if(parts.length!==3) return false; try{return safeEqual(crypto.scryptSync(String(password),parts[1],64).toString('hex'),parts[2]);}catch(_){return false;} }
+function adminPasswordConfigured(){
+  if(String(process.env.ADMIN_PASSWORD_HASH||'').startsWith('scrypt$'))return true;
+  if(ADMIN_PASSWORD)return true;
+  const stored=readJSON('settings.json',{}).adminPasswordHash;
+  return String(stored||'').startsWith('scrypt$');
+}
 function adminPasswordValid(password){ if(String(process.env.ADMIN_PASSWORD_HASH||'').startsWith('scrypt$')) return verifyPassword(password,process.env.ADMIN_PASSWORD_HASH); if(ADMIN_PASSWORD) return safeEqual(password,ADMIN_PASSWORD); const stored=readJSON('settings.json',{}).adminPasswordHash; if(String(stored||'').startsWith('scrypt$'))return verifyPassword(password,stored); return false; }
 
 function normalizeEmail(value){return String(value||'').trim().toLowerCase();}
@@ -1052,9 +1063,11 @@ function normalizeProviderServices(d){
   return rows.filter(x=>x&&typeof x==='object').map(x=>{
     const id=String(x.service??x.service_id??x.serviceId??x.id??x.sid??x.serviceID??'').trim();
     const name=providerServiceName(x,id);
-    const rate=x.rate??x.price??x.cost??x.service_rate??x.serviceRate??0;
+    const rateKeys=['rate','price','cost','service_rate','serviceRate','rate_usd','rateUsd','usd_rate','usdRate','rate_per_1000','ratePer1000','price_per_1000','pricePer1000'];
+    let ratePresent=false,rate=null;
+    for(const k of rateKeys){const value=x[k];if(value===undefined||value===null||String(value).trim()==='')continue;const n=Number(String(value).replace(/,/g,''));if(Number.isFinite(n)&&n>=0){rate=n;ratePresent=true;break;}}
     const description=providerServiceDescription(x);
-    return {...x,service:id||String(x.service||''),name,rate:Number.isFinite(Number(rate))?Number(rate):0,description,providerDescription:description};
+    return {...x,service:id||String(x.service||''),name,rate:ratePresent?rate:0,ratePresent,description,providerDescription:description};
   }).filter(x=>String(x.service||'').trim()!=='');
 }
 
@@ -2074,11 +2087,11 @@ async function runRefundReconciliationMonitor(){
   }catch(e){console.warn('refund reconciliation monitor:',String(e.message||e).slice(0,160));}finally{runRefundReconciliationMonitor.running=false;}
 }
 
-const DEFAULT_GLOBAL_PRICING={markupPct:50,autoSync:true,intervalHours:1,lastAttemptAt:null,lastSuccessAt:null,lastUpdatedAt:null,lastResult:null,lastError:''};
+const DEFAULT_GLOBAL_PRICING={markupPct:100,autoSync:true,intervalHours:1,lastAttemptAt:null,lastSuccessAt:null,lastUpdatedAt:null,lastResult:null,lastError:''};
 function cleanGlobalPricing(v={}){
   const pct=Number(v.markupPct??v.markup??DEFAULT_GLOBAL_PRICING.markupPct);
   const interval=Number(v.intervalHours??DEFAULT_GLOBAL_PRICING.intervalHours);
-  return {...DEFAULT_GLOBAL_PRICING,...v,markupPct:Number.isFinite(pct)?Math.max(0,Math.min(1000,pct)):50,autoSync:v.autoSync!==false,intervalHours:[1,3,6,12,24].includes(interval)?interval:1};
+  return {...DEFAULT_GLOBAL_PRICING,...v,markupPct:Number.isFinite(pct)?Math.max(100,Math.min(1000,pct)):100,autoSync:v.autoSync!==false,intervalHours:[1,3,6,12,24].includes(interval)?interval:1};
 }
 function localGlobalPricing(){const settings=readJSON('settings.json',{});return cleanGlobalPricing(settings.pricing||{});}
 async function getGlobalPricing(){
@@ -2097,7 +2110,7 @@ function validRateField(s,keys){
   for(const k of keys){const v=s?.[k];if(v===undefined||v===null||String(v).trim()==='')continue;const n=Number(String(v).replace(/,/g,''));if(Number.isFinite(n)&&n>=0)return n;}return null;
 }
 function providerServiceKey(s){for(const k of ['providerServiceId','smmpartyId','sourceServiceId','provider_service_id','serviceId','service_id']){const v=s?.[k];if(v!==undefined&&v!==null&&String(v).trim()!=='')return String(v).trim()}return ''}
-function providerServiceRate(s){return validRateField(s,['rate','rate_usd','rateUsd','usd_rate','usdRate','rate_per_1000','ratePer1000','price_per_1000','pricePer1000'])}
+function providerServiceRate(s){if(s&&s.ratePresent===false)return null;return validRateField(s,['rate','rate_usd','rateUsd','usd_rate','usdRate','rate_per_1000','ratePer1000','price_per_1000','pricePer1000','price','cost'])}
 function catalogRate(s){return validRateField(s,['providerRateUsd','smmRateUsd','baseProviderRateUsd','smmRate','provider_rate_usd'])}
 function pricedPatch(s,base,pct){const sell=Number((base*(1+pct/100)).toFixed(8));return {sellingUsd:sell,price:Number((sell*FIXED_RATE).toFixed(6)),basePrice:Number((base*FIXED_RATE).toFixed(6)),providerRateUsd:base,smmRateUsd:base,smmRate:base,markupPct:pct,priceSyncedAt:nowISO()}}
 // Firebase REST multi-path PATCH: write nested field paths, never replace the entire service object.
@@ -2126,10 +2139,10 @@ const PRICE_GUARD_TTL_MS=Math.max(5,Math.min(900,Number(process.env.PRICE_GUARD_
 const PRICE_WATCH_MS=Math.max(10,Math.min(7200,Number(process.env.PRICE_WATCH_SECONDS)||(Number(process.env.PRICE_WATCH_MINUTES)||10)*60))*1000;
 const PRICE_WATCH_FIRST_MS=Math.max(2,Math.min(300,Number(process.env.PRICE_WATCH_FIRST_DELAY_SECONDS)||45))*1000;
 const PRICE_GUARD_FETCH_MS=Math.max(3000,Math.min(60000,Number(process.env.PRICE_GUARD_FETCH_TIMEOUT_MS)||20000));
-const PRICE_GUARD_STALE_MS=30*60*1000;
+const PRICE_GUARD_STALE_MS=PRICE_GUARD_TTL_MS;
 const PRICE_GUARD_CACHE=new Map();
 const PRICE_GUARD_STATUS={enabled:PRICE_GUARD_ENABLED,lastWatchAt:'',lastWatchUpdated:0,lastError:'',orderRepricings:0,lastOrderRepriceAt:''};
-let PRICE_GUARD_CFG={at:0,pct:50,auto:true};
+let PRICE_GUARD_CFG={at:0,pct:100,auto:true};
 async function priceGuardConfig(){
   if(Date.now()-PRICE_GUARD_CFG.at<30000)return PRICE_GUARD_CFG;
   const cfg=cleanGlobalPricing(await getGlobalPricing());
@@ -2175,24 +2188,39 @@ function priceGuardPersist(pid,sid,fbKey,patch){
   Object.assign(root[key],patch);writeJSON('services.json',root);return true;
 }
 async function guardServicePrice(svc){
+  if(!svc||typeof svc!=='object')return svc;
+  const pid=String(svc.providerId||'').trim(),sid=providerServiceKey(svc);
+  if(!pid||!sid){const unavailable={providerAvailable:false,availabilityStatus:'unavailable',providerCheckedAt:nowISO(),providerAvailabilityReason:'provider_mapping_incomplete'};return {...svc,...unavailable};}
+  if(!PRICE_GUARD_ENABLED){const unavailable={providerAvailable:false,availabilityStatus:'unavailable',providerCheckedAt:nowISO(),providerAvailabilityReason:'live_price_guard_disabled'};priceGuardPersist(pid,sid,svc.fbKey,unavailable);return {...svc,...unavailable};}
   try{
-    if(!PRICE_GUARD_ENABLED||!svc||typeof svc!=='object')return svc;
-    const pid=String(svc.providerId||'').trim(),sid=providerServiceKey(svc);
-    if(!pid||!sid)return svc;
-    const cfg=await priceGuardConfig();if(!cfg.auto)return svc;
+    const cfg=await priceGuardConfig();
     const rates=await priceGuardProviderRates(pid);
-    if(!rates||!rates.has(sid))return svc;
+    if(!rates){const unknown={providerAvailable:false,availabilityStatus:'unavailable',providerCheckedAt:nowISO(),providerAvailabilityReason:'provider_catalog_unverified'};priceGuardPersist(pid,sid,svc.fbKey,unknown);return {...svc,...unknown};}
+    if(!rates.has(sid)){
+      const unavailable={providerAvailable:false,availabilityStatus:'unavailable',providerCheckedAt:nowISO(),providerAvailabilityReason:'not_found_in_live_supplier_catalog'};
+      priceGuardPersist(pid,sid,svc.fbKey,unavailable);
+      return {...svc,...unavailable};
+    }
     const live=rates.get(sid);
-    if(!priceGuardNeeds(svc,live,cfg.pct))return svc;
-    const patch=pricedPatch(svc,live,cfg.pct);
+    if(live===null||live===undefined||!Number.isFinite(Number(live))){
+      const unavailable={providerAvailable:false,availabilityStatus:'unavailable',providerCheckedAt:nowISO(),providerAvailabilityReason:'live_provider_price_unverified'};
+      priceGuardPersist(pid,sid,svc.fbKey,unavailable);
+      return {...svc,...unavailable};
+    }
+    if(live===0){const storedCost=catalogRate(svc);if(storedCost!==null&&storedCost>0){const unavailable={providerAvailable:false,availabilityStatus:'unavailable',providerCheckedAt:nowISO(),providerAvailabilityReason:'suspicious_zero_provider_rate'};priceGuardPersist(pid,sid,svc.fbKey,unavailable);return {...svc,...unavailable};}}
+    const availability={providerAvailable:true,availabilityStatus:'available',providerCheckedAt:nowISO(),providerAvailabilityReason:''};
+    if(!priceGuardNeeds(svc,live,cfg.pct)){if(svc.providerAvailable!==true||String(svc.availabilityStatus||'')!=='available')priceGuardPersist(pid,sid,svc.fbKey,availability);return {...svc,...availability};}
+    const patch={...pricedPatch(svc,live,cfg.pct),...availability};
     priceGuardPersist(pid,sid,svc.fbKey,patch);
     PRICE_GUARD_STATUS.orderRepricings++;PRICE_GUARD_STATUS.lastOrderRepriceAt=nowISO();
     try{appendJsonLedger('price_changes.json',{at:nowISO(),via:'order-guard',providerId:pid,providerServiceId:sid,siteServiceId:String(svc.siteServiceId||''),oldCostUsd:catalogRate(svc),newCostUsd:live,oldSellUsd:Number(svc.sellingUsd),newSellUsd:patch.sellingUsd,markupPct:cfg.pct});}catch(_){}
     return {...svc,...patch,rateUsd:patch.sellingUsd,rate:patch.sellingUsd};
   }catch(e){
     PRICE_GUARD_STATUS.lastError=String(e.message||e).slice(0,200);
-    console.warn('Sada price guard skipped:',PRICE_GUARD_STATUS.lastError);
-    return svc;
+    const unavailable={providerAvailable:false,availabilityStatus:'unavailable',providerCheckedAt:nowISO(),providerAvailabilityReason:'live_price_check_failed'};
+    priceGuardPersist(pid,sid,svc.fbKey,unavailable);
+    console.warn('Sada price guard fail-closed:',PRICE_GUARD_STATUS.lastError);
+    return {...svc,...unavailable};
   }
 }
 let PRICE_WATCH_RUNNING=false;
@@ -2204,27 +2232,38 @@ async function runPriceWatch(){
     await ensureLocalServiceCatalogSeeded();
     const first=readJSON('services.json',{});if(!first||typeof first!=='object'||Array.isArray(first))return {skipped:true};
     const pids=[...new Set(Object.values(first).filter(v=>v&&typeof v==='object').map(v=>String(v.providerId||'').trim()).filter(Boolean))].slice(0,20);
-    let updated=0;const errors=[];
+    let updated=0,availabilityChanged=0;const errors=[];
     for(const pid of pids){
       const rates=await priceGuardProviderRates(pid,{force:true});
-      if(!rates){errors.push(pid+': provider catalog unavailable');continue;}
-      // Re-read right before writing: no await between this read and writeJSON, so no update can be lost.
+      if(!rates){errors.push(pid+': provider catalog unavailable; service availability and current rates are unverified');continue;}
+      // Re-read immediately before writing so a price update never overwrites another catalog mutation.
       const fresh=readJSON('services.json',{});if(!fresh||typeof fresh!=='object'||Array.isArray(fresh))continue;
-      const samples=[];let changed=0;
+      const samples=[];let changed=0,availability=0;
       for(const [key,row] of Object.entries(fresh)){
         if(!row||typeof row!=='object'||String(row.providerId||'').trim()!==pid)continue;
-        const sid=providerServiceKey(row);if(!sid||!rates.has(sid))continue;
-        const live=rates.get(sid);
-        if(!priceGuardNeeds(row,live,cfg.pct))continue;
-        const patch=pricedPatch(row,live,cfg.pct);
-        if(samples.length<10)samples.push({providerServiceId:sid,oldCostUsd:catalogRate(row),newCostUsd:live,oldSellUsd:Number(row.sellingUsd),newSellUsd:patch.sellingUsd});
-        Object.assign(row,patch);changed++;
+        const sid=providerServiceKey(row);if(!sid)continue;
+        if(!rates.has(sid)){
+          if(row.providerAvailable!==false||String(row.availabilityStatus||'')!=='unavailable'){row.providerAvailable=false;row.availabilityStatus='unavailable';row.providerAvailabilityReason='not_found_in_live_supplier_catalog';row.providerCheckedAt=nowISO();availability++;}
+          continue;
+        }
+        const live=rates.get(sid),oldCost=catalogRate(row);
+        if(live===null||live===undefined||!Number.isFinite(Number(live))||(Number(live)===0&&oldCost!==null&&oldCost>0)){
+          if(row.providerAvailable!==false||String(row.availabilityStatus||'')!=='unavailable'){row.providerAvailable=false;row.availabilityStatus='unavailable';row.providerAvailabilityReason=Number(live)===0?'suspicious_zero_provider_rate':'live_provider_price_unverified';row.providerCheckedAt=nowISO();availability++;}
+          continue;
+        }
+        const availabilityWasChanged=row.providerAvailable!==true||String(row.availabilityStatus||'')!=='available';
+        const availablePatch={providerAvailable:true,availabilityStatus:'available',providerAvailabilityReason:'',providerCheckedAt:nowISO()};
+        if(priceGuardNeeds(row,Number(live),cfg.pct)){
+          const patch={...pricedPatch(row,Number(live),cfg.pct),...availablePatch};
+          if(samples.length<10)samples.push({providerServiceId:sid,oldCostUsd:oldCost,newCostUsd:Number(live),oldSellUsd:Number(row.sellingUsd),newSellUsd:patch.sellingUsd});
+          Object.assign(row,patch);changed++;
+        }else if(availabilityWasChanged){Object.assign(row,availablePatch);availability++;}
       }
-      if(changed){writeJSON('services.json',fresh);updated+=changed;try{appendJsonLedger('price_changes.json',{at:nowISO(),via:'watcher',providerId:pid,count:changed,markupPct:cfg.pct,samples});}catch(_){}}
+      if(changed||availability){writeJSON('services.json',fresh);updated+=changed;availabilityChanged+=availability;if(changed)try{appendJsonLedger('price_changes.json',{at:nowISO(),via:'watcher',providerId:pid,count:changed,availabilityChanged:availability,markupPct:cfg.pct,samples});}catch(_){}}
     }
-    PRICE_GUARD_STATUS.lastWatchAt=nowISO();PRICE_GUARD_STATUS.lastWatchUpdated=updated;
-    if(errors.length)PRICE_GUARD_STATUS.lastError=errors.join(' | ').slice(0,200);
-    return {updated,errors};
+    PRICE_GUARD_STATUS.lastWatchAt=nowISO();PRICE_GUARD_STATUS.lastWatchUpdated=updated;PRICE_GUARD_STATUS.lastAvailabilityChanged=availabilityChanged;
+    if(errors.length)PRICE_GUARD_STATUS.lastError=errors.join(' | ').slice(0,200);else PRICE_GUARD_STATUS.lastError='';
+    return {updated,availabilityChanged,errors};
   }catch(e){PRICE_GUARD_STATUS.lastError=String(e.message||e).slice(0,200);return {error:PRICE_GUARD_STATUS.lastError};}
   finally{PRICE_WATCH_RUNNING=false;}
 }
@@ -2238,7 +2277,7 @@ async function runProviderPriceSync(options={}){
   if(GLOBAL_PRICE_SYNC_RUNNING)return {ok:false,busy:true,updated:0,errors:['مزامنة أخرى قيد التنفيذ']};
   GLOBAL_PRICE_SYNC_RUNNING=true;
   let cfg=await getGlobalPricing();cfg.lastAttemptAt=nowISO();const settings=readJSON('settings.json',{});settings.pricing=cfg;writeJSON('settings.json',settings);
-  const result={ok:true,updated:0,skipped:0,providers:0,providerErrors:[],localUpdated:0};
+  const result={ok:true,updated:0,skipped:0,providers:0,providerErrors:[],localUpdated:0,imported:0,unavailable:0,priceVerified:0};
   try{
     // Migrate the legacy catalog once, then keep automatic pricing on host JSON.
     await ensureLocalServiceCatalogSeeded();
@@ -2250,38 +2289,66 @@ async function runProviderPriceSync(options={}){
     const pct=cleanGlobalPricing(cfg).markupPct;
     const allPatches={};const localServices=readJSON('api_services.json',[]);let localUpdated=0;
     for(const pid of providerIds.slice(0,20)){
+      const importedBeforeProvider=result.imported;
       try{
         await ensureProviderRuntime(pid);const found=getProviderById(pid,{allowSingleFallback:false});if(!found.prov?.url||!found.prov?.key)throw new Error('بيانات المزود غير متوفرة');
         const raw=normalizeProviderServices(await providerRequest(found.prov,{action:'services'},22000));
         if(!raw.length)throw new Error('المزود لم يرجع قائمة خدمات');
         const byId=new Map();for(const r of raw){const id=String(r?.service??r?.service_id??r?.serviceId??r?.id??r?.serviceID??'').trim();if(id)byId.set(id,r)}
         let pUpdated=0;
+        const existingIds=new Set(rows.filter(([,v])=>String(v.providerId||'')===pid).map(([,v])=>providerServiceKey(v)).filter(Boolean));
         for(const [key,svc] of rows){
           if(String(svc.providerId||'')!==pid)continue;
           const sid=providerServiceKey(svc);if(!sid){result.skipped++;continue}
-          const latest=byId.get(sid);if(!latest){result.skipped++;continue}
+          const latest=byId.get(sid);
+          if(!latest){
+            if(svc.providerAvailable!==false||String(svc.availabilityStatus||'').toLowerCase()!=='unavailable')result.unavailable++;
+            appendServicePricePatch(allPatches,key,{providerAvailable:false,availabilityStatus:'unavailable',providerCheckedAt:nowISO(),providerAvailabilityReason:'not_found_in_live_supplier_catalog'});result.skipped++;continue;
+          }
           // Repair only generic/empty saved labels when the provider supplies a real name.
           // Never overwrite a meaningful custom name already saved by the site owner.
           const originalProviderName=providerOriginalServiceName(latest);
           const currentName=String(svc.name||'').trim();
           const genericCurrentName=!currentName||/^(?:service|خدمة|service\s*#?\s*\d*|خدمة\s*#?\s*\d*|unknown service|خدمة غير مسماة)$/i.test(currentName);
           if(originalProviderName&&genericCurrentName){appendServicePricePatch(allPatches,key,{name:originalProviderName});result.namesFixed=(result.namesFixed||0)+1;}
-          const base=providerServiceRate(latest);if(base===null){result.skipped++;continue}
-          const oldBase=catalogRate(svc);if(base===0&&oldBase!==null&&oldBase>0){result.skipped++;result.providerErrors.push(pid+' الخدمة '+sid+': تجاهلنا سعراً صفرياً غير متوقع حتى لا تتحول خدمة مدفوعة إلى مجانية');continue}
-          const priced=pricedPatch(svc,base,pct);appendServicePricePatch(allPatches,key,priced);pUpdated++;result.updated++;
+          const base=providerServiceRate(latest);
+          const oldBase=catalogRate(svc);
+          if(base===null||(base===0&&oldBase!==null&&oldBase>0)){
+            appendServicePricePatch(allPatches,key,{providerAvailable:false,availabilityStatus:'unavailable',providerCheckedAt:nowISO(),providerAvailabilityReason:base===null?'live_provider_price_unverified':'suspicious_zero_provider_rate'});
+            result.unavailable++;result.skipped++;
+            if(base===0&&oldBase!==null&&oldBase>0)result.providerErrors.push(pid+' الخدمة '+sid+': تجاهلنا سعراً صفرياً غير متوقع حتى لا تتحول خدمة مدفوعة إلى مجانية');
+            continue;
+          }
+          const priced=pricedPatch(svc,base,pct);appendServicePricePatch(allPatches,key,{...priced,providerAvailable:true,availabilityStatus:'available',providerCheckedAt:nowISO(),providerAvailabilityReason:''});pUpdated++;result.updated++;result.priceVerified++;
           for(const a of localServices){
             if(String(a.providerId||'')===pid&&String(a.providerServiceId||a.id||'')===sid){
               if(originalProviderName&&(!String(a.name||'').trim()||/^(?:service|خدمة|service\s*#?\s*\d*|خدمة\s*#?\s*\d*|unknown service|خدمة غير مسماة)$/i.test(String(a.name||'').trim())))a.name=originalProviderName;
-              Object.assign(a,priced,{rateUsd:priced.sellingUsd,rate:priced.sellingUsd});localUpdated++;
+              Object.assign(a,priced,{rateUsd:priced.sellingUsd,rate:priced.sellingUsd,providerAvailable:true,availabilityStatus:'available',providerCheckedAt:nowISO(),providerAvailabilityReason:''});localUpdated++;
             }
           }
         }
-        result.providers++;if(!pUpdated)result.providerErrors.push(pid+': لم تتم مطابقة معرّفات الخدمات');
+        // Auto-import new services only when the provider responded with a non-empty catalog and a valid ID + rate.
+        for(const latest of raw){
+          const sid=String(latest?.service??latest?.service_id??latest?.serviceId??latest?.id??latest?.serviceID??'').trim();
+          if(!sid||existingIds.has(sid))continue;
+          const base=providerServiceRate(latest);if(base===null){result.skipped++;continue;}
+          const key='svc_auto_'+sha256(pid+'|'+sid).slice(0,24);
+          const foundExisting=Object.entries(root).some(([k,v])=>v&&typeof v==='object'&&String(v.providerId||'')===pid&&providerServiceKey(v)===sid);
+          if(foundExisting){existingIds.add(sid);continue;}
+          const originalName=providerOriginalServiceName(latest)||('خدمة '+sid);
+          const category=String(latest.category||latest.type||latest.category_name||latest.group||latest.providerCategory||'عام').trim().slice(0,180)||'عام';
+          const description=providerServiceDescription(latest);
+          const priced=pricedPatch({},base,pct);
+          root[key]={fbKey:key,providerId:pid,providerName:found.prov.name||pid,providerServiceId:sid,smmpartyId:sid,serviceId:sid,id:key,siteServiceId:'',name:originalName,description,providerDescription:description,category,groups:[category],categories:[category],min:Math.max(1,Number(latest.min||latest.minimum||100)||100),max:Math.max(Math.max(1,Number(latest.min||latest.minimum||100)||100),Number(latest.max||latest.maximum||10000)||10000),refill:!!latest.refill,cancel:!!latest.cancel,source:'provider-live-sync',providerAvailable:true,availabilityStatus:'available',providerCheckedAt:nowISO(),providerAvailabilityReason:'',createdAt:nowISO(),...priced};
+          existingIds.add(sid);result.imported++;result.priceVerified++;
+        }
+        result.providers++;if(!pUpdated&&result.imported===importedBeforeProvider)result.providerErrors.push(pid+': لم تتم مطابقة معرّفات الخدمات أو لم يوجد سعر صالح');
       }catch(e){result.ok=false;result.providerErrors.push(pid+': '+String(e.message||e).slice(0,160))}
     }
-    if(Object.keys(allPatches).length){for(const [composite,value] of Object.entries(allPatches)){const split=composite.indexOf('/');if(split<1)continue;const key=composite.slice(0,split),field=composite.slice(split+1);if(Object.prototype.hasOwnProperty.call(root,key)&&root[key]&&typeof root[key]==='object')root[key][field]=value;}writeJSON('services.json',root);markCatalogSeeded();result.storage='hosting-json';}
+    if(Object.keys(allPatches).length){for(const [composite,value] of Object.entries(allPatches)){const split=composite.indexOf('/');if(split<1)continue;const key=composite.slice(0,split),field=composite.slice(split+1);if(Object.prototype.hasOwnProperty.call(root,key)&&root[key]&&typeof root[key]==='object')root[key][field]=value;}}
+    if(Object.keys(allPatches).length||result.imported){writeJSON('services.json',root);ensureNumericSiteServiceIds();markCatalogSeeded();result.storage='hosting-json';}
     if(localUpdated)writeJSON('api_services.json',localServices);result.localUpdated=localUpdated;
-    cfg=localGlobalPricing();cfg.lastAttemptAt=nowISO();cfg.lastResult={updated:result.updated,skipped:result.skipped,providers:result.providers,localUpdated:result.localUpdated,namesFixed:Number(result.namesFixed||0)};cfg.lastError=result.providerErrors.join(' | ').slice(0,700);if(result.updated>0){cfg.lastSuccessAt=nowISO();}else if(!result.providerErrors.length){cfg.lastError='لم يتم العثور على خدمات مطابقة للتحديث'};
+    cfg=localGlobalPricing();cfg.lastAttemptAt=nowISO();cfg.lastResult={updated:result.updated,skipped:result.skipped,providers:result.providers,localUpdated:result.localUpdated,namesFixed:Number(result.namesFixed||0),imported:result.imported,unavailable:result.unavailable,priceVerified:result.priceVerified};cfg.lastError=result.providerErrors.join(' | ').slice(0,700);if(result.updated>0){cfg.lastSuccessAt=nowISO();}else if(!result.providerErrors.length){cfg.lastError='لم يتم العثور على خدمات مطابقة للتحديث'};
     const st=readJSON('settings.json',{});st.pricing=cfg;writeJSON('settings.json',st);try{await firebaseWriteJson('config/pricing',cfg,7000)}catch(_){}
     result.pricing=cfg;return result;
   }catch(e){result.ok=false;result.providerErrors.push(String(e.message||e).slice(0,180));const st=readJSON('settings.json',{});const p=cleanGlobalPricing(st.pricing||{});p.lastAttemptAt=nowISO();p.lastError=result.providerErrors.join(' | ').slice(0,700);st.pricing=p;writeJSON('settings.json',st);try{await firebaseWriteJson('config/pricing',p,5000)}catch(_){}return result;
@@ -2485,18 +2552,32 @@ async function notifyTelegramRecipients(text,meta={}){
 async function sendTelegram(text){return (await notifyTelegramRecipients(text,{kind:'message'})).ok;}
 
 function telegramOrderIdentity(o={}){const id=String(o.id||o.siteOrderId||o.orderId||o.order_id||'').trim(),user=String(o.user||o.username||o.userName||'').trim();if(id)return 'id:'+id+'|u:'+user;const publicNo=String(o.publicOrderNo||'').trim();if(publicNo)return 'id:'+publicNo+'|u:'+user;const po=String(o.providerOrderId||o.provider_order_id||o.smmpartyOrderId||'').trim();if(po)return 'provider:'+String(o.providerId||o.provider_id||'')+'|'+po+'|u:'+user;return String(o.source||'')+':'+String(o._firebaseKey||o.firebaseKey||o.createdMs||'')+'|u:'+user;}
-function telegramOrderMessage(o={}){return `🆕 طلب جديد — صدى العراق
+function telegramOrderMessage(o={}){
+  const numeric=(v)=>v!==undefined&&v!==null&&v!==''&&Number.isFinite(Number(v))?Number(v):null;
+  const cost=numeric(o.providerCostUsd),sale=numeric(o.sellingPriceUsd??o.chargeUsd),profit=numeric(o.grossProfitUsd);
+  const costRate=numeric(o.providerRateUsd),siteRate=numeric(o.unitSellingUsd);
+  const actualMarkup=numeric(o.actualMarkupPct)??(cost!==null&&cost>0&&sale!==null?Number(((sale/cost-1)*100).toFixed(2)):null);
+  const margin=numeric(o.profitMarginPct)??(sale!==null&&sale>0&&profit!==null?Number((profit/sale*100).toFixed(2)):null);
+  const money=v=>v===null?'غير متوفر':('$'+v.toFixed(4));
+  return `🆕 طلب جديد — صدى العراق
 🆔 رقم الطلب: #${o.publicOrderNo||(/^[0-9]{1,9}$/.test(String(o.id||''))?o.id:o.id||o.siteOrderId||o.orderId||'غير متوفر')}
 👤 المستخدم: ${o.userName||o.user||o.username||'—'}
 📦 الخدمة: ${o.serviceName||o.name||'خدمة'}
 🌐 المنصة: ${o.serviceApp||o.platform||o.app||'—'}
 🔗 الرابط: ${o.link||o.url||'—'}
 🔢 الكمية: ${Number(o.quantity||o.qty||0).toLocaleString('en-US')}
-💰 السعر: $${Number(o.chargeUsd??o.unitSellingUsd??o.priceUsd??0).toFixed(4)}
+🧾 تكلفة المزود لكل 1000: ${money(costRate)}
+🧾 تكلفة المزود للكمية: ${money(cost)}
+💰 سعر الموقع لكل 1000 قبل الخصم: ${money(siteRate)}
+💳 المبلغ الفعلي على المستخدم: ${money(sale)}
+📈 الربح المتوقع بعد الخصم: ${money(profit)}
+📊 الزيادة الفعلية على التكلفة: ${actualMarkup===null?'غير متوفر':actualMarkup.toFixed(2)+'%'}
+📉 هامش الربح من المبيع: ${margin===null?'غير متوفر':margin.toFixed(2)+'%'}
 🏷️ المزوّد: ${o.providerName||o.provider||o.providerId||'—'}
 🔢 رقم طلب المزوّد: ${o.providerOrderId||o.smmpartyOrderId||o.provider_order_id||'غير متوفر'}
 📊 الحالة: ${o.status||'pending'}
-🕐 الإنشاء: ${o.createdAt||nowISO()}`;}
+🕐 الإنشاء: ${o.createdAt||nowISO()}`;
+}
 function telegramOrderWasDelivered(entry){
   return !!(entry&&typeof entry==='object'&&(entry.primaryOk===true||entry.sentAt||entry.deliveredAt||entry.delivered===true||entry.adminFallbackDelivered===true||(Array.isArray(entry.deliveredTo)&&entry.deliveredTo.length>0)));
 }
@@ -2638,7 +2719,7 @@ function internalApiServices(){
   const rows=[];
   for(const [fbKey,raw] of entries){
     if(!raw||typeof raw!=='object'||Array.isArray(raw))continue;
-    if(raw.active===false||raw.enabled===false||raw.isActive===false||raw.hidden===true||raw.isHidden===true||raw.deleted===true||String(raw.status||'').toLowerCase()==='disabled')continue;
+    if(raw.active===false||raw.enabled===false||raw.isActive===false||raw.hidden===true||raw.isHidden===true||raw.deleted===true||String(raw.status||'').toLowerCase()==='disabled'||raw.providerAvailable===false||String(raw.availabilityStatus||'').toLowerCase()==='unavailable')continue;
     const providerId=String(raw.providerId||'').trim();
     const providerServiceId=String(raw.providerServiceId||raw.smmpartyId||raw.sourceServiceId||raw.service_id||raw.serviceId||'').trim();
     const siteServiceId=String(raw.siteServiceId||raw.internalServiceId||raw.sadaServiceId||'').trim();
@@ -2775,14 +2856,21 @@ async function apiCreateOrder(auth,body){
   if(!/^https?:\/\//i.test(link)||link.length>2000||!Number.isInteger(quantity)||quantity<=0)return {http:422,body:{error:'link must be a valid http(s) URL and quantity a positive integer'}};
   try{await ensureLocalServiceCatalogSeeded();ensureNumericSiteServiceIds();}catch(e){return {http:503,body:{error:'Service catalog is temporarily unavailable; no provider request was sent.',stage:'service_catalog'}};}
   const svc=await guardServicePrice(findInternalApiService(serviceId));if(!svc)return {http:404,body:{error:'Service not found'}};
+  if(svc.providerAvailable===false||String(svc.availabilityStatus||'').toLowerCase()==='unavailable')return {http:409,body:{error:'Service is unavailable at the supplier or its live price could not be verified; no balance was charged and no provider order was sent.',stage:'provider_service_unavailable'}};
   if(quantity<Number(svc.min)||quantity>Number(svc.max))return {http:422,body:{error:'Quantity outside service limits',min:Number(svc.min),max:Number(svc.max)}};
   const rate=Number(svc.sellingUsd);if(!Number.isFinite(rate)||rate<0)return {http:409,body:{error:'Service sale price is not configured'}};
+  const providerRateUsd=catalogRate(svc);if(providerRateUsd===null||!Number.isFinite(providerRateUsd)||providerRateUsd<0)return {http:409,body:{error:'Live supplier cost is not verified; no balance was charged and no provider order was sent.',stage:'provider_cost_unverified'}};
   const idempotency=String(body.idempotency_key||body.request_id||'').trim()||String(body.__headerIdempotencyKey||'').trim();if(idempotency.length>200)return {http:422,body:{error:'Idempotency key is too long'}};
   const idemHash=idempotency?sha256(auth.username+'|'+idempotency):'';
   const payloadHash=sha256([auth.username,serviceId,link,String(quantity)].join('|'));
   if(idemHash){const existing=await apiFindExistingIdempotentOrder(auth,idemHash).catch(()=>null);if(existing)return {http:200,body:{order:apiOrderLabel(existing),order_id:apiOrderLabel(existing),internal_order_id:String(existing.id||''),status:String(existing.status||'pending'),idempotent:true}};}
   let wallet;try{wallet=await resolveApiWallet(auth);}catch(e){return {http:e.code==='wallet_user_not_found'?404:503,body:{error:apiSafeError(e),stage:'wallet_lookup'}};}
-  const {pct,total}=calcApiChargeUsd({...svc,sellingUsd:rate},quantity,wallet.user);const chargeIQD=Number((total*FIXED_RATE).toFixed(4));
+  const {pct,total}=calcApiChargeUsd({...svc,sellingUsd:rate},quantity,wallet.user);
+  const providerCostUsd=Number((providerRateUsd*quantity/1000).toFixed(6));
+  const requiredMarkupPct=Math.max(100,Number(svc.markupPct||100));
+  const minimumChargeUsd=Number((providerCostUsd*(1+requiredMarkupPct/100)).toFixed(6));
+  if(total+0.000001<minimumChargeUsd)return {http:422,body:{error:'Discount would reduce the real markup below '+requiredMarkupPct+'% over supplier cost. No balance was charged and no provider order was sent.',stage:'sale_below_required_markup',providerCostUsd,chargeUsd:total,minimumChargeUsd,requiredMarkupPct}};
+  const chargeIQD=Number((total*FIXED_RATE).toFixed(4));
   await ensureProviderRuntime(svc.providerId);const {prov}=getProviderById(svc.providerId,{allowSingleFallback:false});if(!prov?.url||!prov?.key)return {http:502,body:{error:'Provider unavailable',stage:'provider_lookup'}};
   const requestKey=idemHash||sha256(auth.username+'|'+crypto.randomUUID());
   const requestData={requestKey,username:auth.username,serviceId,siteServiceId:serviceId,providerId:svc.providerId,providerServiceId:svc.providerServiceId,quantity,link,chargeUsd:total,payloadHash,idempotencyKey:idempotency||'',idempotencyHash:idemHash||'',createdAt:nowISO()};
@@ -2806,13 +2894,17 @@ async function apiCreateOrder(auth,body){
     return {http:rejected?502:504,body:{error:providerAuthErrorText(e.message)?'Provider API key rejected':apiSafeError(e),stage:'provider_add',uncertain:!rejected,request_id:requestKey}};
   }
   const id='API_'+crypto.randomUUID().replace(/-/g,'');const now=nowISO();
-  const order={id,localId:id,publicOrderNo:String(publicOrderNo),user:auth.username,userName:String(wallet.user.username||wallet.user.userName||auth.username),email:String(wallet.user.email||wallet.user.emailAddress||''),serviceId,siteServiceId:serviceId,providerServiceId:String(svc.providerServiceId),serviceName:String(svc.name||'خدمة'),category:String(svc.category||''),link,quantity,unitSellingUsd:rate,discountPct:pct,chargeUsd:total,total:chargeIQD,providerRateUsd:Number(svc.providerRateUsd||0),providerCostUsd:Number(svc.providerRateUsd||0)*quantity/1000,status:'pending',providerStatus:String(providerResponse?.status||'pending'),providerId:String(svc.providerId),providerName:String(prov.name||svc.providerId),providerOrderId:String(providerOrderId),apiCreated:true,apiIdempotencyHash:idemHash||'',idempotencyKey:idempotency||null,refillAllowed:!!svc.refill,cancelAllowed:!!svc.cancel,createdAt:now,updatedAt:now};
+  const grossProfitUsd=Number((total-providerCostUsd).toFixed(6));
+  const actualMarkupPct=providerCostUsd>0?Number((grossProfitUsd/providerCostUsd*100).toFixed(2)):null;
+  const profitMarginPct=total>0?Number((grossProfitUsd/total*100).toFixed(2)):null;
+  const order={id,localId:id,publicOrderNo:String(publicOrderNo),user:auth.username,userName:String(wallet.user.username||wallet.user.userName||auth.username),email:String(wallet.user.email||wallet.user.emailAddress||''),serviceId,siteServiceId:serviceId,providerServiceId:String(svc.providerServiceId),serviceName:String(svc.name||'خدمة'),category:String(svc.category||''),link,quantity,unitSellingUsd:rate,discountPct:pct,chargeUsd:total,sellingPriceUsd:total,total:chargeIQD,totalIQD:chargeIQD,providerRateUsd,providerCostUsd,providerCostIQD:Number((providerCostUsd*FIXED_RATE).toFixed(4)),grossProfitUsd,grossProfitIQD:Number((grossProfitUsd*FIXED_RATE).toFixed(4)),markupPct:requiredMarkupPct,actualMarkupPct,profitMarginPct,status:'pending',providerStatus:String(providerResponse?.status||'pending'),providerId:String(svc.providerId),providerName:String(prov.name||svc.providerId),providerOrderId:String(providerOrderId),apiCreated:true,apiIdempotencyHash:idemHash||'',idempotencyKey:idempotency||null,refillAllowed:!!svc.refill,cancelAllowed:!!svc.cancel,createdAt:now,updatedAt:now};
   try{await persistOrderToFirebase(order);upsertLocalApiOrder(order);}catch(e){try{await apiMarkRequest(wallet.path,requestKey,'uncertain',{providerOrderId:String(providerOrderId),publicOrderNo:String(publicOrderNo),uncertainAt:nowISO(),error:'provider accepted order but Firebase order persistence was not confirmed'});}catch(_){}appendJsonLedger('provider_failures.json',{stage:'api_order_persist',uncertain:true,username:auth.username,siteServiceId:serviceId,providerServiceId:svc.providerServiceId,providerOrderId:String(providerOrderId),requestKey,error:apiSafeError(e),createdAt:nowISO()});return {http:503,body:{error:'Provider accepted this order, but Firebase did not confirm its saved order record. Do not retry it with a new key.',order:String(publicOrderNo),internal_order_id:id,providerOrderId:String(providerOrderId),uncertain:true}};}
   try{
     const done=await apiMarkRequest(wallet.path,requestKey,'complete_and_account',{orderId:id,publicOrderNo:String(publicOrderNo),providerOrderId:String(providerOrderId),completedAt:nowISO()});
     if(done.result?.error)throw new Error(done.result.error);
     const chargeEvent={id:'APICOM_'+requestKey,user:auth.username,type:'order_commit',amountUSD:0,amountIQD:0,beforeIQD:after,afterIQD:after,reason:'تأكيد الطلب بعد حفظه؛ الخصم مسجل في حجز الطلب',admin:'api',reference:id,createdAt:nowISO()};apiLedgerOnce(chargeEvent);
   }catch(e){appendJsonLedger('provider_failures.json',{stage:'api_order_finalize',uncertain:true,username:auth.username,orderId:id,requestKey,error:apiSafeError(e),createdAt:nowISO()});return {http:503,body:{error:'Order was saved but API accounting finalization needs reconciliation. Do not resend the order.',order:String(publicOrderNo),internal_order_id:id,uncertain:true}};}
+  notifyTelegramNewOrder(order,{source:'public-api'}).catch(()=>{});
   const response={order:String(publicOrderNo),order_id:String(publicOrderNo),internal_order_id:id,status:'pending',service:serviceId,quantity,charge:Number(total.toFixed(6)),currency:'USD',createdAt:now};
   return {http:200,body:response};
 }
@@ -3535,7 +3627,7 @@ async function routeAPI(req,res,urlObj){
   if(p==='/api/catalog'&&req.method==='GET'){
     const raw=String(urlObj.searchParams.get('path')||'services');const spec=catalogPathSpec(raw);
     if(!spec)return json(res,422,{ok:false,error:'مسار الكتالوج غير مسموح'});
-    if(raw==='services'||raw.startsWith('services/')){const seed=await ensureLocalServiceCatalogSeeded();ensureNumericSiteServiceIds();const got=catalogReadPath(raw);return json(res,200,{ok:true,value:got.value,source:seed.source,storageMode:DATA_IS_EXTERNAL?'persistent-volume':'release-local',warning:seed.warning||(!DATA_IS_EXTERNAL?'الكتالوج محفوظ في ملفات الخادم؛ لثبات التعديلات بعد إعادة نشر Railway يجب أن يكون مجلد البيانات مرتبطاً بوحدة تخزين دائمة.':'')});}
+    if(raw==='services'||raw.startsWith('services/')){const seed=await ensureLocalServiceCatalogSeeded();ensureNumericSiteServiceIds();const got=catalogReadPath(raw);let value=got.value;if(!isAdmin(req)&&raw==='services'&&value&&typeof value==='object'&&!Array.isArray(value)){value=Object.fromEntries(Object.entries(value).filter(([,v])=>v&&typeof v==='object'&&v.providerAvailable!==false&&String(v.availabilityStatus||'').toLowerCase()!=='unavailable'));}else if(!isAdmin(req)&&raw.startsWith('services/')&&value&&typeof value==='object'&&(value.providerAvailable===false||String(value.availabilityStatus||'').toLowerCase()==='unavailable')){value=null;}return json(res,200,{ok:true,value,source:seed.source,storageMode:DATA_IS_EXTERNAL?'persistent-volume':'release-local',warning:seed.warning||(!DATA_IS_EXTERNAL?'الكتالوج محفوظ في ملفات الخادم؛ لثبات التعديلات بعد إعادة نشر Railway يجب أن يكون مجلد البيانات مرتبطاً بوحدة تخزين دائمة.':'')});}
     if(spec.bucket==='categoryMeta'){
       const localRoot=readJSON('category_meta.json',{});let remoteRoot={};let firebaseRead=true;try{const v=await firebaseGetJson('categoryMeta',10000);if(v&&typeof v==='object'&&!Array.isArray(v))remoteRoot=v;}catch(_){firebaseRead=false;}
       const merged=mergeCategoryMetaRoots(localRoot,remoteRoot);let value=merged;for(const part of spec.parts){if(!value||typeof value!=='object'||!Object.prototype.hasOwnProperty.call(value,part)){value=null;break;}value=value[part];}
@@ -4175,7 +4267,7 @@ async function routeAPI(req,res,urlObj){
   }
   if(p==='/api/admin/pricing' && req.method==='POST'){
     if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
-    const b=await bodyJSON(req);const pct=Number(b.markupPct);if(!Number.isFinite(pct)||pct<0||pct>1000)return json(res,422,{ok:false,error:'نسبة الربح يجب أن تكون بين 0 و1000%'});
+    const b=await bodyJSON(req);const pct=Number(b.markupPct);if(!Number.isFinite(pct)||pct<100||pct>1000)return json(res,422,{ok:false,error:'نسبة الزيادة على تكلفة المزود يجب أن تكون بين 100 و1000% لتفادي البيع بهامش أقل من المطلوب.'});
     const hours=Number(b.intervalHours??6);if(![1,3,6,12,24].includes(hours))return json(res,422,{ok:false,error:'اختر فترة تحديث من 1 أو 3 أو 6 أو 12 أو 24 ساعة'});
     const previous=await getGlobalPricing();const saved=await saveGlobalPricing({...previous,markupPct:pct,autoSync:b.autoSync!==false,intervalHours:hours,lastAttemptAt:previous.lastAttemptAt,lastSuccessAt:previous.lastSuccessAt});
     let cached={updated:0,skipped:0,localUpdated:0},cachedError='';try{cached=await applyCachedGlobalMarkup(pct)}catch(e){cachedError=String(e.message||e).slice(0,180)}
@@ -4508,7 +4600,11 @@ async function routeAPI(req,res,urlObj){
       const sessionToken=setSession(res,{role:'user',username:u}),clean={...user};delete clean.password;delete clean.passwordHash;
       return json(res,200,{ok:true,role:'user',username:u,user:clean,sessionToken,emailVerificationRequired:false,message:'تم إنشاء الحساب وحفظه بنجاح؛ لا يلزم رمز تحقق للبريد عند التسجيل.'});
     }
-    if(u.toLowerCase()===ADMIN_USER.toLowerCase()&&adminPasswordValid(pw)){const sessionToken=setSession(res,{role:'admin',username:ADMIN_USER});return json(res,200,{ok:true,role:'admin',username:ADMIN_USER,sessionToken});}
+    if(u.toLowerCase()===ADMIN_USER.toLowerCase()){
+      if(!adminPasswordConfigured())return json(res,503,{ok:false,code:'admin_password_not_configured',error:'تسجيل دخول الإدارة غير مهيأ على الخادم. أضف ADMIN_EMAIL وADMIN_PASSWORD (أو ADMIN_PASSWORD_HASH) في Railway Variables ثم أعد النشر.'});
+      if(!adminPasswordValid(pw))return json(res,401,{ok:false,code:'invalid_admin_credentials',error:'بيانات دخول الإدارة غير صحيحة. تحقق من ADMIN_EMAIL وكلمة مرور الإدارة المضبوطة في Railway.'});
+      const sessionToken=setSession(res,{role:'admin',username:ADMIN_USER});return json(res,200,{ok:true,role:'admin',username:ADMIN_USER,sessionToken});
+    }
     const store=readJSON('users.json',{users:{}});let actualUsername=u;let user=store.users?.[u]||null;
     if(!user){const found=Object.entries(store.users||{}).find(([key,val])=>key.toLowerCase()===u.toLowerCase()||String(val?.username||'').toLowerCase()===u.toLowerCase());if(found){actualUsername=found[0];user=found[1];}}
     let remoteRecord=null,remoteLookupFailed=false;
@@ -4765,6 +4861,7 @@ async function routeAPI(req,res,urlObj){
     if(existing){const existingSiteId=String(existing.id||existing.localId||localId||'');let savedToFirebase=true;try{await persistOrderToFirebase(existing)}catch(_){savedToFirebase=false}if(!savedToFirebase)return json(res,503,{ok:false,uncertain:true,error:'عُثر على الطلب السابق محلياً لكن لم أستطع تأكيد حفظه في Firebase. لم يُرسل طلب جديد.'});if(existing.billingMode!=='admin-test'){try{await finalizeProviderOrderAccounting(username,localId,Number(existing.total??Number(existing.chargeUsd||0)*FIXED_RATE),existing.createdAt)}catch(e){console.warn('idempotent order accounting reconciliation:',String(e.message||e).slice(0,100));}}const providerTrackingToken=issueProviderOrderTrackingToken({username,providerId:String(existing.providerId||providerId),providerOrderId:String(existing.providerOrderId),siteOrderId:existingSiteId});return json(res,200,{ok:true,idempotent:true,siteOrderId:existingSiteId,publicOrderNo:String(existing.publicOrderNo||''),siteServiceId:String(existing.siteServiceId||existing.serviceId||''),serviceId:String(existing.siteServiceId||existing.serviceId||''),providerServiceId:String(existing.providerServiceId||existing.smmpartyId||''),providerId:String(existing.providerId||providerId),providerName:String(existing.providerName||''),providerOrderId:String(existing.providerOrderId),providerTrackingToken,providerRaw:existing.providerRaw||null,createdAt:existing.createdAt||new Date().toISOString()});}
     const svc=await guardServicePrice(await authoritativeWebsiteService(providerId,requestedProviderServiceId||legacyServiceId||requestedSiteServiceId,firebaseServiceKey));
     if(!svc)return json(res,409,{ok:false,error:'لم أستطع التحقق من الخدمة وربطها بالمزوّد. أعد فحص معرّف الموقع وربط خدمة المزود من لوحة الإدارة؛ لم يُخصم أي رصيد ولم يُرسل طلب.',stage:'service_lookup',siteServiceId:requestedSiteServiceId||firebaseServiceKey||null,providerServiceId:requestedProviderServiceId||legacyServiceId||null});
+    if(svc.providerAvailable===false||String(svc.availabilityStatus||'').toLowerCase()==='unavailable')return json(res,409,{ok:false,error:'هذه الخدمة غير متاحة حالياً لدى المزود أو لم يُتحقق من سعرها الحي. أُوقف الطلب ولن يُخصم أي رصيد.',stage:'provider_service_unavailable',siteServiceId:String(svc.siteServiceId||''),providerServiceId:String(svc.providerServiceId||'')});
     const siteServiceId=String(requestedSiteServiceId||svc.siteServiceId||svc.fbKey||firebaseServiceKey||(!requestedProviderServiceId?legacyServiceId:'')).trim();
     const providerServiceId=String(svc.providerServiceId||requestedProviderServiceId||legacyServiceId||'').trim();
     if(!siteServiceId)return json(res,409,{ok:false,error:'الخدمة لا تملك معرّفاً داخلياً ثابتاً في كتالوج صدى العراق؛ لم يُخصم أي رصيد ولم يُرسل طلب.',stage:'site_service_id'});
@@ -4776,7 +4873,17 @@ async function routeAPI(req,res,urlObj){
     const serviceRate=Number(rawServiceRate); const localUser=readJSON('users.json',{users:{}}).users?.[username]||{};
     let verifiedUser=null,walletUserPath='';
     if(!isAdminSession){try{verifiedUser=await findRemoteUserByUsername(username);walletUserPath=String(verifiedUser?.firebasePath||'');}catch(e){return json(res,503,{ok:false,error:'تعذر التحقق من مسار رصيد المستخدم في Firebase: '+String(e.message||e).slice(0,130),stage:'wallet_lookup'});}if(!verifiedUser?.user||!walletUserPath)return json(res,503,{ok:false,error:'سجل المستخدم غير موجود في مسار Firebase المتوقع؛ لم يتم خصم الرصيد أو إرسال الطلب.',stage:'wallet_lookup'});}
-    const userDiscount=Math.max(0,Math.min(100,Number(verifiedUser?.user?.discountPct??verifiedUser?.user?.discount??localUser.discountPct??orderSession?.discountPct??0)||0)); const chargeUsd=Number((Math.max(0,quantity/1000*serviceRate*(1-userDiscount/100))).toFixed(6)); const chargeIqd=Number((chargeUsd*FIXED_RATE).toFixed(4));
+    const userDiscount=Math.max(0,Math.min(100,Number(verifiedUser?.user?.discountPct??verifiedUser?.user?.discount??localUser.discountPct??orderSession?.discountPct??0)||0));
+    const chargeUsd=Number((Math.max(0,quantity/1000*serviceRate*(1-userDiscount/100))).toFixed(6));
+    const providerRateUsd=catalogRate(svc);
+    if(providerRateUsd===null||!Number.isFinite(providerRateUsd)||providerRateUsd<0)return json(res,409,{ok:false,error:'لا توجد تكلفة موثوقة حديثة للمزود؛ أوقفنا الطلب حتى لا يُباع بخسارة. حدّث كتالوج الأسعار من لوحة الإدارة.',stage:'provider_cost_unverified'});
+    const providerCostUsd=Number((providerRateUsd*quantity/1000).toFixed(6));
+    const requiredMarkupPct=Math.max(100,Number(svc.markupPct||100));const minimumChargeUsd=Number((providerCostUsd*(1+requiredMarkupPct/100)).toFixed(6));
+    if(chargeUsd+0.000001<minimumChargeUsd)return json(res,422,{ok:false,error:'سعر البيع بعد الخصم لا يحقق زيادة '+requiredMarkupPct+'% على تكلفة المزود. أوقفنا الطلب لحماية هامش الربح المطلوب؛ خفّض الخصم أو ارفع سعر الخدمة.',stage:'sale_below_provider_cost',providerCostUsd,chargeUsd,minimumChargeUsd,requiredMarkupPct,markupPct:providerCostUsd>0?Number((((chargeUsd/providerCostUsd)-1)*100).toFixed(2)):null});
+    const grossProfitUsd=Number((chargeUsd-providerCostUsd).toFixed(6));
+    const actualMarkupPct=providerCostUsd>0?Number((grossProfitUsd/providerCostUsd*100).toFixed(2)):null;
+    const profitMarginPct=chargeUsd>0?Number((grossProfitUsd/chargeUsd*100).toFixed(2)):null;
+    const chargeIqd=Number((chargeUsd*FIXED_RATE).toFixed(4));
     await ensureProviderRuntime(providerId); const {prov}=getProviderById(providerId); if(!prov)return json(res,404,{ok:false,error:'المزود المرتبط بالخدمة غير موجود',stage:'provider_lookup'});
     const result=await withApiUserLock(username,async()=>{
       // The server, not the browser, is authoritative for provider-order wallet reservations.
@@ -4831,7 +4938,7 @@ async function routeAPI(req,res,urlObj){
         const orderServiceImage=nonPlatformImage(svc.serviceImage)||nonPlatformImage(svc.customImage)||nonPlatformImage(svc.imageUrl)||nonPlatformImage(svc.image);
         const orderCategoryImage=nonPlatformImage(categoryMeta.image)||nonPlatformImage(svc.customCategoryImage)||nonPlatformImage(svc.categoryImage)||nonPlatformImage(svc.sectionImage)||nonPlatformImage(svc.groupImage);
         const orderImage=orderServiceImage||orderCategoryImage||platformFields.image;
-        const ord={id:siteOrderId,localId:siteOrderId,publicOrderNo,user:username,providerId,providerName:prov.name||providerId,providerOrderId,serviceId:siteServiceId,siteServiceId,providerServiceId,serviceName:String(svc.name||'خدمة'),serviceApp:platformFields.serviceApp,image:orderImage,serviceImage:orderServiceImage||orderImage,categoryImage:orderCategoryImage||'',platformIcon:platformFields.platformIcon,category:String(groups[0]||svc.category||''),link,quantity,unitSellingUsd:serviceRate,discountPct:userDiscount,chargeUsd,total:chargeIqd,status:'pending',billingMode:isAdminSession?'admin-test':'user',providerRaw:safeProviderResponse(d),createdAt}; appendJsonLedger('orders.json',ord);
+        const ord={id:siteOrderId,localId:siteOrderId,publicOrderNo,user:username,providerId,providerName:prov.name||providerId,providerOrderId,serviceId:siteServiceId,siteServiceId,providerServiceId,serviceName:String(svc.name||'خدمة'),serviceApp:platformFields.serviceApp,image:orderImage,serviceImage:orderServiceImage||orderImage,categoryImage:orderCategoryImage||'',platformIcon:platformFields.platformIcon,category:String(groups[0]||svc.category||''),link,quantity,unitSellingUsd:serviceRate,discountPct:userDiscount,chargeUsd,sellingPriceUsd:chargeUsd,providerRateUsd,providerCostUsd,providerCostIQD:Number((providerCostUsd*FIXED_RATE).toFixed(4)),grossProfitUsd,grossProfitIQD:Number((grossProfitUsd*FIXED_RATE).toFixed(4)),markupPct:Number.isFinite(Number(svc.markupPct))?Number(svc.markupPct):100,actualMarkupPct,profitMarginPct,total:chargeIqd,status:'pending',billingMode:isAdminSession?'admin-test':'user',providerRaw:safeProviderResponse(d),createdAt}; appendJsonLedger('orders.json',ord);
         try{await persistOrderToFirebase(ord);}catch(saveError){await markReservation('uncertain');appendJsonLedger('provider_failures.json',{stage:'firebase_order_persist',uncertain:true,user:username,providerId,siteServiceId,providerServiceId,localId,providerOrderId,error:String(saveError.message||saveError).slice(0,180),createdAt:nowISO()});return {error:'أنشأ المزود الطلب، لكن تعذر تأكيد حفظه في Firebase. لا تعِد إرسال طلب جديد؛ رقم طلب المزود: '+providerOrderId,uncertain:true};}
         await markReservation('complete');
         return {ok:true,order:ord,providerTrackingToken};
@@ -5072,7 +5179,7 @@ async function routeAPI(req,res,urlObj){
     try { buildFile=fs.readFileSync(path.join(ROOT,'BUILD_ID.txt'),'utf8').trim(); } catch(_) {}
     const deploymentConsistent=uiVersion===APP_VERSION && uiBuildId===BUILD_ID && versionFile===APP_VERSION && buildFile===BUILD_ID;
     const dbInfo=firebaseDatabaseDiagnosticInfo();
-    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.33',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
+    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.36',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
     // Keep operational configuration details private; only an authenticated admin can inspect them.
     if(isAdmin(req)){const credentialStatus=firebaseServiceAccountStatus();health.firebaseDatabase={host:dbInfo.host,source:dbInfo.source,databaseProjectHint:dbInfo.databaseProjectHint,serviceAccountProjectId:dbInfo.serviceAccountProjectId||null,configuredWebProjectId:dbInfo.configuredWebProjectId||null,serviceAccountProjectMatch:dbInfo.serviceAccountProjectMatch};health.securityConfig={sessionSecretConfigured:!!String(process.env.SESSION_SECRET||'').trim(),dedicatedEncryptionKeyConfigured:!!String(process.env.SADA_ENCRYPTION_KEY||'').trim(),stableEncryptionAvailable:telegramEncryptionReady(),firebaseConfigured:!!FIREBASE_DATABASE_URL,firebaseServiceAccountConfigured:credentialStatus.ok,firebaseCredentialStatus:{ok:credentialStatus.ok,code:credentialStatus.code,source:credentialStatus.source,message:credentialStatus.message},firebaseDatabaseSecretConfigured:!!String(process.env.FIREBASE_DATABASE_SECRET||'').trim(),firebaseAuthAvailable:firebaseAuthAvailable(),emailServiceConfigured:!!(String(process.env.RESEND_API_KEY||'').trim()&&String(process.env.RESEND_FROM_EMAIL||process.env.EMAIL_FROM||'').trim()),telegramTokenFromEnvironment:!!String(process.env.TELEGRAM_BOT_TOKEN||'').trim(),adminPasswordFromEnvironment:!!(String(process.env.ADMIN_PASSWORD||'').trim()||String(process.env.ADMIN_PASSWORD_HASH||'').trim())};}
     return json(res,200,health);

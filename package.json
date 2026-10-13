@@ -1,16 +1,16 @@
 {
   "name": "sadairaq-railway",
-  "version": "1.6.33",
+  "version": "1.6.36",
   "private": true,
   "description": "صدى العراق — hosted service catalog, server-authoritative wallet and orders",
   "scripts": {
     "start": "node server.js",
-    "test": "node --check server.js && node --check release-smoke-1.6.33.js && node release-smoke-1.6.33.js && node --check api-runtime-smoke-1.6.33.js && node api-runtime-smoke-1.6.33.js && node --check asiacell-runtime-smoke-1.6.33.js && node asiacell-runtime-smoke-1.6.33.js"
+    "test": "node --check server.js && node --check release-smoke-1.6.36.js && node release-smoke-1.6.36.js && node --check api-runtime-smoke-1.6.36.js && node api-runtime-smoke-1.6.36.js && node --check asiacell-runtime-smoke-1.6.36.js && node asiacell-runtime-smoke-1.6.36.js"
   },
   "engines": {
     "node": ">=22"
   },
-  "buildId": "SADA-1.6.33-CLEAN-ROOT-REPLACE-20261013",
+  "buildId": "SADA-1.6.36-ASIACELL-RATE-MODAL-20261013",
   "dependencies": {
     "google-auth-library": "^11.2.0",
     "firebase-admin": "^14.5.0"
