@@ -27,8 +27,8 @@ function readStaticAssetBuffer(assetPath){
 const DATA = path.resolve(process.env.SADA_DATA_DIR || process.env.DATA_DIR || (process.env.RAILWAY_VOLUME_MOUNT_PATH ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, 'sada-data') : LEGACY_DATA));
 const DATA_IS_EXTERNAL = path.resolve(DATA) !== path.resolve(LEGACY_DATA);
 const APP_NAME = 'صدى العراق';
-const APP_VERSION = '1.6.37';
-const BUILD_ID = 'SADA-1.6.37-ASIACELL-WIZARD-STATS-20261013';
+const APP_VERSION = '1.6.38';
+const BUILD_ID = 'SADA-1.6.38-PROVIDER-SYNC-SAFEGUARD-20261013';
 const ADMIN_USER = process.env.ADMIN_EMAIL || 'hsydgyg5@gmail.com';
 // Never ship a default admin password in source. Configure ADMIN_PASSWORD or ADMIN_PASSWORD_HASH in Railway.
 const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || 'SrIraq!9vQ#4mL7@xK2').trim();
@@ -2187,40 +2187,69 @@ function priceGuardPersist(pid,sid,fbKey,patch){
   if(!key)return false;
   Object.assign(root[key],patch);writeJSON('services.json',root);return true;
 }
+// Automatic live-price checks may hide a service only when the provider explicitly confirms
+// its state. A missing row, malformed response, timeout or suspicious rate is not evidence
+// that the owner wants the service disabled. Recover rows hidden by the older unsafe watcher,
+// but never override an explicit site-admin disable flag.
+const TRANSIENT_PROVIDER_UNAVAILABLE_REASONS = new Set([
+  'not_found_in_live_supplier_catalog','provider_catalog_unverified','live_provider_price_unverified',
+  'suspicious_zero_provider_rate','live_price_check_failed','live_price_guard_disabled',
+  'provider_mapping_incomplete','awaiting_live_price_verification'
+]);
+function hasExplicitSiteServiceDisable(row={}){
+  return row.active===false || row.enabled===false || row.isActive===false || row.hidden===true || row.isHidden===true || row.deleted===true || String(row.status||'').trim().toLowerCase()==='disabled';
+}
+function isAutoHiddenProviderService(row={}){
+  return row.providerAvailable===false && TRANSIENT_PROVIDER_UNAVAILABLE_REASONS.has(String(row.providerAvailabilityReason||'').trim());
+}
+function recoverTransientlyHiddenServices(root,source='provider-sync'){
+  if(!root||typeof root!=='object'||Array.isArray(root))return 0;
+  let recovered=0;
+  for(const row of Object.values(root)){
+    if(!row||typeof row!=='object'||Array.isArray(row)||hasExplicitSiteServiceDisable(row)||!isAutoHiddenProviderService(row))continue;
+    row.providerAvailable=true;
+    row.availabilityStatus='available';
+    row.providerAvailabilityReason='awaiting_live_price_verification';
+    row.providerAvailabilityRecoveredAt=nowISO();
+    recovered++;
+  }
+  if(recovered){writeJSON('services.json',root);try{appendJsonLedger('catalog_recovery.json',{at:nowISO(),via:source,recovered,reason:'recovered_old_transient_provider_unavailable_flags'});}catch(_){}}
+  return recovered;
+}
+function transientProviderCheckFailure(svc,reason){
+  // Return a transient fail-closed result to this order attempt only. Do not persist it into
+  // the shared catalog, because it would hide entire categories if the provider response is partial.
+  return {...svc,providerAvailable:false,availabilityStatus:'unavailable',providerCheckedAt:nowISO(),providerAvailabilityReason:reason};
+}
 async function guardServicePrice(svc){
   if(!svc||typeof svc!=='object')return svc;
   const pid=String(svc.providerId||'').trim(),sid=providerServiceKey(svc);
-  if(!pid||!sid){const unavailable={providerAvailable:false,availabilityStatus:'unavailable',providerCheckedAt:nowISO(),providerAvailabilityReason:'provider_mapping_incomplete'};return {...svc,...unavailable};}
-  if(!PRICE_GUARD_ENABLED){const unavailable={providerAvailable:false,availabilityStatus:'unavailable',providerCheckedAt:nowISO(),providerAvailabilityReason:'live_price_guard_disabled'};priceGuardPersist(pid,sid,svc.fbKey,unavailable);return {...svc,...unavailable};}
+  if(hasExplicitSiteServiceDisable(svc))return transientProviderCheckFailure(svc,'site_admin_disabled');
+  if(!pid||!sid)return transientProviderCheckFailure(svc,'provider_mapping_incomplete');
+  if(!PRICE_GUARD_ENABLED)return transientProviderCheckFailure(svc,'live_price_guard_disabled');
   try{
     const cfg=await priceGuardConfig();
     const rates=await priceGuardProviderRates(pid);
-    if(!rates){const unknown={providerAvailable:false,availabilityStatus:'unavailable',providerCheckedAt:nowISO(),providerAvailabilityReason:'provider_catalog_unverified'};priceGuardPersist(pid,sid,svc.fbKey,unknown);return {...svc,...unknown};}
-    if(!rates.has(sid)){
-      const unavailable={providerAvailable:false,availabilityStatus:'unavailable',providerCheckedAt:nowISO(),providerAvailabilityReason:'not_found_in_live_supplier_catalog'};
-      priceGuardPersist(pid,sid,svc.fbKey,unavailable);
-      return {...svc,...unavailable};
-    }
+    if(!rates)return transientProviderCheckFailure(svc,'provider_catalog_unverified');
+    if(!rates.has(sid))return transientProviderCheckFailure(svc,'not_found_in_live_supplier_catalog');
     const live=rates.get(sid);
-    if(live===null||live===undefined||!Number.isFinite(Number(live))){
-      const unavailable={providerAvailable:false,availabilityStatus:'unavailable',providerCheckedAt:nowISO(),providerAvailabilityReason:'live_provider_price_unverified'};
-      priceGuardPersist(pid,sid,svc.fbKey,unavailable);
-      return {...svc,...unavailable};
+    if(live===null||live===undefined||!Number.isFinite(Number(live)))return transientProviderCheckFailure(svc,'live_provider_price_unverified');
+    if(Number(live)===0){const storedCost=catalogRate(svc);if(storedCost!==null&&storedCost>0)return transientProviderCheckFailure(svc,'suspicious_zero_provider_rate');}
+    const mayRestoreAvailability=svc.providerAvailable!==false||isAutoHiddenProviderService(svc);
+    const availability=mayRestoreAvailability?{providerAvailable:true,availabilityStatus:'available',providerCheckedAt:nowISO(),providerAvailabilityReason:''}:{};
+    if(!priceGuardNeeds(svc,Number(live),cfg.pct)){
+      if(Object.keys(availability).length&& (svc.providerAvailable!==true||String(svc.availabilityStatus||'')!=='available'))priceGuardPersist(pid,sid,svc.fbKey,availability);
+      return {...svc,...availability};
     }
-    if(live===0){const storedCost=catalogRate(svc);if(storedCost!==null&&storedCost>0){const unavailable={providerAvailable:false,availabilityStatus:'unavailable',providerCheckedAt:nowISO(),providerAvailabilityReason:'suspicious_zero_provider_rate'};priceGuardPersist(pid,sid,svc.fbKey,unavailable);return {...svc,...unavailable};}}
-    const availability={providerAvailable:true,availabilityStatus:'available',providerCheckedAt:nowISO(),providerAvailabilityReason:''};
-    if(!priceGuardNeeds(svc,live,cfg.pct)){if(svc.providerAvailable!==true||String(svc.availabilityStatus||'')!=='available')priceGuardPersist(pid,sid,svc.fbKey,availability);return {...svc,...availability};}
-    const patch={...pricedPatch(svc,live,cfg.pct),...availability};
+    const patch={...pricedPatch(svc,Number(live),cfg.pct),...availability};
     priceGuardPersist(pid,sid,svc.fbKey,patch);
     PRICE_GUARD_STATUS.orderRepricings++;PRICE_GUARD_STATUS.lastOrderRepriceAt=nowISO();
-    try{appendJsonLedger('price_changes.json',{at:nowISO(),via:'order-guard',providerId:pid,providerServiceId:sid,siteServiceId:String(svc.siteServiceId||''),oldCostUsd:catalogRate(svc),newCostUsd:live,oldSellUsd:Number(svc.sellingUsd),newSellUsd:patch.sellingUsd,markupPct:cfg.pct});}catch(_){}
+    try{appendJsonLedger('price_changes.json',{at:nowISO(),via:'order-guard',providerId:pid,providerServiceId:sid,siteServiceId:String(svc.siteServiceId||''),oldCostUsd:catalogRate(svc),newCostUsd:Number(live),oldSellUsd:Number(svc.sellingUsd),newSellUsd:patch.sellingUsd,markupPct:cfg.pct});}catch(_){}
     return {...svc,...patch,rateUsd:patch.sellingUsd,rate:patch.sellingUsd};
   }catch(e){
     PRICE_GUARD_STATUS.lastError=String(e.message||e).slice(0,200);
-    const unavailable={providerAvailable:false,availabilityStatus:'unavailable',providerCheckedAt:nowISO(),providerAvailabilityReason:'live_price_check_failed'};
-    priceGuardPersist(pid,sid,svc.fbKey,unavailable);
-    console.warn('Sada price guard fail-closed:',PRICE_GUARD_STATUS.lastError);
-    return {...svc,...unavailable};
+    console.warn('Sada price guard check deferred without changing catalog state:',PRICE_GUARD_STATUS.lastError);
+    return transientProviderCheckFailure(svc,'live_price_check_failed');
   }
 }
 let PRICE_WATCH_RUNNING=false;
@@ -2230,9 +2259,11 @@ async function runPriceWatch(){
   try{
     const cfg=await priceGuardConfig();if(!cfg.auto)return {skipped:true,reason:'autoSync-off'};
     await ensureLocalServiceCatalogSeeded();
-    const first=readJSON('services.json',{});if(!first||typeof first!=='object'||Array.isArray(first))return {skipped:true};
-    const pids=[...new Set(Object.values(first).filter(v=>v&&typeof v==='object').map(v=>String(v.providerId||'').trim()).filter(Boolean))].slice(0,20);
-    let updated=0,availabilityChanged=0;const errors=[];
+    let first=readJSON('services.json',{});if(!first||typeof first!=='object'||Array.isArray(first))return {skipped:true};
+    const recovered=recoverTransientlyHiddenServices(first,'price-watcher-recovery');
+    if(recovered)first=readJSON('services.json',{});
+    const pids=[...new Set(Object.values(first).filter(v=>v&&typeof v==='object'&&!hasExplicitSiteServiceDisable(v)).map(v=>String(v.providerId||'').trim()).filter(Boolean))].slice(0,20);
+    let updated=0,availabilityChanged=0,unverified=0;const errors=[];
     for(const pid of pids){
       const rates=await priceGuardProviderRates(pid,{force:true});
       if(!rates){errors.push(pid+': provider catalog unavailable; service availability and current rates are unverified');continue;}
@@ -2241,18 +2272,18 @@ async function runPriceWatch(){
       const samples=[];let changed=0,availability=0;
       for(const [key,row] of Object.entries(fresh)){
         if(!row||typeof row!=='object'||String(row.providerId||'').trim()!==pid)continue;
+        if(hasExplicitSiteServiceDisable(row))continue;
         const sid=providerServiceKey(row);if(!sid)continue;
-        if(!rates.has(sid)){
-          if(row.providerAvailable!==false||String(row.availabilityStatus||'')!=='unavailable'){row.providerAvailable=false;row.availabilityStatus='unavailable';row.providerAvailabilityReason='not_found_in_live_supplier_catalog';row.providerCheckedAt=nowISO();availability++;}
-          continue;
-        }
+        // Missing IDs are unverified, not proof that a service was removed. Never disable or
+        // hide the service because a provider response was partial or uses an unexpected ID shape.
+        if(!rates.has(sid)){unverified++;continue;}
         const live=rates.get(sid),oldCost=catalogRate(row);
         if(live===null||live===undefined||!Number.isFinite(Number(live))||(Number(live)===0&&oldCost!==null&&oldCost>0)){
-          if(row.providerAvailable!==false||String(row.availabilityStatus||'')!=='unavailable'){row.providerAvailable=false;row.availabilityStatus='unavailable';row.providerAvailabilityReason=Number(live)===0?'suspicious_zero_provider_rate':'live_provider_price_unverified';row.providerCheckedAt=nowISO();availability++;}
-          continue;
+          unverified++;continue;
         }
-        const availabilityWasChanged=row.providerAvailable!==true||String(row.availabilityStatus||'')!=='available';
-        const availablePatch={providerAvailable:true,availabilityStatus:'available',providerAvailabilityReason:'',providerCheckedAt:nowISO()};
+        const mayRestoreAvailability=row.providerAvailable!==false||isAutoHiddenProviderService(row);
+        const availablePatch=mayRestoreAvailability?{providerAvailable:true,availabilityStatus:'available',providerAvailabilityReason:'',providerCheckedAt:nowISO()}:{};
+        const availabilityWasChanged=Object.keys(availablePatch).length>0&&(row.providerAvailable!==true||String(row.availabilityStatus||'')!=='available');
         if(priceGuardNeeds(row,Number(live),cfg.pct)){
           const patch={...pricedPatch(row,Number(live),cfg.pct),...availablePatch};
           if(samples.length<10)samples.push({providerServiceId:sid,oldCostUsd:oldCost,newCostUsd:Number(live),oldSellUsd:Number(row.sellingUsd),newSellUsd:patch.sellingUsd});
@@ -2263,7 +2294,7 @@ async function runPriceWatch(){
     }
     PRICE_GUARD_STATUS.lastWatchAt=nowISO();PRICE_GUARD_STATUS.lastWatchUpdated=updated;PRICE_GUARD_STATUS.lastAvailabilityChanged=availabilityChanged;
     if(errors.length)PRICE_GUARD_STATUS.lastError=errors.join(' | ').slice(0,200);else PRICE_GUARD_STATUS.lastError='';
-    return {updated,availabilityChanged,errors};
+    return {updated,availabilityChanged,unverified,recovered,errors};
   }catch(e){PRICE_GUARD_STATUS.lastError=String(e.message||e).slice(0,200);return {error:PRICE_GUARD_STATUS.lastError};}
   finally{PRICE_WATCH_RUNNING=false;}
 }
@@ -2277,11 +2308,13 @@ async function runProviderPriceSync(options={}){
   if(GLOBAL_PRICE_SYNC_RUNNING)return {ok:false,busy:true,updated:0,errors:['مزامنة أخرى قيد التنفيذ']};
   GLOBAL_PRICE_SYNC_RUNNING=true;
   let cfg=await getGlobalPricing();cfg.lastAttemptAt=nowISO();const settings=readJSON('settings.json',{});settings.pricing=cfg;writeJSON('settings.json',settings);
-  const result={ok:true,updated:0,skipped:0,providers:0,providerErrors:[],localUpdated:0,imported:0,unavailable:0,priceVerified:0};
+  const result={ok:true,updated:0,skipped:0,providers:0,providerErrors:[],localUpdated:0,imported:0,unavailable:0,unverified:0,recovered:0,priceVerified:0};
   try{
     // Migrate the legacy catalog once, then keep automatic pricing on host JSON.
     await ensureLocalServiceCatalogSeeded();
-    const root=readJSON('services.json',{});if(!root||typeof root!=='object'||Array.isArray(root))throw new Error('تعذر قراءة كتالوج الخدمات من ملفات الاستضافة');
+    let root=readJSON('services.json',{});if(!root||typeof root!=='object'||Array.isArray(root))throw new Error('تعذر قراءة كتالوج الخدمات من ملفات الاستضافة');
+    result.recovered=recoverTransientlyHiddenServices(root,'provider-sync-recovery');
+    if(result.recovered)root=readJSON('services.json',{});
     const rows=Object.entries(root).filter(([k,v])=>v&&typeof v==='object'&&!Array.isArray(v));
     if(!rows.length)throw new Error('كتالوج الخدمات على الاستضافة فارغ؛ لم تُجرَ مزامنة. استورد الخدمات أولاً أو تحقق من ملف services.json.');
     const providerIds=[...new Set(rows.map(([,v])=>String(v.providerId||'').trim()).filter(Boolean))];
@@ -2302,8 +2335,9 @@ async function runProviderPriceSync(options={}){
           const sid=providerServiceKey(svc);if(!sid){result.skipped++;continue}
           const latest=byId.get(sid);
           if(!latest){
-            if(svc.providerAvailable!==false||String(svc.availabilityStatus||'').toLowerCase()!=='unavailable')result.unavailable++;
-            appendServicePricePatch(allPatches,key,{providerAvailable:false,availabilityStatus:'unavailable',providerCheckedAt:nowISO(),providerAvailabilityReason:'not_found_in_live_supplier_catalog'});result.skipped++;continue;
+            // Provider catalogs can be partial or omit IDs temporarily. Preserve the site's
+            // active state and cached price; only note that this row was not verifiable now.
+            result.unverified++;result.skipped++;continue;
           }
           // Repair only generic/empty saved labels when the provider supplies a real name.
           // Never overwrite a meaningful custom name already saved by the site owner.
@@ -2314,16 +2348,20 @@ async function runProviderPriceSync(options={}){
           const base=providerServiceRate(latest);
           const oldBase=catalogRate(svc);
           if(base===null||(base===0&&oldBase!==null&&oldBase>0)){
-            appendServicePricePatch(allPatches,key,{providerAvailable:false,availabilityStatus:'unavailable',providerCheckedAt:nowISO(),providerAvailabilityReason:base===null?'live_provider_price_unverified':'suspicious_zero_provider_rate'});
-            result.unavailable++;result.skipped++;
-            if(base===0&&oldBase!==null&&oldBase>0)result.providerErrors.push(pid+' الخدمة '+sid+': تجاهلنا سعراً صفرياً غير متوقع حتى لا تتحول خدمة مدفوعة إلى مجانية');
+            // Keep the existing service enabled and cached price intact when the rate is
+            // absent or suspicious. The order guard will pause an order transiently instead.
+            result.unverified++;result.skipped++;
+            if(base===0&&oldBase!==null&&oldBase>0)result.providerErrors.push(pid+' الخدمة '+sid+': تجاهلنا سعراً صفرياً غير متوقع؛ لم نغيّر حالة الخدمة');
             continue;
           }
-          const priced=pricedPatch(svc,base,pct);appendServicePricePatch(allPatches,key,{...priced,providerAvailable:true,availabilityStatus:'available',providerCheckedAt:nowISO(),providerAvailabilityReason:''});pUpdated++;result.updated++;result.priceVerified++;
+          const priced=pricedPatch(svc,base,pct);
+          const canRestore=!hasExplicitSiteServiceDisable(svc)&&(svc.providerAvailable!==false||isAutoHiddenProviderService(svc));
+          appendServicePricePatch(allPatches,key,canRestore?{...priced,providerAvailable:true,availabilityStatus:'available',providerCheckedAt:nowISO(),providerAvailabilityReason:''}:{...priced});
+          pUpdated++;result.updated++;result.priceVerified++;
           for(const a of localServices){
             if(String(a.providerId||'')===pid&&String(a.providerServiceId||a.id||'')===sid){
               if(originalProviderName&&(!String(a.name||'').trim()||/^(?:service|خدمة|service\s*#?\s*\d*|خدمة\s*#?\s*\d*|unknown service|خدمة غير مسماة)$/i.test(String(a.name||'').trim())))a.name=originalProviderName;
-              Object.assign(a,priced,{rateUsd:priced.sellingUsd,rate:priced.sellingUsd,providerAvailable:true,availabilityStatus:'available',providerCheckedAt:nowISO(),providerAvailabilityReason:''});localUpdated++;
+              Object.assign(a,priced,{rateUsd:priced.sellingUsd,rate:priced.sellingUsd,...(!hasExplicitSiteServiceDisable(a)&&(a.providerAvailable!==false||isAutoHiddenProviderService(a))?{providerAvailable:true,availabilityStatus:'available',providerCheckedAt:nowISO(),providerAvailabilityReason:''}:{})});localUpdated++;
             }
           }
         }
@@ -2348,9 +2386,9 @@ async function runProviderPriceSync(options={}){
     if(Object.keys(allPatches).length){for(const [composite,value] of Object.entries(allPatches)){const split=composite.indexOf('/');if(split<1)continue;const key=composite.slice(0,split),field=composite.slice(split+1);if(Object.prototype.hasOwnProperty.call(root,key)&&root[key]&&typeof root[key]==='object')root[key][field]=value;}}
     if(Object.keys(allPatches).length||result.imported){writeJSON('services.json',root);ensureNumericSiteServiceIds();markCatalogSeeded();result.storage='hosting-json';}
     if(localUpdated)writeJSON('api_services.json',localServices);result.localUpdated=localUpdated;
-    cfg=localGlobalPricing();cfg.lastAttemptAt=nowISO();cfg.lastResult={updated:result.updated,skipped:result.skipped,providers:result.providers,localUpdated:result.localUpdated,namesFixed:Number(result.namesFixed||0),imported:result.imported,unavailable:result.unavailable,priceVerified:result.priceVerified};cfg.lastError=result.providerErrors.join(' | ').slice(0,700);if(result.updated>0){cfg.lastSuccessAt=nowISO();}else if(!result.providerErrors.length){cfg.lastError='لم يتم العثور على خدمات مطابقة للتحديث'};
+    cfg=localGlobalPricing();cfg.lastAttemptAt=nowISO();cfg.lastResult={updated:result.updated,skipped:result.skipped,providers:result.providers,localUpdated:result.localUpdated,namesFixed:Number(result.namesFixed||0),imported:result.imported,unavailable:result.unavailable,unverified:result.unverified,recovered:result.recovered,priceVerified:result.priceVerified};cfg.lastError=result.providerErrors.join(' | ').slice(0,700);if(result.updated>0){cfg.lastSuccessAt=nowISO();}else if(!result.providerErrors.length){cfg.lastError='لم يتم العثور على خدمات مطابقة للتحديث'};
     const st=readJSON('settings.json',{});st.pricing=cfg;writeJSON('settings.json',st);try{await firebaseWriteJson('config/pricing',cfg,7000)}catch(_){}
-    result.pricing=cfg;return result;
+    result.safetyPolicy='Missing or unverified provider rows do not disable site services; order attempts still fail closed until live cost is verified.';result.pricing=cfg;return result;
   }catch(e){result.ok=false;result.providerErrors.push(String(e.message||e).slice(0,180));const st=readJSON('settings.json',{});const p=cleanGlobalPricing(st.pricing||{});p.lastAttemptAt=nowISO();p.lastError=result.providerErrors.join(' | ').slice(0,700);st.pricing=p;writeJSON('settings.json',st);try{await firebaseWriteJson('config/pricing',p,5000)}catch(_){}return result;
   }finally{GLOBAL_PRICE_SYNC_RUNNING=false}
 }
@@ -5179,7 +5217,7 @@ async function routeAPI(req,res,urlObj){
     try { buildFile=fs.readFileSync(path.join(ROOT,'BUILD_ID.txt'),'utf8').trim(); } catch(_) {}
     const deploymentConsistent=uiVersion===APP_VERSION && uiBuildId===BUILD_ID && versionFile===APP_VERSION && buildFile===BUILD_ID;
     const dbInfo=firebaseDatabaseDiagnosticInfo();
-    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.37',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
+    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.38',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
     // Keep operational configuration details private; only an authenticated admin can inspect them.
     if(isAdmin(req)){const credentialStatus=firebaseServiceAccountStatus();health.firebaseDatabase={host:dbInfo.host,source:dbInfo.source,databaseProjectHint:dbInfo.databaseProjectHint,serviceAccountProjectId:dbInfo.serviceAccountProjectId||null,configuredWebProjectId:dbInfo.configuredWebProjectId||null,serviceAccountProjectMatch:dbInfo.serviceAccountProjectMatch};health.securityConfig={sessionSecretConfigured:!!String(process.env.SESSION_SECRET||'').trim(),dedicatedEncryptionKeyConfigured:!!String(process.env.SADA_ENCRYPTION_KEY||'').trim(),stableEncryptionAvailable:telegramEncryptionReady(),firebaseConfigured:!!FIREBASE_DATABASE_URL,firebaseServiceAccountConfigured:credentialStatus.ok,firebaseCredentialStatus:{ok:credentialStatus.ok,code:credentialStatus.code,source:credentialStatus.source,message:credentialStatus.message},firebaseDatabaseSecretConfigured:!!String(process.env.FIREBASE_DATABASE_SECRET||'').trim(),firebaseAuthAvailable:firebaseAuthAvailable(),emailServiceConfigured:!!(String(process.env.RESEND_API_KEY||'').trim()&&String(process.env.RESEND_FROM_EMAIL||process.env.EMAIL_FROM||'').trim()),telegramTokenFromEnvironment:!!String(process.env.TELEGRAM_BOT_TOKEN||'').trim(),adminPasswordFromEnvironment:!!(String(process.env.ADMIN_PASSWORD||'').trim()||String(process.env.ADMIN_PASSWORD_HASH||'').trim())};}
     return json(res,200,health);
