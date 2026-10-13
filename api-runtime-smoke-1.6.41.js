@@ -157,6 +157,16 @@ async function main(){
     const adminPayload=Buffer.from(JSON.stringify({username:'admin@example.test',role:'admin',iat:Date.now()})).toString('base64url');
     const adminSig=crypto.createHmac('sha256',sessionSecret).update(adminPayload).digest('base64url');
     const adminCookie={Cookie:`sadairaq_sid=${adminPayload}.${adminSig}`};
+    const freeServiceList=await req('/api/admin/free-services',{headers:adminCookie});
+    assert.equal(freeServiceList.status,200,`admin free-service manager must load instead of failing when providerStore returns a Set: ${JSON.stringify(freeServiceList.data)}`);
+    assert.equal(freeServiceList.data.ok,true);
+    assert(freeServiceList.data.providers.some(p=>p.id==='mock-provider'&&p.configured===true),'configured supplier must appear in the custom free-service dropdown');
+    assert(Array.isArray(freeServiceList.data.services),'custom free-service manager must return an empty or populated list');
+    console.log('PASS runtime: admin free-services GET returns providers and records without Set/includes crash');
+    const manualServiceListBefore=await req('/api/admin/manual-services',{headers:adminCookie});
+    assert.equal(manualServiceListBefore.status,200,`manual-support services manager should load independently: ${JSON.stringify(manualServiceListBefore.data)}`);
+    assert(Array.isArray(manualServiceListBefore.data.services),'manual-support administration must return an array');
+    console.log('PASS runtime: admin manual-service API loads without requiring or exposing supplier credentials');
     const sync=await req('/api/admin/pricing/sync',{method:'POST',headers:adminCookie});
     assert.equal(sync.status,200,`manual provider service sync should run: ${JSON.stringify(sync.data)}`);
     assert.equal(sync.data.ok,true,`provider catalog sync should succeed: ${JSON.stringify(sync.data)}`);
@@ -223,6 +233,38 @@ async function main(){
     const staleFreeOrder=await req('/api/order/create',{method:'POST',headers:{Cookie:cookie,'Content-Type':'application/json'},body:JSON.stringify({providerId:'mock-provider',siteServiceId:customSiteId,providerServiceId:'77',firebaseServiceKey:customSiteId,link:'https://example.com/stale-deleted-free-offer',quantity:10,localId:'deleted-free-stale-test'})});
     assert.equal(staleFreeOrder.status,409,'a stale deleted free-service listing must not fall through to a same-provider paid catalog service');assert.equal(providerAddCalls,callsBeforeStaleFree,'deleted service stale request must not be forwarded');
     console.log('PASS runtime: deleting custom free offer does not delete or redirect the matching normal provider service');
+
+    // Manually fulfilled services use a separate store, charge the site customer according to the configured rate,
+    // create a normal public order number/support message, and never make an upstream supplier call.
+    const addManual=await req('/api/admin/manual-services',{method:'POST',headers:{...adminCookie,'Content-Type':'application/json'},body:JSON.stringify({action:'save',name:'Manual TikTok support mock',description:'Send the request message to support.',platform:'Tiktok',category:'خدمات خاصة',sellingUsd:10,min:1,max:100,perAccountLimit:1,enabled:true})});
+    assert.equal(addManual.status,200,`manual-support service should save: ${JSON.stringify(addManual.data)}`);
+    const manual=addManual.data.service,manualKey=String(manual.key),manualSiteId=String(manual.siteServiceId);
+    assert.match(manualKey,/^manual_[a-f0-9]{24}$/);assert.match(manualSiteId,/^\d{4,}$/);assert.equal(manual.serviceKind,'manual_support');assert.equal(manual.providerId,'manual-support');assert.equal(manual.sellingUsd,10);
+    const manualCatalog=await req('/api/catalog?path=services',{headers:{Cookie:cookie}});
+    assert.equal(manualCatalog.status,200);const catalogManual=manualCatalog.data.value[manualKey];assert(catalogManual,'manual-support service must appear in the selected site section');assert.equal(catalogManual.adminManualService,true);assert.equal(catalogManual.category,'خدمات خاصة');assert.equal(catalogManual.providerRateUsd,undefined,'manual service must not leak a supplier cost');
+    const manualDetail=await req('/api/catalog?path=services/'+encodeURIComponent(manualKey),{headers:{Cookie:cookie}});assert.equal(manualDetail.status,200);assert.equal(manualDetail.data.value.siteServiceId,manualSiteId);
+    const providerCallsBeforeManual=providerAddCalls,balanceBeforeManual=Number(rootDb.users.tester.balance);
+    const manualRequestBody={providerId:'manual-support',serviceKind:'manual_support',manualService:true,manualServiceKey:manualKey,siteServiceId:manualSiteId,serviceId:manualSiteId,link:'https://tiktok.com/@sample-account',quantity:100,localId:'manual-support-order-1'};
+    const manualOrder=await req('/api/order/create',{method:'POST',headers:{Cookie:cookie,'Content-Type':'application/json'},body:JSON.stringify(manualRequestBody)});
+    assert.equal(manualOrder.status,200,`manual order should be created without supplier integration: ${JSON.stringify(manualOrder.data)}`);
+    assert.equal(manualOrder.data.ok,true);assert.match(String(manualOrder.data.publicOrderNo),/^\d{4,}$/);assert.equal(manualOrder.data.chargeUsd,1);assert.equal(manualOrder.data.totalIQD,1250);assert.equal(providerAddCalls,providerCallsBeforeManual,'manual-support order must never call provider API');assert.equal(Number(rootDb.users.tester.balance),balanceBeforeManual-1250,'manual service fee should be charged to user wallet once');
+    const supportMessage=String(manualOrder.data.supportMessage||'');assert(supportMessage.includes('#'+manualOrder.data.publicOrderNo));assert(supportMessage.includes('Manual TikTok support mock'));assert(supportMessage.includes('https://tiktok.com/@sample-account'));assert(supportMessage.includes('💵 السعر: $1.00'));assert(supportMessage.includes('أرسل هذه الرسالة كاملة للدعم الفني'));
+    const savedManualOrder=rootDb.orders['manual-support-order-1'];assert(savedManualOrder,'manual order must be written and read-verified in Firebase');assert.equal(savedManualOrder.serviceKind,'manual_support');assert.equal(savedManualOrder.manualSupportStatus,'awaiting_contact');assert.equal(savedManualOrder.providerOrderId,'');assert.equal(savedManualOrder.supportMessage,supportMessage);
+    const manualBalanceAfterFirst=Number(rootDb.users.tester.balance);
+    const manualDuplicate=await req('/api/order/create',{method:'POST',headers:{Cookie:cookie,'Content-Type':'application/json'},body:JSON.stringify(manualRequestBody)});
+    assert.equal(manualDuplicate.status,200,`duplicate manual submit should return the existing order: ${JSON.stringify(manualDuplicate.data)}`);assert.equal(manualDuplicate.data.idempotent,true);assert.equal(manualDuplicate.data.publicOrderNo,manualOrder.data.publicOrderNo);assert.equal(Number(rootDb.users.tester.balance),manualBalanceAfterFirst);assert.equal(providerAddCalls,providerCallsBeforeManual);
+    const thirdManual=await req('/api/order/create',{method:'POST',headers:{Cookie:cookie,'Content-Type':'application/json'},body:JSON.stringify({...manualRequestBody,link:'https://tiktok.com/@other',localId:'manual-support-order-2'})});
+    assert.equal(thirdManual.status,429,`per-service manual limit should be enforced in Firebase: ${JSON.stringify(thirdManual.data)}`);assert.equal(thirdManual.data.stage,'manual_service_limit');assert.equal(Number(rootDb.users.tester.balance),manualBalanceAfterFirst);assert.equal(providerAddCalls,providerCallsBeforeManual);
+    assert(Array.isArray(rootDb.users.tester.sadaManualSupportUsage?.[crypto.createHash('sha256').update(manualKey).digest('hex').slice(0,40)]),'manual service quota must be atomically recorded in the Firebase user record');
+    const manualUserOrders=await req('/api/user/orders',{headers:{Cookie:cookie}});assert.equal(manualUserOrders.status,200);const listedManual=manualUserOrders.data.orders.find(o=>String(o.id)==='manual-support-order-1');assert(listedManual,'manual order should be visible in the user order history');assert.equal(listedManual.supportMessage,supportMessage);
+    const turnManualOff=await req('/api/admin/manual-services',{method:'POST',headers:{...adminCookie,'Content-Type':'application/json'},body:JSON.stringify({action:'toggle',key:manualKey,enabled:false})});assert.equal(turnManualOff.status,200);
+    const callsBeforeStaleManual=providerAddCalls,balanceBeforeStaleManual=Number(rootDb.users.tester.balance);
+    const staleManual=await req('/api/order/create',{method:'POST',headers:{Cookie:cookie,'Content-Type':'application/json'},body:JSON.stringify({...manualRequestBody,localId:'manual-support-stale-order',link:'https://tiktok.com/@stale'})});
+    assert.equal(staleManual.status,409,'disabled manual service listing must fail closed');assert.equal(staleManual.data.stage,'manual_service_lookup');assert.equal(providerAddCalls,callsBeforeStaleManual);assert.equal(Number(rootDb.users.tester.balance),balanceBeforeStaleManual);
+    const disabledManualDetail=await req('/api/catalog?path=services/'+encodeURIComponent(manualKey),{headers:{Cookie:cookie}});assert.equal(disabledManualDetail.status,200);assert.equal(disabledManualDetail.data.value,null,'disabled manual service must disappear from active catalogue reads');
+    console.log('PASS runtime: manual-support services are priced and persisted as real public orders, charge exactly once, provide a copyable support message, enforce a Firebase 24-hour limit, and never call suppliers');
+    console.log('PASS runtime: disabled manual-support services fail closed without a debit or supplier call');
+
     const syncedServices=await req('/api/v1',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({action:'services',key:freshKey}).toString()});
     assert.equal(syncedServices.status,200);assert(syncedServices.data.some(x=>x.id==='1002'),'catalog service must not disappear just because provider sync omitted it');
     const apiRemovedBalance=Number(rootDb.users.tester.balance),apiRemovedCalls=providerAddCalls;

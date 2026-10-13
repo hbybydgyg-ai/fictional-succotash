@@ -225,6 +225,7 @@ function ensureData() {
     'api_refills.json':[],
     'services.json':{},
     'free_services.json':{},
+    'manual_services.json':{},
     'free_service_usage.json':{},
     'category_meta.json':{},
     'provider_services.json':{},
@@ -244,7 +245,7 @@ function ensureData() {
     else if(file==='orders.json'||file==='provider_failures.json'||file==='payments.json'||file==='notifications.json'||file==='telegram_notifications.json'||file==='api_refills.json') ok=Array.isArray(cur);
     else if(file==='notification_seen.json'||file==='user_notifications.json') ok=!!(cur&&typeof cur==='object'&&!Array.isArray(cur));
     else if(file==='providers.json') ok=!!(cur&&typeof cur==='object'&&cur.providers&&typeof cur.providers==='object'&&!Array.isArray(cur.providers));
-    else if(file==='settings.json'||file==='api_keys.json'||file==='stats_state.json'||file==='order_audit_state.json'||file==='google_accounts.json'||file==='telegram_order_state.json'||file==='email_challenges.json'||file==='services.json'||file==='free_services.json'||file==='free_service_usage.json'||file==='category_meta.json'||file==='provider_services.json'||file==='catalog_settings.json') ok=!!(cur&&typeof cur==='object'&&!Array.isArray(cur));
+    else if(file==='settings.json'||file==='api_keys.json'||file==='stats_state.json'||file==='order_audit_state.json'||file==='google_accounts.json'||file==='telegram_order_state.json'||file==='email_challenges.json'||file==='services.json'||file==='free_services.json'||file==='manual_services.json'||file==='free_service_usage.json'||file==='category_meta.json'||file==='provider_services.json'||file==='catalog_settings.json') ok=!!(cur&&typeof cur==='object'&&!Array.isArray(cur));
     else if(file==='api_services.json'||file==='balance_ledger.json'||file==='refunds.json'||file==='earn_requests.json') ok=Array.isArray(cur);
     if(!ok){
       // Never silently discard unreadable legacy data: retain a byte-for-byte recovery copy first.
@@ -2772,9 +2773,10 @@ function telegramOrderMessage(o={}){
   let hasValidLink=false;try{const u=new URL(link);hasValidLink=(u.protocol==='http:'||u.protocol==='https:');}catch(_){hasValidLink=false;}
   const quantity=numeric(o.quantity??o.qty)??0;
   const sale=numeric(o.chargeUsd??o.sellingPriceUsd??o.amountUsd??(o.totalIQD!==undefined?Number(o.totalIQD)/FIXED_RATE:undefined));
+  const manual=String(o.serviceKind||'')==='manual_support'||o.manualSupport===true;
   const free=o.free===true||o.isFree===true||String(o.category||'').toLowerCase().includes('مجاني')||String(o.category||'').toLowerCase().includes('free')||(sale!==null&&sale<=0);
-  const providerName=text(o.providerName||o.provider||o.providerId,free?'بدون مزوّد (خدمة مجانية)':'غير مرتبط بمزوّد');
-  const providerOrderId=text(o.providerOrderId||o.smmpartyOrderId||o.provider_order_id||o.providerOrderID,'⏳ بانتظار الإرسال');
+  const providerName=text(o.providerName||o.provider||o.providerId,manual?'التنفيذ يدوياً عبر الدعم الفني':free?'بدون مزوّد (خدمة مجانية)':'غير مرتبط بمزوّد');
+  const providerOrderId=text(o.providerOrderId||o.smmpartyOrderId||o.provider_order_id||o.providerOrderID,manual?'لا يوجد — بانتظار التواصل مع الدعم':'⏳ بانتظار الإرسال');
   const memberName=text(o.userName||o.fullName||o.displayName||o.customerName||o.name||o.user||o.username,'غير متوفر');
   const memberId=text(o.memberId||o.userId||o.uid||o.firebaseUid||o.telegramUserId||o.user||o.username,'غير متوفر');
   let time='غير متوفر';
@@ -2798,7 +2800,7 @@ ${sourceLine}
 ━━━━━━━━━━━━━━━
 🏢 | المزود: ${providerName}
 🔑 | رقم الطلب داخل المزود: ${providerOrderId}
-🎁 | النوع: ${free?'مجاني 🎁':'مدفوع 💳'}
+🎁 | النوع: ${manual?'خدمة خاصة — تنفيذ يدوي 🛠️':free?'مجاني 🎁':'مدفوع 💳'}
 
 ━━━━━━━━━━━━━━━
 👤 العضو
@@ -2912,6 +2914,59 @@ function normalizeWebsiteOrderService(row,providerId,serviceId,fbKey=''){
 }
 function readAdminFreeServices(){
   const v=readJSON('free_services.json',{});return v&&typeof v==='object'&&!Array.isArray(v)?v:{};
+}
+function readAdminManualServices(){
+  const v=readJSON('manual_services.json',{});return v&&typeof v==='object'&&!Array.isArray(v)?v:{};
+}
+function adminManualServicePublic(row,key=''){
+  if(!row||typeof row!=='object')return null;
+  const siteServiceId=String(row.siteServiceId||row.id||'').trim();
+  const description=String(row.description||row.desc||'');
+  const category=String(row.category||'خدمات خاصة').trim();
+  const platform=String(row.platform||row.serviceApp||'Other');
+  const rate=Number(row.sellingUsd??row.rateUsd??row.rate??0);
+  return {
+    key:String(key||row.key||row.fbKey||''),fbKey:String(key||row.key||row.fbKey||''),id:siteServiceId,siteServiceId,internalServiceId:siteServiceId,sadaServiceId:siteServiceId,
+    name:String(row.name||'خدمة خاصة'),description,desc:description,descriptionOverride:description,
+    category,groups:[category],categories:[category],platform,app:platform,serviceApp:platform,
+    providerId:'manual-support',providerName:'التنفيذ عبر الدعم الفني',providerServiceId:'',serviceId:siteServiceId,smmpartyId:'',
+    sellingUsd:Number.isFinite(rate)&&rate>=0?rate:0,rateUsd:Number.isFinite(rate)&&rate>=0?rate:0,price:Number.isFinite(rate)&&rate>=0?rate*FIXED_RATE:0,
+    min:Math.max(1,Math.floor(Number(row.min)||1)),max:Math.max(Math.max(1,Math.floor(Number(row.min)||1)),Math.floor(Number(row.max)||100)),
+    perAccountLimit:Math.max(0,Math.floor(Number(row.perAccountLimit)||0)),enabled:row.enabled!==false,providerAvailable:true,
+    serviceKind:'manual_support',manualService:true,adminManualService:true,adminManualServiceKey:String(key||row.key||row.fbKey||''),source:'manual-support'
+  };
+}
+function nextManualSiteServiceId(){
+  const used=new Set();
+  const addRows=root=>{for(const row of Object.values(root&&typeof root==='object'?root:{})){const id=String(row?.siteServiceId||row?.internalServiceId||row?.sadaServiceId||'');if(/^\d{4,}$/.test(id))used.add(id);}};
+  addRows(readJSON('services.json',{}));addRows(readAdminFreeServices());addRows(readAdminManualServices());
+  let n=BigInt(Date.now());while(used.has(String(n)))n++;return String(n);
+}
+function findAdminManualService(serviceKey='',siteServiceId=''){
+  const key=String(serviceKey||'').trim(),sid=String(siteServiceId||'').trim(),root=readAdminManualServices();
+  if(key&&root[key])return {key,row:root[key]};
+  if(sid){for(const [k,row] of Object.entries(root)){if([String(row?.siteServiceId||''),String(row?.id||''),String(row?.internalServiceId||'')].includes(sid))return {key:k,row};}}
+  return null;
+}
+function manualSupportMessage(order={}){
+  const safe=v=>String(v??'').replace(/[\r\n]+/g,' ').trim();
+  const price=Number(order.chargeUsd??order.sellingPriceUsd??0);
+  const lines=[
+    '📋 طلب خدمة خاصة — صدى العراق',
+    '━━━━━━━━━━━━━━━',
+    '🔢 رقم الطلب: #'+safe(order.publicOrderNo||order.id||'غير متوفر'),
+    '⚡ الخدمة: '+safe(order.serviceName||'خدمة خاصة'),
+    ...(safe(order.description)?['📝 الوصف: '+safe(order.description).slice(0,900)]:[]),
+    '📱 المنصة: '+safe(order.serviceApp||order.platform||order.category||'غير محددة'),
+    '🔗 الرابط: '+safe(order.link||'غير متوفر'),
+    '📦 الكمية: '+Math.max(0,Number(order.quantity)||0).toLocaleString('en-US'),
+    '💵 السعر: $'+(Number.isFinite(price)?price:0).toFixed(2),
+    '━━━━━━━━━━━━━━━',
+    '✅ تم إنشاء طلبك بنجاح',
+    '⚠️ طلبك لن يُنفذ تلقائياً. أرسل هذه الرسالة كاملة للدعم الفني حتى تتم متابعة طلبك.',
+    'شكراً جزيلاً'
+  ];
+  return lines.join('\n');
 }
 function adminFreeServicePublic(row){
   if(!row||typeof row!=='object')return null;
@@ -3744,7 +3799,7 @@ const SADA_DB_BACKUP_FILES=[
   'notifications.json','user_notifications.json','earn_requests.json','refunds.json',
   'order_audit_state.json','telegram_order_state.json','telegram_notifications.json',
   'notification_seen.json','stats_state.json','api_services.json','api_refills.json','providers.json',
-  'providers.runtime.json','settings.json','provider_failures.json','services.json','free_services.json','free_service_usage.json','category_meta.json','provider_services.json','catalog_settings.json',
+  'providers.runtime.json','settings.json','provider_failures.json','services.json','free_services.json','manual_services.json','free_service_usage.json','category_meta.json','provider_services.json','catalog_settings.json',
   'legacy_import_staging.json','legacy_import_state.json','legacy_import_users_private.json',
   'legacy_import_transactions_private.json','legacy_seed_bootstrap_status.json'
 ];
@@ -3887,6 +3942,117 @@ function normalizeTelegramChannelUrl(value){
 }
 function isValidTelegramChannelUrl(value){return !!normalizeTelegramChannelUrl(value);}
 
+async function reserveManualSupportUsageAndWallet(username,userPath,serviceKey,limit,localId,amountIQD,siteServiceId){
+  const uname=String(username||'').trim(),path=String(userPath||'').trim(),requestId=String(localId||'').trim(),svcKey=String(serviceKey||'').trim();
+  if(!uname||!path||!requestId||!svcKey)return {ok:false,error:'تعذر تثبيت حساب المستخدم وبيانات الخدمة في Firebase.'};
+  const marker=sha256(requestId+'|'+uname).slice(0,40),usageKey=sha256(svcKey).slice(0,40),now=Date.now(),at=new Date(now).toISOString(),windowMs=24*60*60*1000,max=Math.max(0,Math.min(100,Math.floor(Number(limit)||0))),amount=Math.max(0,Number(amountIQD)||0);
+  let tx;
+  try{
+    tx=await firebaseTransaction(path,current=>{
+      if(!current||typeof current!=='object'||Array.isArray(current))return {write:false,result:{error:'user-record-not-found'}};
+      const reservations=current.sadaOrderReservations&&typeof current.sadaOrderReservations==='object'&&!Array.isArray(current.sadaOrderReservations)?{...current.sadaOrderReservations}:{};
+      if(reservations[marker])return {write:false,result:{duplicate:true,state:String(reservations[marker].state||'reserved')}};
+      const src=current.sadaManualSupportUsage&&typeof current.sadaManualSupportUsage==='object'&&!Array.isArray(current.sadaManualSupportUsage)?current.sadaManualSupportUsage:{};
+      const usage={...src};let rows=(Array.isArray(usage[usageKey])?usage[usageKey]:[]).filter(x=>x&&typeof x==='object'&&Number.isFinite(Date.parse(x.at||''))&&now-Date.parse(x.at||'')<windowMs);
+      if(rows.some(x=>String(x.requestId||'')===requestId))return {write:false,result:{duplicate:true,state:'usage-reserved'}};
+      if(max>0&&rows.length>=max){const first=rows.map(x=>Date.parse(x.at||'')).filter(Number.isFinite).sort((a,b)=>a-b)[0]||now;return {write:false,result:{limit:max,nextAllowedAt:new Date(first+windowMs).toISOString()}};}
+      const balance=Number(current.balance??current.balanceIQD??0);
+      if(!Number.isFinite(balance)||balance<amount)return {write:false,result:{insufficient:true,balanceIQD:Number.isFinite(balance)?balance:0}};
+      current.balance=Number((balance-amount).toFixed(4));
+      reservations[marker]={localId:requestId,amountIQD:amount,state:'reserved',createdAt:at,providerId:'manual-support',siteServiceId:String(siteServiceId),serviceKind:'manual_support'};
+      current.sadaOrderReservations=reservations;
+      if(max>0){rows.push({requestId,at,state:'reserved'});usage[usageKey]=rows.slice(-200);current.sadaManualSupportUsage=usage;}
+      current.updatedAt=at;
+      return {write:true,value:current,result:{reserved:true,balanceBeforeIQD:balance,balanceAfterIQD:current.balance,marker,usageKey}};
+    },12000,8);
+  }catch(e){console.warn('manual support wallet reservation failed:',String(e.message||e).slice(0,150));return {ok:false,storageUnavailable:true,error:'تعذر حفظ حجز الطلب في Firebase؛ لم يتم إنشاء الطلب أو خصم الرصيد بشكل مؤكد.'};}
+  const result=tx?.result||{};
+  if(result.error)return {ok:false,error:'لم يُعثر على سجل المستخدم في Firebase.'};
+  if(result.duplicate)return {ok:false,duplicate:true,error:'يوجد طلب بنفس رقم التتبع قيد المعالجة؛ لم يُخصم رصيد إضافي.'};
+  if(result.limit)return {ok:false,limit:result.limit,nextAllowedAt:result.nextAllowedAt,error:'وصلت إلى الحد المسموح لهذه الخدمة خلال 24 ساعة. حاول بعد '+new Date(result.nextAllowedAt).toLocaleString('en-GB',{timeZone:'Asia/Baghdad',hour12:false})+' بتوقيت بغداد.'};
+  if(result.insufficient)return {ok:false,insufficient:true,balanceIQD:result.balanceIQD,error:'رصيدك غير كافٍ لتكلفة هذه الخدمة.'};
+  if(!result.reserved)return {ok:false,error:'تعذر تأكيد إنشاء الطلب؛ لم يتم إرسال طلب إلى مزود ولم نعتبره ناجحاً.'};
+  return {ok:true,marker,usageKey,balanceBeforeIQD:result.balanceBeforeIQD,balanceAfterIQD:result.balanceAfterIQD,amountIQD:amount};
+}
+async function releaseManualSupportUsageAndWallet(userPath,username,serviceKey,localId){
+  const path=String(userPath||'').trim(),uname=String(username||'').trim(),requestId=String(localId||'').trim(),svcKey=String(serviceKey||'').trim();if(!path||!uname||!requestId||!svcKey)return {ok:false};
+  const marker=sha256(requestId+'|'+uname).slice(0,40),usageKey=sha256(svcKey).slice(0,40);
+  try{
+    const tx=await firebaseTransaction(path,current=>{
+      if(!current||typeof current!=='object'||Array.isArray(current))return {write:false,result:{missing:true}};
+      const reservations=current.sadaOrderReservations&&typeof current.sadaOrderReservations==='object'&&!Array.isArray(current.sadaOrderReservations)?{...current.sadaOrderReservations}:{};
+      const reservation=reservations[marker];if(!reservation)return {write:false,result:{missing:true}};
+      const amount=Math.max(0,Number(reservation.amountIQD)||0),balance=Number(current.balance??current.balanceIQD??0);
+      current.balance=Number((balance+amount).toFixed(4));delete reservations[marker];current.sadaOrderReservations=reservations;
+      const src=current.sadaManualSupportUsage&&typeof current.sadaManualSupportUsage==='object'&&!Array.isArray(current.sadaManualSupportUsage)?{...current.sadaManualSupportUsage}:{};
+      if(Array.isArray(src[usageKey])){const rows=src[usageKey].filter(x=>String(x?.requestId||'')!==requestId);if(rows.length)src[usageKey]=rows;else delete src[usageKey];current.sadaManualSupportUsage=src;}
+      current.updatedAt=nowISO();return {write:true,value:current,result:{released:true,amountIQD:amount,balanceIQD:current.balance}};
+    },12000,8);
+    if(tx?.result?.released){if(tx.result.amountIQD>0)appendJsonLedger('balance_ledger.json',{user:uname,type:'refund',amountUSD:Number((tx.result.amountIQD/FIXED_RATE).toFixed(6)),amountIQD:tx.result.amountIQD,beforeIQD:null,afterIQD:tx.result.balanceIQD,reason:'إلغاء حجز خدمة يدوية لأن الطلب لم يُحفظ',admin:'system-manual-support',reference:requestId,createdAt:nowISO()});return {ok:true,released:true};}
+    return {ok:true,alreadyReleased:true};
+  }catch(e){console.error('manual support reservation release failed:',String(e.message||e).slice(0,150));return {ok:false,error:String(e.message||e)};}
+}
+async function handleManualSupportOrder(req,res,b,username,orderSession){
+  const providerId=String(b.providerId||'').trim(),serviceKey=String(b.manualServiceKey||b.adminManualServiceKey||'').trim(),serviceKind=String(b.serviceKind||'').trim();
+  const isManual=serviceKind==='manual_support'||b.manualService===true||providerId==='manual-support';
+  if(!isManual)return null;
+  const localId=String(b.localId||'').trim(),requestedSiteId=String(b.siteServiceId||b.serviceId||b.catalogServiceId||'').trim();
+  if(!localId||localId.length>100||!/^[A-Za-z0-9_-]+$/.test(localId))return {status:422,body:{ok:false,error:'رقم تتبع الطلب غير صالح.',stage:'manual_validate'}};
+  const ownedLocal=(readJSON('orders.json',[])||[]).find(o=>String(o.user||o.username||'')===username&&String(o.localId||'')===localId&&String(o.serviceKind||'')==='manual_support');
+  let oldOrder=ownedLocal||null;
+  if(!oldOrder){try{const remoteOrder=await firebaseGetJson('orders/'+firebaseSafeKey(localId),5000);if(remoteOrder&&String(remoteOrder.user||remoteOrder.username||'')===username&&String(remoteOrder.localId||'')===localId&&String(remoteOrder.serviceKind||'')==='manual_support')oldOrder=remoteOrder;}catch(_){} }
+  if(oldOrder){
+    if(serviceKey&&String(oldOrder.manualServiceKey||'')!==serviceKey)return {status:409,body:{ok:false,error:'رقم التتبع مستخدم مسبقاً لطلب خدمة مختلفة.',stage:'manual_duplicate'}};
+    const supportMessage=String(oldOrder.supportMessage||manualSupportMessage(oldOrder));
+    return {status:200,body:{ok:true,idempotent:true,siteOrderId:String(oldOrder.id||localId),publicOrderNo:String(oldOrder.publicOrderNo||''),siteServiceId:String(oldOrder.siteServiceId||''),serviceId:String(oldOrder.siteServiceId||''),providerId:'manual-support',providerName:'التنفيذ عبر الدعم الفني',providerOrderId:'',chargeUsd:Number(oldOrder.chargeUsd||0),totalIQD:Number(oldOrder.totalIQD??oldOrder.total??0),createdAt:oldOrder.createdAt||nowISO(),supportMessage,order:oldOrder}};
+  }
+  if(!serviceKey)return {status:422,body:{ok:false,error:'معرّف الخدمة اليدوية مطلوب.',stage:'manual_service_key'}};
+  const found=findAdminManualService(serviceKey,requestedSiteId),svc=found?.row;
+  if(!found||!svc||found.key!==serviceKey||svc.serviceKind!=='manual_support'||svc.deleted===true||svc.enabled===false)return {status:409,body:{ok:false,error:'الخدمة اليدوية غير متاحة حالياً. حدّث قائمة الخدمات قبل إعادة الطلب.',stage:'manual_service_lookup'}};
+  const siteServiceId=String(svc.siteServiceId||svc.id||'').trim();
+  if(!siteServiceId|| (requestedSiteId&&requestedSiteId!==siteServiceId))return {status:409,body:{ok:false,error:'معرّف خدمة صدى العراق لا يطابق الخدمة اليدوية المحددة.',stage:'manual_service_id'}};
+  const link=String(b.link||'').trim(),quantity=Number(b.quantity);
+  if(!link||!Number.isSafeInteger(quantity)||quantity<=0)return {status:422,body:{ok:false,error:'أدخل الرابط والكمية الصحيحة.',stage:'manual_validate'}};
+  if(!/^https?:\/\//i.test(link))return {status:422,body:{ok:false,error:'أدخل رابطاً يبدأ بـ https:// أو http://.',stage:'manual_validate'}};
+  try{const u=new URL(link);if(!['https:','http:'].includes(u.protocol)||!u.hostname.includes('.')||u.username||u.password)return {status:422,body:{ok:false,error:'الرابط غير صالح.',stage:'manual_validate'}};}catch(_){return {status:422,body:{ok:false,error:'الرابط غير صالح.',stage:'manual_validate'}};}
+  const min=Math.max(1,Math.floor(Number(svc.min)||1)),max=Math.max(min,Math.floor(Number(svc.max)||100));
+  if(quantity<min||quantity>max)return {status:422,body:{ok:false,error:'الكمية خارج حدود الخدمة المحددة.',stage:'manual_quantity',min,max}};
+  const serviceRate=Number(svc.sellingUsd??svc.rateUsd??0);
+  if(!Number.isFinite(serviceRate)||serviceRate<0)return {status:409,body:{ok:false,error:'سعر الخدمة غير مضبوط؛ لم يُنشأ الطلب.',stage:'manual_price'}};
+  const isAdminSession=orderSession?.role==='admin';let verifiedUser=null,walletUserPath='',localUser=readJSON('users.json',{users:{}}).users?.[username]||{};
+  if(!isAdminSession){try{verifiedUser=await findRemoteUserByUsername(username);walletUserPath=String(verifiedUser?.firebasePath||'');}catch(e){return {status:503,body:{ok:false,error:'تعذر التحقق من رصيد المستخدم في Firebase؛ لم يتم إنشاء الطلب.',stage:'manual_wallet_lookup'}};}if(!verifiedUser?.user||!walletUserPath)return {status:503,body:{ok:false,error:'لم يُعثر على سجل رصيد المستخدم في Firebase؛ لم يتم إنشاء الطلب.',stage:'manual_wallet_lookup'}};}
+  const userDiscount=Math.max(0,Math.min(100,Number(verifiedUser?.user?.discountPct??verifiedUser?.user?.discount??localUser.discountPct??orderSession?.discountPct??0)||0));
+  const calculatedChargeUsd=Number((Math.max(0,quantity/1000*serviceRate*(1-userDiscount/100))).toFixed(6));
+  const chargedUsd=isAdminSession?0:calculatedChargeUsd,chargeIQD=Number((chargedUsd*FIXED_RATE).toFixed(4));
+  let reservation=null;
+  if(!isAdminSession){
+    reservation=await reserveManualSupportUsageAndWallet(username,walletUserPath,serviceKey,Math.floor(Number(svc.perAccountLimit)||0),localId,chargeIQD,siteServiceId);
+    if(!reservation.ok){if(reservation.limit)return {status:429,body:{ok:false,error:reservation.error,stage:'manual_service_limit',limit:reservation.limit,nextAllowedAt:reservation.nextAllowedAt}};if(reservation.insufficient)return {status:402,body:{ok:false,error:reservation.error,stage:'manual_insufficient_balance',balanceIQD:reservation.balanceIQD}};if(reservation.duplicate)return {status:409,body:{ok:false,error:reservation.error,stage:'manual_duplicate',uncertain:true}};return {status:503,body:{ok:false,error:reservation.error||'تعذر حجز الطلب بأمان.',stage:'manual_wallet_reservation'}};}
+  }
+  let publicOrderNo='';
+  try{publicOrderNo=await nextPublicOrderNumber();}
+  catch(e){if(reservation?.ok){const rel=await releaseManualSupportUsageAndWallet(walletUserPath,username,serviceKey,localId);if(!rel.ok)return {status:503,body:{ok:false,uncertain:true,error:'تعذر تخصيص رقم الطلب وتعذر تأكيد استرجاع الحجز؛ تواصل مع الدعم قبل إعادة المحاولة.',stage:'manual_release'}};}return {status:503,body:{ok:false,error:'تعذر تخصيص رقم طلب؛ لم يتم حفظ الطلب.',stage:'manual_public_number'}};}
+  const createdAt=nowISO(),profile=verifiedUser?.user||localUser||{},siteOrderId=localId;
+  const order={id:siteOrderId,localId,publicOrderNo,user:username,userName:String(profile.fullName||profile.displayName||profile.name||profile.userName||profile.username||username),memberId:String(profile.id||profile.userId||profile.user_id||profile.uid||profile.firebaseUid||profile.authUid||username),orderSource:'app',origin:'app',providerId:'manual-support',providerName:'التنفيذ عبر الدعم الفني',providerOrderId:'',providerServiceId:'',serviceId:siteServiceId,siteServiceId,manualServiceKey:serviceKey,serviceKind:'manual_support',manualSupport:true,manualSupportStatus:'awaiting_contact',serviceName:String(svc.name||'خدمة خاصة'),description:String(svc.description||svc.desc||''),serviceApp:String(svc.platform||svc.serviceApp||'Other'),platform:String(svc.platform||svc.serviceApp||'Other'),category:String(svc.category||''),link,quantity,unitSellingUsd:serviceRate,discountPct:userDiscount,chargeUsd:chargedUsd,sellingPriceUsd:calculatedChargeUsd,quotedChargeUsd:calculatedChargeUsd,total:chargeIQD,totalIQD:chargeIQD,status:'pending',statusText:'بانتظار التواصل مع الدعم',billingMode:isAdminSession?'admin-test':'user',free:calculatedChargeUsd<=0,createdAt,updatedAt:createdAt,providerCostUnknown:true};
+  order.supportMessage=manualSupportMessage(order);
+  try{await persistOrderToFirebase(order);}
+  catch(e){
+    let check=null;try{check=await firebaseGetJson('orders/'+firebaseSafeKey(siteOrderId),5000);}catch(_){}
+    if(check&&String(check.id||'')===siteOrderId&&String(check.user||check.username||'')===username&&String(check.serviceKind||'')==='manual_support'){
+      Object.assign(order,check);order.supportMessage=String(check.supportMessage||manualSupportMessage(order));
+    }else{
+      if(check===null){/* A null read-back is not proof that a timed-out write did not commit; keep reservation fail-closed. */}
+      appendJsonLedger('provider_failures.json',{stage:'manual_support_persist',uncertain:true,user:username,localId,siteServiceId,serviceKey,error:String(e.message||e).slice(0,180),createdAt:nowISO()});
+      return {status:503,body:{ok:false,uncertain:true,error:'تعذر تأكيد حفظ الطلب في قاعدة البيانات. لم نعلن نجاحه ولم نحرر الحجز تلقائياً؛ تواصل مع الدعم وأعطهم رقم التتبع '+localId+'.',stage:'manual_persist'}};
+    }
+  }
+  try{appendJsonLedger('orders.json',order);}catch(e){console.warn('manual support local order mirror failed:',String(e.message||e).slice(0,100));}
+  if(!isAdminSession){try{await finalizeProviderOrderAccounting(username,localId,chargeIQD,createdAt);}catch(e){console.warn('manual support account counters reconciliation:',String(e.message||e).slice(0,100));}}
+  try{createUserNotification(username,{type:'order_created',orderId:siteOrderId,status:'pending',title:'تم إنشاء طلب خدمة خاصة #'+publicOrderNo,message:'تم استلام طلبك لخدمة '+String(order.serviceName||'خدمة خاصة')+'. أرسل رسالة الطلب إلى الدعم الفني لإتمام التنفيذ.',meta:{serviceName:order.serviceName,quantity,publicOrderNo,serviceKind:'manual_support'}});}catch(_){}
+  notifyTelegramNewOrder(order,{source:'manual-support'}).catch(()=>{});
+  return {status:200,body:{ok:true,siteOrderId,publicOrderNo,siteServiceId,serviceId:siteServiceId,providerId:'manual-support',providerName:'التنفيذ عبر الدعم الفني',providerOrderId:'',chargeUsd:calculatedChargeUsd,totalIQD:chargeIQD,discountPct:userDiscount,createdAt,supportMessage:order.supportMessage,order}};
+}
+
 async function routeAPI(req,res,urlObj){
   const p=normalizedPath(urlObj.pathname);
   const maintenanceState=readJSON('settings.json',{}).maintenance||{};
@@ -3909,10 +4075,44 @@ async function routeAPI(req,res,urlObj){
     store.maintenance={enabled:b.enabled===true,title,message,reason,imageUrl,updatedAt:nowISO(),updatedBy:String(currentSession?.username||ADMIN_USER)};writeJSON('settings.json',store);
     return json(res,200,{ok:true,maintenance:store.maintenance,storageMode:DATA_IS_EXTERNAL?'persistent-volume':'release-local',warning:!DATA_IS_EXTERNAL?'تم الحفظ بالمجلد الحالي؛ اربط Railway Volume دائم حتى لا تضيع الإعدادات والصورة بعد إعادة النشر.':''});
   }
+  // Administrator-created manual/support services are isolated from all supplier-backed catalog records.
+  if(p==='/api/admin/manual-services'&&req.method==='GET'){
+    if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
+    const services=Object.entries(readAdminManualServices()).filter(([,v])=>v&&v.serviceKind==='manual_support'&&v.deleted!==true).map(([key,v])=>({...adminManualServicePublic(v,key),...v,key,fbKey:key})).sort((a,b)=>(Date.parse(b.updatedAt||b.createdAt||0)||0)-(Date.parse(a.updatedAt||a.createdAt||0)||0));
+    return json(res,200,{ok:true,services,storageMode:DATA_IS_EXTERNAL?'persistent-volume':'release-local',warning:!DATA_IS_EXTERNAL?'اربط Railway Volume على /data وثبّت SADA_DATA_DIR=/data حتى تبقى الخدمات اليدوية بعد إعادة النشر.':''});
+  }
+  if(p==='/api/admin/manual-services'&&req.method==='POST'){
+    if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
+    const b=await bodyJSON(req,512*1024),action=String(b.action||'save'),key=String(b.key||'').trim(),root=readAdminManualServices(),actor=String(currentSession?.username||ADMIN_USER),at=nowISO();
+    if(action==='delete'){
+      if(!key||!root[key]||root[key].deleted===true)return json(res,404,{ok:false,error:'الخدمة اليدوية غير موجودة.'});
+      root[key]={...root[key],enabled:false,deleted:true,deletedAt:at,updatedAt:at,updatedBy:actor};writeJSON('manual_services.json',root);return json(res,200,{ok:true,deleted:true,key});
+    }
+    if(action==='toggle'){
+      if(!key||!root[key]||root[key].deleted===true)return json(res,404,{ok:false,error:'الخدمة اليدوية غير موجودة أو محذوفة.'});
+      root[key]={...root[key],enabled:b.enabled===true,updatedAt:at,updatedBy:actor};writeJSON('manual_services.json',root);return json(res,200,{ok:true,service:{...adminManualServicePublic(root[key],key),...root[key],key}});
+    }
+    if(action!=='save')return json(res,422,{ok:false,error:'الإجراء غير مدعوم.'});
+    const name=String(b.name||'').trim(),description=String(b.description||'').trim(),platform=String(b.platform||'Other').trim(),category=String(b.category||'').trim();
+    const min=Math.floor(Number(b.min)),max=Math.floor(Number(b.max)),perAccountLimit=Math.floor(Number(b.perAccountLimit)),sellingUsd=Number(b.sellingUsd);
+    if(!name||name.length>200||!category||category.length>160)return json(res,422,{ok:false,error:'أدخل اسم الخدمة والقسم. الحد الأقصى للاسم 200 حرف والقسم 160 حرفاً.'});
+    if(description.length>4000)return json(res,422,{ok:false,error:'الوصف طويل جداً؛ الحد الأقصى 4000 حرف.'});
+    if(!Number.isSafeInteger(min)||min<1||!Number.isSafeInteger(max)||max<min||max>1000000000)return json(res,422,{ok:false,error:'حدود الكمية غير صحيحة.'});
+    if(!Number.isSafeInteger(perAccountLimit)||perAccountLimit<0||perAccountLimit>100)return json(res,422,{ok:false,error:'حد الطلبات لكل حساب يجب أن يكون بين 0 و100. استخدم صفر لإلغاء الحد.'});
+    if(!Number.isFinite(sellingUsd)||sellingUsd<0||sellingUsd>1000000)return json(res,422,{ok:false,error:'سعر البيع لكل 1000 يجب أن يكون رقماً صحيحاً غير سالب.'});
+    const validPlatforms=new Set(['Instagram','Tiktok','Youtube','Facebook','Telegram','Twitter','Snapchat','Whatsapp','Linkedin','Other']);if(!validPlatforms.has(platform))return json(res,422,{ok:false,error:'المنصة المختارة غير مدعومة.'});
+    let serviceKey=key,old=null;
+    if(key){old=root[key];if(!old||old.deleted===true||old.serviceKind!=='manual_support')return json(res,404,{ok:false,error:'الخدمة المراد تعديلها غير موجودة.'});}
+    else{serviceKey='manual_'+crypto.randomBytes(12).toString('hex');}
+    const siteServiceId=String(old?.siteServiceId||nextManualSiteServiceId());
+    const record={...(old||{}),key:serviceKey,fbKey:serviceKey,id:siteServiceId,siteServiceId,internalServiceId:siteServiceId,sadaServiceId:siteServiceId,name,description,desc:description,platform,serviceApp:platform,category,groups:[category],categories:[category],sellingUsd:Number(sellingUsd.toFixed(6)),rateUsd:Number(sellingUsd.toFixed(6)),price:Number((sellingUsd*FIXED_RATE).toFixed(4)),min,max,perAccountLimit,enabled:b.enabled===undefined?(old?.enabled!==false):b.enabled===true,deleted:false,serviceKind:'manual_support',manualService:true,adminManualService:true,providerId:'manual-support',providerName:'التنفيذ عبر الدعم الفني',providerServiceId:'',createdAt:old?.createdAt||at,updatedAt:at,createdBy:old?.createdBy||actor,updatedBy:actor};
+    root[serviceKey]=record;writeJSON('manual_services.json',root);
+    return json(res,200,{ok:true,service:{...adminManualServicePublic(record,serviceKey),...record,key:serviceKey,siteServiceId},storageMode:DATA_IS_EXTERNAL?'persistent-volume':'release-local',warning:!DATA_IS_EXTERNAL?'تم الحفظ داخل مجلد النشر الحالي؛ اربط Railway Volume حتى تبقى الخدمة بعد إعادة النشر.':''});
+  }
   // Administrator-managed free offers are isolated from ordinary provider services.
   if(p==='/api/admin/free-services'&&req.method==='GET'){
     if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
-    const cfg=providerStore(),providers=Object.entries(cfg.providers||{}).filter(([id,v])=>v&&!cfg.deletedProviderIds?.includes(id)).map(([id,v])=>({id:String(id),name:String(v.name||id),configured:!!(v.url&&v.key)}));
+    const cfg=providerStore(),deletedIds=cfg.deletedProviderIds instanceof Set?cfg.deletedProviderIds:new Set(Array.isArray(cfg.deletedProviderIds)?cfg.deletedProviderIds.map(String):[]),providers=Object.entries(cfg.providers||{}).filter(([id,v])=>v&&!deletedIds.has(String(id))).map(([id,v])=>({id:String(id),name:String(v.name||id),configured:!!(v.url&&v.key)}));
     return json(res,200,{ok:true,services:Object.entries(readAdminFreeServices()).filter(([,v])=>v&&!v.deleted).map(([key,v])=>({...v,key,fbKey:key,providerRateUsd:catalogRate(v)})).sort((a,b)=>(Date.parse(b.updatedAt||b.createdAt||0)||0)-(Date.parse(a.updatedAt||a.createdAt||0)||0)),providers,storageMode:DATA_IS_EXTERNAL?'persistent-volume':'release-local',warning:!DATA_IS_EXTERNAL?'اربط Railway Volume على /data وثبّت SADA_DATA_DIR=/data حتى تبقى إعدادات الخدمات المجانية بعد إعادة النشر.':''});
   }
   if(p==='/api/admin/free-services/verify-service'&&req.method==='POST'){
@@ -4011,7 +4211,7 @@ async function routeAPI(req,res,urlObj){
   if(p==='/api/catalog'&&req.method==='GET'){
     const raw=String(urlObj.searchParams.get('path')||'services');const spec=catalogPathSpec(raw);
     if(!spec)return json(res,422,{ok:false,error:'مسار الكتالوج غير مسموح'});
-    if(raw==='services'||raw.startsWith('services/')){const seed=await ensureLocalServiceCatalogSeeded();ensureNumericSiteServiceIds();const got=catalogReadPath(raw);let value=got.value;if(raw==='services'&&value&&typeof value==='object'&&!Array.isArray(value)){value=Object.fromEntries(Object.entries(value).filter(([,v])=>v&&typeof v==='object'&&(isAdmin(req)||(v.providerAvailable!==false&&String(v.availabilityStatus||'').toLowerCase()!=='unavailable'))));for(const [freeKey,freeRow] of Object.entries(readAdminFreeServices())){if(!freeRow||freeRow.adminFreeService!==true||freeRow.enabled===false||freeRow.deleted===true)continue;const safeRow=isAdmin(req)?{...freeRow,fbKey:freeKey,adminFreeServiceKey:freeKey}:{...adminFreeServicePublic({...freeRow,fbKey:freeKey,adminFreeServiceKey:freeKey})};value[freeKey]=safeRow;}}else if(raw.startsWith('services/')){const freeKey=raw.slice('services/'.length),freeRow=readAdminFreeServices()[freeKey];if(freeRow&&freeRow.adminFreeService===true)value=(freeRow.enabled===false||freeRow.deleted===true)?null:(isAdmin(req)?{...freeRow,fbKey:freeKey,adminFreeServiceKey:freeKey}:adminFreeServicePublic({...freeRow,fbKey:freeKey,adminFreeServiceKey:freeKey}));else if(!isAdmin(req)&&value&&typeof value==='object'&&(value.providerAvailable===false||String(value.availabilityStatus||'').toLowerCase()==='unavailable'))value=null;}return json(res,200,{ok:true,value,source:seed.source,storageMode:DATA_IS_EXTERNAL?'persistent-volume':'release-local',warning:seed.warning||(!DATA_IS_EXTERNAL?'الكتالوج محفوظ في ملفات الخادم؛ لثبات التعديلات بعد إعادة نشر Railway يجب أن يكون مجلد البيانات مرتبطاً بوحدة تخزين دائمة.':'')});}
+    if(raw==='services'||raw.startsWith('services/')){const seed=await ensureLocalServiceCatalogSeeded();ensureNumericSiteServiceIds();const got=catalogReadPath(raw);let value=got.value;if(raw==='services'&&value&&typeof value==='object'&&!Array.isArray(value)){value=Object.fromEntries(Object.entries(value).filter(([,v])=>v&&typeof v==='object'&&(isAdmin(req)||(v.providerAvailable!==false&&String(v.availabilityStatus||'').toLowerCase()!=='unavailable'))));for(const [freeKey,freeRow] of Object.entries(readAdminFreeServices())){if(!freeRow||freeRow.adminFreeService!==true||freeRow.enabled===false||freeRow.deleted===true)continue;const safeRow=isAdmin(req)?{...freeRow,fbKey:freeKey,adminFreeServiceKey:freeKey}:{...adminFreeServicePublic({...freeRow,fbKey:freeKey,adminFreeServiceKey:freeKey})};value[freeKey]=safeRow;}for(const [manualKey,manualRow] of Object.entries(readAdminManualServices())){if(!manualRow||manualRow.serviceKind!=='manual_support'||manualRow.enabled===false||manualRow.deleted===true)continue;value[manualKey]=adminManualServicePublic(manualRow,manualKey);}}else if(raw.startsWith('services/')){const serviceKey=raw.slice('services/'.length),freeRow=readAdminFreeServices()[serviceKey],manualFound=findAdminManualService(serviceKey,'');if(freeRow&&freeRow.adminFreeService===true)value=(freeRow.enabled===false||freeRow.deleted===true)?null:(isAdmin(req)?{...freeRow,fbKey:serviceKey,adminFreeServiceKey:serviceKey}:{...adminFreeServicePublic({...freeRow,fbKey:serviceKey,adminFreeServiceKey:serviceKey})});else if(manualFound&&manualFound.row?.serviceKind==='manual_support')value=(manualFound.row.enabled===false||manualFound.row.deleted===true)?null:adminManualServicePublic(manualFound.row,manualFound.key);else if(!isAdmin(req)&&value&&typeof value==='object'&&(value.providerAvailable===false||String(value.availabilityStatus||'').toLowerCase()==='unavailable'))value=null;}return json(res,200,{ok:true,value,source:seed.source,storageMode:DATA_IS_EXTERNAL?'persistent-volume':'release-local',warning:seed.warning||(!DATA_IS_EXTERNAL?'الكتالوج محفوظ في ملفات الخادم؛ لثبات التعديلات بعد إعادة نشر Railway يجب أن يكون مجلد البيانات مرتبطاً بوحدة تخزين دائمة.':'')});}
     if(spec.bucket==='categoryMeta'){
       const localRoot=readJSON('category_meta.json',{});let remoteRoot={};let firebaseRead=true;try{const v=await firebaseGetJson('categoryMeta',10000);if(v&&typeof v==='object'&&!Array.isArray(v))remoteRoot=v;}catch(_){firebaseRead=false;}
       const merged=mergeCategoryMetaRoots(localRoot,remoteRoot);let value=merged;for(const part of spec.parts){if(!value||typeof value!=='object'||!Object.prototype.hasOwnProperty.call(value,part)){value=null;break;}value=value[part];}
@@ -5251,6 +5451,7 @@ async function routeAPI(req,res,urlObj){
     const username=userFromSession(req); if(!username)return json(res,401,{ok:false,error:'يجب تسجيل الدخول من جديد'});
     const isAdminSession=orderSession?.role==='admin';
     const b=await bodyJSON(req); const providerId=String(b.providerId||'').trim();
+    const manualResult=await handleManualSupportOrder(req,res,b,username,orderSession);if(manualResult)return json(res,manualResult.status,manualResult.body,manualResult.headers||{});
     // The website/catalog identifier is distinct from the provider's service number.
     // Old clients send serviceId=provider ID + firebaseServiceKey=site ID; new clients send both explicit fields.
     const legacyServiceId=String(b.serviceId||'').trim();
