@@ -1,7 +1,7 @@
 {
   "appName": "صدى العراق",
-  "version": "1.6.31",
-  "buildId": "SADA-1.6.31-FIXED-ASIACELL-NOTIFICATIONS-20261013",
+  "version": "1.6.33",
+  "buildId": "SADA-1.6.33-CLEAN-ROOT-REPLACE-20261013",
   "currency": "USD",
   "exchangeRate": 1250,
   "fixedRecharge": "5000 IQD = 4 USD",

@@ -27,8 +27,8 @@ function readStaticAssetBuffer(assetPath){
 const DATA = path.resolve(process.env.SADA_DATA_DIR || process.env.DATA_DIR || (process.env.RAILWAY_VOLUME_MOUNT_PATH ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, 'sada-data') : LEGACY_DATA));
 const DATA_IS_EXTERNAL = path.resolve(DATA) !== path.resolve(LEGACY_DATA);
 const APP_NAME = 'صدى العراق';
-const APP_VERSION = '1.6.31';
-const BUILD_ID = 'SADA-1.6.31-FIXED-ASIACELL-NOTIFICATIONS-20261013';
+const APP_VERSION = '1.6.33';
+const BUILD_ID = 'SADA-1.6.33-CLEAN-ROOT-REPLACE-20261013';
 const ADMIN_USER = process.env.ADMIN_EMAIL || 'hsydgyg5@gmail.com';
 // Never ship a default admin password in source. Configure ADMIN_PASSWORD or ADMIN_PASSWORD_HASH in Railway.
 const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || '').trim();
@@ -399,8 +399,11 @@ function session(req){
   return v;
 }
 function setSession(res, value){
-  const token=encodeSession(value);
-  sessions.set(token,{...value,createdAt:Date.now()});
+  // Keep a stable session-family identifier across token refreshes. Feature flows such as
+  // AsiaCell OTP must not key their server-side state to a token that /api/session rotates.
+  const sessionValue={...value,sessionId:String(value?.sessionId||crypto.randomUUID())};
+  const token=encodeSession(sessionValue);
+  sessions.set(token,{...sessionValue,createdAt:Date.now()});
   const forwarded=String(res._forwardedProto||'').toLowerCase();
   const secure=(String(process.env.COOKIE_SECURE||'auto').toLowerCase()==='true' || (String(process.env.COOKIE_SECURE||'auto').toLowerCase()==='auto' && forwarded==='https'))?'Secure; ':'';
   res.setHeader('Set-Cookie',`${SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; ${secure}Max-Age=86400`);
@@ -1265,7 +1268,7 @@ async function apiAsiacell(req,res){
   const inBody=await bodyJSON(req); const action=String(inBody.action||'');
   const webSession=session(req), rawSid=String(sid(req)||'').trim();
   if(!webSession||!rawSid) return json(res,401,{error:'سجّل الدخول إلى حساب صدى العراق أولاً ثم أعد عملية الشحن.'});
-  const stateKey=sha256(rawSid);
+  const stateKey=sha256(String(webSession.sessionId||rawSid));
   let operationLock=null;
   if(action==='start_transfer'||action==='confirm_transfer'){
     try{operationLock=await acquireAsiacellOperationLock(stateKey,action)}catch(e){return json(res,503,{error:'لم نبدأ أي طلب تحويل لأن الخادم لم يستطع حجز العملية بأمان في Firebase. تحقق من الاتصال ثم أعد المحاولة بعد التأكد من حالة الجلسة.'});}
@@ -3462,6 +3465,11 @@ async function finalizeProviderOrderAccounting(username,localId,amountIQD,create
   return {ok:true,alreadyCounted:!!tx.result?.alreadyCounted,totalSpent:tx.value?.totalSpent??tx.result?.totalSpent,totalOrders:tx.value?.totalOrders??tx.result?.totalOrders};
 }
 
+function normalizeTelegramChannelUrl(value){
+  try{const u=new URL(String(value||'').trim());if(u.protocol!=='https:'||!['t.me','telegram.me'].includes(u.hostname.toLowerCase())||u.username||u.password||u.port||u.pathname==='/'||u.pathname.length>200)return '';u.hostname='t.me';u.hash='';return u.toString().replace(/\/$/,'');}catch(_){return '';}
+}
+function isValidTelegramChannelUrl(value){return !!normalizeTelegramChannelUrl(value);}
+
 async function routeAPI(req,res,urlObj){
   const p=normalizedPath(urlObj.pathname);
   const maintenanceState=readJSON('settings.json',{}).maintenance||{};
@@ -4039,6 +4047,55 @@ async function routeAPI(req,res,urlObj){
     const raw=decryptSecret(rec.encrypted); if(!raw)return json(res,500,{ok:false,error:'تعذر فك مفتاح API؛ تحقق من ثبات مفتاح التشفير المستخدم عند إنشاء المفتاح.'}); return json(res,200,{ok:true,apiKey:raw});
   }
 
+
+  // -------------------- Admin API developer center: key owners, safe status, revoke --------------------
+  if(p==='/api/admin/api-users' && req.method==='GET'){
+    if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
+    try{
+      const [remoteKeys,remoteUsers,remoteOrders]=await Promise.all([
+        firebaseGetJson('apiKeys',10000),firebaseGetJson('users',10000),firebaseGetJson('orders',12000)
+      ]);
+      if(!remoteKeys||typeof remoteKeys!=='object'||Array.isArray(remoteKeys))return json(res,503,{ok:false,error:'عقدة مفاتيح API غير متاحة أو ليست كائناً صالحاً في Firebase؛ لم نعرض قائمة فارغة مضللة.'});
+      const users=normalizeCurrentUsers(remoteUsers||{});
+      const ownerOf=o=>String(o?.user||o?.username||o?.userName||o?.customerUsername||o?.customer_username||'').trim().toLowerCase();
+      const orderCount=new Map();
+      for(const [id,o] of collectionEntries(remoteOrders)){
+        if(!o||typeof o!=='object'||o.event)continue;
+        const u=ownerOf(o);if(!u)continue;
+        const identity=String(o.id||o.siteOrderId||o.orderId||o.order_id||o.providerOrderId||o.smmpartyOrderId||id);
+        const m=orderCount.get(u)||new Set();m.add(identity);orderCount.set(u,m);
+      }
+      const local=readJSON('api_keys.json',{});const merged=new Map();
+      for(const [hash,rec] of Object.entries(local&&typeof local==='object'&&!Array.isArray(local)?local:{}))if(/^[a-f0-9]{64}$/i.test(hash)&&rec&&typeof rec==='object')merged.set(hash,{...rec});
+      for(const [hash,rec] of Object.entries(remoteKeys))if(/^[a-f0-9]{64}$/i.test(hash)&&rec&&typeof rec==='object'&&!Array.isArray(rec))merged.set(hash,{...(merged.get(hash)||{}),...rec});
+      const rows=[];
+      for(const [hash,rec] of merged){
+        const username=String(rec.username||'').trim();if(!username)continue;
+        const user=users.nameMap.get(username.toLowerCase())?.[0]?.user||{};
+        const status=String(rec.status||'active').trim().toLowerCase();const revoked=!!rec.revokedAt||['revoked','disabled','inactive'].includes(status);
+        rows.push({keyHash:hash,username,masked:String(rec.masked||'مفتاح مخفي'),createdAt:String(rec.createdAt||''),revokedAt:String(rec.revokedAt||''),status:revoked?'revoked':'active',scopes:Array.isArray(rec.scopes)?rec.scopes.map(x=>String(x)).slice(0,30):[],balanceIQD:Number(user.balance??0),orderCount:orderCount.get(username.toLowerCase())?.size||0});
+      }
+      rows.sort((a,b)=>Number(a.status==='active')-Number(b.status==='active')||String(b.createdAt).localeCompare(String(a.createdAt))||a.username.localeCompare(b.username,'ar'));
+      return json(res,200,{ok:true,keys:rows,summary:{total:rows.length,active:rows.filter(x=>x.status==='active').length,revoked:rows.filter(x=>x.status==='revoked').length,users:[...new Set(rows.map(x=>x.username.toLowerCase()))].length},source:'firebase-apiKeys+firebase-users+firebase-orders',checkedAt:nowISO()});
+    }catch(e){return json(res,503,{ok:false,error:'تعذر تحميل بيانات إدارة API من Firebase. لم نعرض أرقاماً افتراضية ولم نغيّر أي مفتاح.',details:String(e.message||e).slice(0,160)});}
+  }
+  if(p==='/api/admin/api-users/revoke' && req.method==='POST'){
+    if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
+    const b=await bodyJSON(req),hash=String(b.keyHash||'').trim().toLowerCase();
+    if(!/^[a-f0-9]{64}$/.test(hash))return json(res,422,{ok:false,error:'معرّف مفتاح API غير صالح.'});
+    try{
+      const rec=await firebaseGetJson('apiKeys/'+hash,7000);
+      if(!rec||typeof rec!=='object'||Array.isArray(rec))return json(res,404,{ok:false,error:'المفتاح غير موجود في Firebase؛ لم يتم تغيير شيء.'});
+      if(rec.revokedAt||['revoked','disabled','inactive'].includes(String(rec.status||'active').toLowerCase()))return json(res,200,{ok:true,revoked:true,alreadyRevoked:true,message:'هذا المفتاح ملغى مسبقاً.'});
+      const updated={...rec,revokedAt:nowISO(),status:'revoked'};
+      await firebaseWriteJson('apiKeys/'+hash,updated,8000);
+      const verify=await firebaseGetJson('apiKeys/'+hash,8000);
+      if(!verify||!verify.revokedAt||String(verify.status||'').toLowerCase()!=='revoked')throw new Error('لم ينجح التحقق من حالة الإلغاء بعد الكتابة.');
+      const local=readJSON('api_keys.json',{});if(local&&local[hash]){local[hash]={...local[hash],revokedAt:verify.revokedAt,status:'revoked'};writeJSON('api_keys.json',local);}
+      return json(res,200,{ok:true,revoked:true,username:String(verify.username||''),revokedAt:verify.revokedAt,message:'تم إلغاء المفتاح والتحقق من الحالة المحفوظة في Firebase.'});
+    }catch(e){return json(res,503,{ok:false,error:'تعذر تأكيد إلغاء المفتاح في Firebase؛ لم نعرض العملية على أنها ناجحة. أعد المحاولة بعد استقرار الاتصال.',details:String(e.message||e).slice(0,140)});}
+  }
+
   // -------------------- Public customer API (durable Firebase wallet + SMM actions) --------------------
   if(await handlePublicApiV1(req,res,urlObj,p))return;
 
@@ -4358,7 +4415,30 @@ async function routeAPI(req,res,urlObj){
       return json(res,200,{ok:true,imported:true,paths:report,totalAdded:report.reduce((n,x)=>n+x.added,0),excluded:['users','orders','payments','transactions','balanceLedger','userNotifications'],message:'تم دمج خدمات ومزودين فقط؛ لم تُستورد الحسابات أو الطلبات أو المعاملات، ولم تُستبدل البيانات الموجودة في القاعدة الجديدة.'});
     }catch(e){return json(res,503,{ok:false,error:'توقف استيراد الكتالوج قبل تأكيد جميع الكتابات: '+String(e.message||e).slice(0,220),partial:report});}
   }
-  if(p==='/api/config'){ const cfg=readJSON('settings.json',{}); const waUrl=normalizeWhatsAppUrl(cfg.waUrl||cfg.waNum||'https://wa.me/9647762267959'); return json(res,200,{appName:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,firebase:firebaseWebConfig(),firebaseVapidKey:String(process.env.FIREBASE_WEB_PUSH_VAPID_KEY||'').trim(),maintenance:(()=>{const m=readJSON('settings.json',{}).maintenance||{};return {enabled:m.enabled===true,title:String(m.title||'التطبيق متوقف مؤقتاً'),message:String(m.message||''),reason:String(m.reason||''),imageUrl:String(m.imageUrl||'')}})(),currency:'USD',exchangeRate:FIXED_RATE,fixedRecharge:'5000 IQD = 4 USD',rateTable:[1000,2000,3000,4000,5000,6000,7000,8000,9000,10000].map(i=>({iqd:i,usd:i/FIXED_RATE})),supportWhatsappUrl:waUrl,supportWhatsappNumber:normalizeWhatsAppNumber(waUrl),telegramChannelUrl:'https://t.me/jgkhfcvn'}); }
+  if(p==='/api/admin/site-links'&&req.method==='GET'){
+    if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
+    const cfg=readJSON('settings.json',{});let channel=String(cfg.telegramChannelUrl||'').trim();
+    try{const remote=await firebaseGetJson('config/telegramChannelUrl',2200);if(typeof remote==='string'&&remote.trim())channel=remote.trim();else if(remote&&typeof remote.url==='string')channel=remote.url.trim();}catch(_){}
+    if(!isValidTelegramChannelUrl(channel))channel='https://t.me/jgkhfcvn';
+    return json(res,200,{ok:true,telegramChannelUrl:channel,storage:'firebase-with-local-fallback'});
+  }
+  if(p==='/api/admin/site-links'&&req.method==='POST'){
+    if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
+    const b=await bodyJSON(req);const channel=normalizeTelegramChannelUrl(b.telegramChannelUrl||b.url||'');
+    if(!channel)return json(res,422,{ok:false,error:'رابط قناة Telegram غير صالح. استخدم رابط HTTPS مثل https://t.me/channelname'});
+    try{
+      await firebaseWriteJson('config/telegramChannelUrl',channel,7000);
+      const saved=await firebaseGetJson('config/telegramChannelUrl',7000);
+      const savedUrl=typeof saved==='string'?saved:String(saved?.url||'');
+      if(savedUrl!==channel)throw new Error('تعذر التحقق من الرابط بعد حفظه في Firebase');
+      const cfg=readJSON('settings.json',{});cfg.telegramChannelUrl=channel;writeJSON('settings.json',cfg);
+      return json(res,200,{ok:true,telegramChannelUrl:channel,persisted:true,message:'تم حفظ رابط قناة التليجرام والتحقق منه.'});
+    }catch(e){
+      if(DATA_IS_EXTERNAL){const cfg=readJSON('settings.json',{});cfg.telegramChannelUrl=channel;writeJSON('settings.json',cfg);return json(res,200,{ok:true,telegramChannelUrl:channel,persisted:true,warning:'تم الحفظ في التخزين الدائم للخادم لكن تعذرت مزامنة Firebase.'});}
+      return json(res,503,{ok:false,error:'تعذر حفظ الرابط بشكل دائم في Firebase؛ لم نؤكد الحفظ. تحقق من اتصال قاعدة البيانات ثم أعد المحاولة.',details:String(e.message||e).slice(0,120)});
+    }
+  }
+  if(p==='/api/config'){ const cfg=readJSON('settings.json',{}); const waUrl=normalizeWhatsAppUrl(cfg.waUrl||cfg.waNum||'https://wa.me/9647762267959'); let telegramChannelUrl=String(cfg.telegramChannelUrl||'').trim();try{const remote=await firebaseGetJson('config/telegramChannelUrl',1800);if(typeof remote==='string'&&remote.trim())telegramChannelUrl=remote.trim();else if(remote&&typeof remote.url==='string')telegramChannelUrl=remote.url.trim();}catch(_){}if(!isValidTelegramChannelUrl(telegramChannelUrl))telegramChannelUrl='https://t.me/jgkhfcvn'; return json(res,200,{appName:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,firebase:firebaseWebConfig(),firebaseVapidKey:String(process.env.FIREBASE_WEB_PUSH_VAPID_KEY||'').trim(),maintenance:(()=>{const m=readJSON('settings.json',{}).maintenance||{};return {enabled:m.enabled===true,title:String(m.title||'التطبيق متوقف مؤقتاً'),message:String(m.message||''),reason:String(m.reason||''),imageUrl:String(m.imageUrl||'')}})(),currency:'USD',exchangeRate:FIXED_RATE,fixedRecharge:'5000 IQD = 4 USD',rateTable:[1000,2000,3000,4000,5000,6000,7000,8000,9000,10000].map(i=>({iqd:i,usd:i/FIXED_RATE})),supportWhatsappUrl:waUrl,supportWhatsappNumber:normalizeWhatsAppNumber(waUrl),telegramChannelUrl}); }
   if(p==='/api/auth/google-config'&&req.method==='GET'){return json(res,200,{ok:true,enabled:!!String(process.env.GOOGLE_CLIENT_ID||'').trim(),clientId:String(process.env.GOOGLE_CLIENT_ID||'').trim()});}
   if(p==='/api/auth/captcha'&&req.method==='GET'){const wait=rateLimit(req,'captcha');if(wait)return json(res,429,{ok:false,error:'طلبات تحقق كثيرة؛ أعد المحاولة بعد قليل.'},{'Retry-After':String(wait)});return json(res,200,{ok:true,...issueMathCaptcha(req)});}
   if(p==='/api/auth/google'&&req.method==='POST'){
@@ -4498,7 +4578,7 @@ async function routeAPI(req,res,urlObj){
     if(!s)return json(res,200,{ok:false,authenticated:false});
     // Re-issue a fresh signed token/header so the browser can keep using a header even
     // when a Railway proxy/browser drops HttpOnly cookie state.
-    const fresh=setSession(res,{role:s.role,username:s.username});
+    const fresh=setSession(res,{role:s.role,username:s.username,sessionId:String(s.sessionId||token)});
     if(s.role==='admin')return json(res,200,{ok:true,authenticated:true,role:'admin',username:s.username,sessionToken:fresh});
     const store=readJSON('users.json',{users:{}}); const u=store.users?.[s.username]||null;
     const clean=u?{...u}:{}; delete clean.password; delete clean.passwordHash;
@@ -4614,17 +4694,20 @@ async function routeAPI(req,res,urlObj){
   }
   if(p==='/api/user/summary' && req.method==='GET'){
     const s=session(req);if(!s||!['user','admin'].includes(s.role))return json(res,401,{ok:false,error:'يجب تسجيل الدخول'});
-    const uname=String(s.username||'');
-    const localOrders=readJSON('orders.json',[]).filter(x=>x&&!x.event&&String(x.user||x.username||'')===uname);
+    const uname=String(s.username||'');const usernameNorm=uname.trim().toLowerCase();
+    const ownerOf=o=>String(o?.user||o?.username||o?.userName||o?.customerUsername||o?.customer_username||'').trim().toLowerCase();
+    const localOrders=readJSON('orders.json',[]).filter(x=>x&&!x.event&&ownerOf(x)===usernameNorm);
     const orderMap=new Map();
-    const addSummaryOrder=(o,sourceKey='')=>{const id=String(o.id||o.siteOrderId||o.localId||o.orderId||o.order_id||o.providerOrderId||o.smmpartyOrderId||sourceKey||o.createdAt||'');if(!id)return;const key=uname+'|'+id;const prior=orderMap.get(key)||{};const usdRaw=o.chargeUsd??o.totalUsd??o.priceUsd??o.amountUsd;const usd=Number(usdRaw);const iqRaw=o.totalIQD??o.total??o.amountIQD??o.chargeIqd;const iq=Number(iqRaw);const amountUsd=Number.isFinite(usd)&&usd>=0?usd:prior.amountUsd;const totalIQD=Number.isFinite(iq)&&iq>0?iq:(Number.isFinite(amountUsd)&&amountUsd>=0?Number((amountUsd*FIXED_RATE).toFixed(4)):prior.totalIQD||0);orderMap.set(key,{...prior,id,user:uname,totalIQD,amountUsd,status:String(o.status||prior.status||'pending').toLowerCase(),createdAt:String(o.createdAt||o.created_date||prior.createdAt||''),legacyHistory:!!(o.legacyHistory||prior.legacyHistory)});};
+    const summaryStatus=o=>{const raw=String(o?.status||o?.providerStatus||o?.provider_status||o?.smmStatus||o?.state||'pending').trim().toLowerCase();return ({'complete':'completed','success':'completed','successful':'completed','done':'completed','finished':'completed','in_progress':'processing','in progress':'processing','waiting':'pending','canceled':'cancelled'}[raw]||raw);};
+    const addSummaryOrder=(o,sourceKey='')=>{const id=String(o.id||o.siteOrderId||o.localId||o.orderId||o.order_id||o.providerOrderId||o.smmpartyOrderId||sourceKey||o.createdAt||'');if(!id)return;const key=usernameNorm+'|'+id;const prior=orderMap.get(key)||{};const usdRaw=o.chargeUsd??o.chargeUSD??o.totalUsd??o.priceUsd??o.amountUsd??o.amountUSD;const usd=Number(usdRaw);const iqRaw=o.totalIQD??o.chargeIqd??o.chargeIQD??o.amountIQD??o.total;const iq=Number(iqRaw);const amountUsd=Number.isFinite(usd)&&usd>=0?usd:(Number.isFinite(prior.amountUsd)?prior.amountUsd:undefined);const totalIQD=Number.isFinite(iq)&&iq>0?iq:(Number.isFinite(amountUsd)&&amountUsd>=0?Number((amountUsd*FIXED_RATE).toFixed(4)):Number(prior.totalIQD||0));const status=summaryStatus(o);const previous=String(prior.status||'pending');const mergedStatus=prior.status&&previous==='completed'?previous:status;orderMap.set(key,{...prior,...o,id,user:uname,totalIQD,amountUsd,status:mergedStatus,createdAt:String(o.createdAt||o.created_date||prior.createdAt||''),legacyHistory:!!(o.legacyHistory||prior.legacyHistory)});};
     for(const o of localOrders)addSummaryOrder(o);
-    try{const fbOrders=await firebaseGetJson('orders',4500);if(fbOrders&&typeof fbOrders==='object'){const entries=Array.isArray(fbOrders)?fbOrders.map((v,i)=>[String(i),v]):Object.entries(fbOrders);for(const [key,o] of entries){if(!o||typeof o!=='object'||o.event||String(o.user||o.username||o.userName||'')!==uname)continue;addSummaryOrder(o,key);}}}catch(e){console.warn('user summary remote orders unavailable:',String(e.message||e).slice(0,100))}
+    let ordersSource='hosting-file';let ordersReadWarning='';
+    try{const fbOrders=await firebaseGetJson('orders',6500);if(fbOrders&&typeof fbOrders==='object'){const entries=Array.isArray(fbOrders)?fbOrders.map((v,i)=>[String(i),v]):Object.entries(fbOrders);for(const [key,o] of entries){if(!o||typeof o!=='object'||o.event||ownerOf(o)!==usernameNorm)continue;addSummaryOrder(o,key);}ordersSource='hosting-file+firebase';}}catch(e){ordersReadWarning='تعذر قراءة بعض الطلبات من Firebase؛ الإحصائيات قد لا تتضمن السجلات البعيدة.';console.warn('user summary remote orders unavailable:',String(e.message||e).slice(0,100))}
     const orders=[...orderMap.values()];const spentIQD=orders.reduce((a,o)=>a+Math.max(0,Number(o.totalIQD||((Number(o.amountUsd)||0)*FIXED_RATE))||0),0);
     const refs=readJSON('refunds.json',[]).filter(x=>String(x.user||'')===uname);let refundedIQD=refs.reduce((a,r)=>a+Math.max(0,Number(r.amountIQD||0)),0);let remoteUser=null;try{const foundUser=await findRemoteUserByUsername(uname);remoteUser=foundUser?.user||null}catch(_){}if(remoteUser?.sadaRefunds&&typeof remoteUser.sadaRefunds==='object'){const remoteRefunded=Object.values(remoteUser.sadaRefunds).reduce((a,r)=>a+Math.max(0,Number(r?.totalIQD||0)),0);refundedIQD=Math.max(refundedIQD,remoteRefunded)}
     const er=readJSON('earn_requests.json',[]).filter(x=>String(x.user||'')===uname&&x.status==='approved');const rewardsUSD=Math.max(Number(remoteUser?.sadaEarnTotalUSD||0),er.reduce((a,r)=>a+Math.max(0,Number(r.rewardUSD||0)),0));const localProfile=readJSON('users.json',{users:{}}).users?.[uname]||{};const localBalance=localProfile.balance;const balanceIQD=Number(remoteUser?.balance??localBalance??s.balance??0);const email=String(remoteUser?.email||remoteUser?.mail||localProfile.email||'');const verifiedRaw=remoteUser?.emailVerified??localProfile.emailVerified;const emailVerified=verifiedRaw===true||String(verifiedRaw||'').toLowerCase()==='true';const requiredRaw=remoteUser?.emailVerificationRequired??localProfile.emailVerificationRequired;const emailVerificationRequired=requiredRaw!==false;const profile={username:uname,name:String(remoteUser?.name||remoteUser?.fullName||localProfile.name||localProfile.fullName||uname),email,emailVerified,emailVerificationRequired,phone:String(remoteUser?.phone||localProfile.phone||''),joined:String(remoteUser?.joined||remoteUser?.createdAt||localProfile.joined||localProfile.createdAt||''),createdAt:String(remoteUser?.createdAt||localProfile.createdAt||localProfile.joined||''),lastLoginAt:String(remoteUser?.lastLoginAt||localProfile.lastLoginAt||''),level:String(remoteUser?.level||localProfile.level||'مبتدئ')};
-    const completedStates=new Set(['completed','complete','success','successful','done']);const activeStates=new Set(['pending','processing','in_progress','in progress','queued','awaiting']);const completedOrders=orders.filter(o=>completedStates.has(String(o.status||'').toLowerCase())).length;const activeOrders=orders.filter(o=>activeStates.has(String(o.status||'').toLowerCase())).length;const lastOrderAt=orders.map(o=>o.createdAt).filter(Boolean).sort((a,b)=>(Date.parse(b)||0)-(Date.parse(a)||0))[0]||'';
-    return json(res,200,{ok:true,profile,orders:orders.length,completedOrders,activeOrders,lastOrderAt,spentIQD:Number(spentIQD.toFixed(4)),refundedIQD:Number(refundedIQD.toFixed(4)),rewardsUSD:Number(rewardsUSD.toFixed(6)),balanceIQD,currency:'IQD',checkedAt:nowISO()});
+    const completedStates=new Set(['completed','complete','success','successful','done','finished']);const activeStates=new Set(['pending','processing','in_progress','in progress','queued','awaiting']);const completedOrders=orders.filter(o=>completedStates.has(String(o.status||'').toLowerCase())).length;const activeOrders=orders.filter(o=>activeStates.has(String(o.status||'').toLowerCase())).length;const lastOrderAt=orders.map(o=>o.createdAt).filter(Boolean).sort((a,b)=>(Date.parse(b)||0)-(Date.parse(a)||0))[0]||'';
+    return json(res,200,{ok:true,profile,orders:orders.length,completedOrders,activeOrders,lastOrderAt,spentIQD:Number(spentIQD.toFixed(4)),refundedIQD:Number(refundedIQD.toFixed(4)),rewardsUSD:Number(rewardsUSD.toFixed(6)),balanceIQD,currency:'IQD',ordersSource,warning:ordersReadWarning||undefined,checkedAt:nowISO()});
   }
   if(p==='/api/earn/requests' && req.method==='GET'){
     const s=session(req);if(!s||s.role!=='user')return json(res,401,{ok:false,error:'يجب تسجيل الدخول'});const rows=readJSON('earn_requests.json',[]).filter(x=>String(x.user||'')===String(s.username));let remote=[];try{const v=await firebaseGetJson('earnRequestsByUser/'+firebaseSafeKey(s.username),4000);if(v&&typeof v==='object')remote=(Array.isArray(v)?v:Object.values(v)).filter(x=>x&&typeof x==='object')}catch(_){}const m=new Map();for(const r of [...remote,...rows])if(r.id)m.set(String(r.id),{...m.get(String(r.id)),...r});return json(res,200,{ok:true,requests:[...m.values()].sort((a,b)=>(Date.parse(b.createdAt)||0)-(Date.parse(a.createdAt)||0)).slice(0,100),maxRewardUSD:50});
@@ -4989,7 +5072,7 @@ async function routeAPI(req,res,urlObj){
     try { buildFile=fs.readFileSync(path.join(ROOT,'BUILD_ID.txt'),'utf8').trim(); } catch(_) {}
     const deploymentConsistent=uiVersion===APP_VERSION && uiBuildId===BUILD_ID && versionFile===APP_VERSION && buildFile===BUILD_ID;
     const dbInfo=firebaseDatabaseDiagnosticInfo();
-    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.31',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
+    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.33',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
     // Keep operational configuration details private; only an authenticated admin can inspect them.
     if(isAdmin(req)){const credentialStatus=firebaseServiceAccountStatus();health.firebaseDatabase={host:dbInfo.host,source:dbInfo.source,databaseProjectHint:dbInfo.databaseProjectHint,serviceAccountProjectId:dbInfo.serviceAccountProjectId||null,configuredWebProjectId:dbInfo.configuredWebProjectId||null,serviceAccountProjectMatch:dbInfo.serviceAccountProjectMatch};health.securityConfig={sessionSecretConfigured:!!String(process.env.SESSION_SECRET||'').trim(),dedicatedEncryptionKeyConfigured:!!String(process.env.SADA_ENCRYPTION_KEY||'').trim(),stableEncryptionAvailable:telegramEncryptionReady(),firebaseConfigured:!!FIREBASE_DATABASE_URL,firebaseServiceAccountConfigured:credentialStatus.ok,firebaseCredentialStatus:{ok:credentialStatus.ok,code:credentialStatus.code,source:credentialStatus.source,message:credentialStatus.message},firebaseDatabaseSecretConfigured:!!String(process.env.FIREBASE_DATABASE_SECRET||'').trim(),firebaseAuthAvailable:firebaseAuthAvailable(),emailServiceConfigured:!!(String(process.env.RESEND_API_KEY||'').trim()&&String(process.env.RESEND_FROM_EMAIL||process.env.EMAIL_FROM||'').trim()),telegramTokenFromEnvironment:!!String(process.env.TELEGRAM_BOT_TOKEN||'').trim(),adminPasswordFromEnvironment:!!(String(process.env.ADMIN_PASSWORD||'').trim()||String(process.env.ADMIN_PASSWORD_HASH||'').trim())};}
     return json(res,200,health);
