@@ -27,8 +27,8 @@ function readStaticAssetBuffer(assetPath){
 const DATA = path.resolve(process.env.SADA_DATA_DIR || process.env.DATA_DIR || (process.env.RAILWAY_VOLUME_MOUNT_PATH ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, 'sada-data') : LEGACY_DATA));
 const DATA_IS_EXTERNAL = path.resolve(DATA) !== path.resolve(LEGACY_DATA);
 const APP_NAME = 'صدى العراق';
-const APP_VERSION = '1.6.46';
-const BUILD_ID = 'SADA-1.6.46-FIREBASE-CATALOG-ORDER-VERIFY-20261014';
+const APP_VERSION = '1.6.48';
+const BUILD_ID = 'SADA-1.6.48-RAILWAY-NODE-START-FIX-20261014';
 // Keep the owner's admin identity available after packaging, but store only a scrypt hash
 // in the project. Railway variables can still explicitly override this packaged credential.
 function loadBundledAdminAuth(){
@@ -2550,6 +2550,25 @@ function providerServiceKey(s){for(const k of ['providerServiceId','smmpartyId',
 function providerServiceRate(s){if(s&&s.ratePresent===false)return null;return validRateField(s,['rate','rate_usd','rateUsd','usd_rate','usdRate','rate_per_1000','ratePer1000','price_per_1000','pricePer1000','price','cost'])}
 function catalogRate(s){return validRateField(s,['providerRateUsd','smmRateUsd','baseProviderRateUsd','smmRate','provider_rate_usd'])}
 function pricedPatch(s,base,pct){const sell=Number((base*(1+pct/100)).toFixed(8));return {sellingUsd:sell,price:Number((sell*FIXED_RATE).toFixed(6)),basePrice:Number((base*FIXED_RATE).toFixed(6)),providerRateUsd:base,smmRateUsd:base,smmRate:base,markupPct:pct,priceSyncedAt:nowISO()}}
+// Resolve a sale price without treating stale sellingUsd=0 as a valid paid-service price.
+// Explicitly free offers stay free; saved sale values take precedence over supplier cost.
+function catalogSellingRate(row={}){
+  if(row?.free===true||row?.isFree===true||row?.freeService===true||row?.adminFreeService===true||row?.serviceKind==='admin_funded_free')return 0;
+  const num=v=>{if(v===undefined||v===null||String(v).trim()==='')return null;const n=Number(String(v).replace(/,/g,''));return Number.isFinite(n)&&n>=0?n:null;};
+  for(const k of ['sellingUsd','sellingPriceUsd','salePriceUsd','priceUsd','rateUsd']){const n=num(row?.[k]);if(n!==null&&n>0)return n;}
+  const legacyPrice=num(row?.price);if(legacyPrice!==null&&legacyPrice>0)return legacyPrice<10?legacyPrice:legacyPrice/FIXED_RATE;
+  const legacyRate=num(row?.rate);if(legacyRate!==null&&legacyRate>0)return legacyRate;
+  let base=null;
+  for(const k of ['providerRateUsd','smmRateUsd','baseProviderRateUsd','smmRate','provider_rate_usd']){const n=num(row?.[k]);if(n!==null&&n>0){base=n;break;}}
+  if(base!==null){
+    const rawMarkup=row?.markupPct;
+    const configuredMarkup=Number.isFinite(Number(PRICE_GUARD_CFG?.pct))?Number(PRICE_GUARD_CFG.pct):Number(DEFAULT_GLOBAL_PRICING.markupPct||100);
+    const parsed=rawMarkup===undefined||rawMarkup===null||String(rawMarkup).trim()===''?configuredMarkup:Number(rawMarkup);
+    const pct=Number.isFinite(parsed)?Math.max(0,Math.min(1000,parsed)):configuredMarkup;
+    return Number((base*(1+pct/100)).toFixed(8));
+  }
+  return 0;
+}
 // Firebase REST multi-path PATCH: write nested field paths, never replace the entire service object.
 function appendServicePricePatch(out,key,values){for(const [field,value] of Object.entries(values))out[String(key)+'/'+field]=value;}
 async function applyCachedGlobalMarkup(pct){
@@ -3289,10 +3308,7 @@ async function notifyOrderStatusChange(order, oldStatus, newStatus){
 function providerSafeName(p){return String(p?.name||p?.id||'مزود');}
 function normalizeWebsiteOrderService(row,providerId,serviceId,fbKey=''){
   if(!row||typeof row!=='object')return null;
-  const hasExplicitRate=row.sellingUsd!==undefined&&row.sellingUsd!==null&&row.sellingUsd!=='' || row.rateUsd!==undefined&&row.rateUsd!==null&&row.rateUsd!=='' || row.rate!==undefined&&row.rate!==null&&row.rate!=='';
-  let rateRaw=row.sellingUsd??row.rateUsd??row.rate;
-  if(!hasExplicitRate && row.price!==undefined && row.price!==null && row.price!=='')rateRaw=Number(row.price)/FIXED_RATE;
-  const sellingUsd=Number(rateRaw);
+  const sellingUsd=catalogSellingRate(row);
   const siteServiceId=String(row.siteServiceId||row.catalogId||row.fbKey||fbKey||'').trim();
   const providerServiceId=String(row.providerServiceId||row.sourceServiceId||row.smmpartyId||row.service_id||row.serviceId||serviceId||'').trim();
   return {...row,fbKey:String(row.fbKey||fbKey||''),siteServiceId,id:String(row.id||siteServiceId||serviceId),providerId:String(providerId),providerServiceId,sellingUsd:Number.isFinite(sellingUsd)&&sellingUsd>=0?sellingUsd:NaN,rateUsd:Number.isFinite(sellingUsd)&&sellingUsd>=0?sellingUsd:NaN,min:Number(row.min||100),max:Number(row.max||10000)};
@@ -3471,8 +3487,7 @@ function internalApiServices(){
     const providerServiceId=String(raw.providerServiceId||raw.smmpartyId||raw.sourceServiceId||raw.service_id||raw.serviceId||'').trim();
     const siteServiceId=String(raw.siteServiceId||raw.internalServiceId||raw.sadaServiceId||'').trim();
     if(!/^\d{4}$/.test(siteServiceId)||!providerId||!providerServiceId)continue;
-    const rateRaw=raw.sellingUsd??raw.rateUsd??raw.rate??(raw.price!==undefined?Number(raw.price)/FIXED_RATE:undefined);
-    const sellingUsd=Number(rateRaw);
+    const sellingUsd=catalogSellingRate(raw);
     if(!Number.isFinite(sellingUsd)||sellingUsd<0)continue;
     const groups=Array.isArray(raw.groups)?raw.groups:(Array.isArray(raw.categories)?raw.categories:[raw.category].filter(Boolean));
     rows.push({...raw,id:siteServiceId,siteServiceId,fbKey,providerId,providerServiceId,smmpartyId:providerServiceId,serviceId:siteServiceId,sellingUsd,rateUsd:sellingUsd,providerRateUsd:Number(raw.providerRateUsd??raw.smmRateUsd??raw.providerRate??0)||0,name:String(raw.name||raw.serviceName||'خدمة'),category:String(raw.category||groups[0]||'عام'),groups,min:Math.max(1,Number(raw.min||1)),max:Math.max(Math.max(1,Number(raw.min||1)),Number(raw.max||1000000)),refill:raw.refill===true||raw.refill===1||raw.refill==='1',cancel:raw.cancel===true||raw.cancel===1||raw.cancel==='1'});
@@ -3481,7 +3496,7 @@ function internalApiServices(){
 }
 
 function publicApiService(s){
-  const rate=Number(s?.sellingUsd??s?.rateUsd??s?.rate??0);
+  const rate=catalogSellingRate(s);
   const out={id:String(s?.siteServiceId||s?.id||''),name:String(s?.name||'خدمة'),category:String(s?.category||((Array.isArray(s?.groups)&&s.groups[0])||'عام')),rate:Number((Number.isFinite(rate)&&rate>=0?rate:0).toFixed(6)),min:Number(s?.min||1),max:Number(s?.max||1000000),refill:!!s?.refill,cancel:!!s?.cancel,type:String(s?.type||'default')};
   const description=String(s?.description||s?.details||'').trim();if(description)out.description=description;
   return out;
@@ -5591,7 +5606,7 @@ async function routeAPI(req,res,urlObj){
   if(p==='/api/admin/service-sync' && req.method==='POST'){
     if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
     const b=await bodyJSON(req,10*1024*1024);const list=Array.isArray(b.services)?b.services:[];if(list.length>25000)return json(res,413,{ok:false,error:'عدد الخدمات كبير جداً'});
-    const safe=list.map(s=>{const providerServiceId=String(s?.smmpartyId||s?.providerServiceId||s?.serviceId||'').trim();const fbId=String(s?.fbKey||s?.id||'').trim();return {id:providerServiceId,fbId,name:String(s?.name||'خدمة'),category:String(s?.category||((Array.isArray(s?.groups)&&s.groups[0])||'عام')),sellingUsd:Number(s?.sellingUsd ?? (Number(s?.price||0)/FIXED_RATE)),rateUsd:Number(s?.sellingUsd||s?.smmRateUsd||s?.rateUsd||0),min:Number(s?.min||100),max:Number(s?.max||10000),refill:!!s?.refill,cancel:!!s?.cancel,providerId:String(s?.providerId||''),providerServiceId,smmRateUsd:Number(s?.smmRateUsd||s?.rate||0),updatedAt:nowISO()};}).filter(x=>x.id&&x.providerId);
+    const safe=list.map(s=>{const providerServiceId=String(s?.smmpartyId||s?.providerServiceId||s?.serviceId||'').trim();const fbId=String(s?.fbKey||s?.id||'').trim();const saleRate=catalogSellingRate(s);return {id:providerServiceId,fbId,name:String(s?.name||'خدمة'),category:String(s?.category||((Array.isArray(s?.groups)&&s.groups[0])||'عام')),sellingUsd:saleRate,rateUsd:saleRate,min:Number(s?.min||100),max:Number(s?.max||10000),refill:!!s?.refill,cancel:!!s?.cancel,providerId:String(s?.providerId||''),providerServiceId,smmRateUsd:Number(s?.smmRateUsd||s?.providerRateUsd||s?.rate||0),updatedAt:nowISO()};}).filter(x=>x.id&&x.providerId);
     try{await ensureLocalServiceCatalogSeeded();}catch(e){return json(res,503,{ok:false,error:'تعذر تحميل Firebase؛ لم يبدأ تحديث الخدمات: '+String(e.message||e).slice(0,150)});}
     const root=readJSON('services.json',{}),rootBefore=JSON.parse(JSON.stringify(root));let merged=0,skippedUnapprovedNew=0;const accepted=[],changedKeys=[];
     for(const x of safe){let key=x.fbId&&root[x.fbId]?x.fbId:Object.keys(root).find(k=>!root[k]?.unapprovedAutoImport&&String(root[k]?.providerId||'')===x.providerId&&String(root[k]?.providerServiceId||root[k]?.smmpartyId||root[k]?.serviceId||'')===x.id);
@@ -6194,10 +6209,10 @@ async function routeAPI(req,res,urlObj){
     if(!siteServiceId)return json(res,409,{ok:false,error:'الخدمة لا تملك معرّفاً داخلياً ثابتاً في كتالوج صدى العراق؛ لم يُخصم أي رصيد ولم يُرسل طلب.',stage:'site_service_id'});
     if(!providerServiceId)return json(res,409,{ok:false,error:'الخدمة لا تملك معرّف مزوّد محفوظاً؛ لم يُخصم أي رصيد ولم يُرسل طلب.',stage:'provider_service_id',siteServiceId});
     const mn=Math.max(1,Number(svc.min||100)),mx=Math.max(mn,Number(svc.max||10000)); if(quantity<mn||quantity>mx)return json(res,422,{ok:false,error:'الكمية خارج حدود الخدمة',stage:'validate',siteServiceId,providerServiceId,min:mn,max:mx});
-    const rawServiceRate=svc.sellingUsd??svc.rateUsd??svc.rate;
-    if(rawServiceRate===undefined||rawServiceRate===null||rawServiceRate===''||!Number.isFinite(Number(rawServiceRate))||Number(rawServiceRate)<0)
-      return json(res,409,{ok:false,error:'سعر البيع لهذه الخدمة غير مضبوط في كتالوج الاستضافة؛ لم يُخصم أي رصيد ولم يُرسل طلب للمزوّد.',stage:'service_price'});
-    const serviceRate=Number(rawServiceRate); const localUser=readJSON('users.json',{users:{}}).users?.[username]||{};
+    const serviceRate=catalogSellingRate(svc);
+    if(!Number.isFinite(serviceRate)||serviceRate<0||(!svc.adminFreeService&&serviceRate===0&&catalogRate(svc)>0))
+      return json(res,409,{ok:false,error:'سعر البيع لهذه الخدمة غير مضبوط في كتالوج الاستضافة؛ لم يُخصم أي رصيد ولم يُرسل طلب للمزوّد. حدّث السعر المحفوظ أو مزامنة الأسعار.',stage:'service_price'});
+    const localUser=readJSON('users.json',{users:{}}).users?.[username]||{};
     let verifiedUser=null,walletUserPath='';
     if(!isAdminSession){try{verifiedUser=await findRemoteUserByUsername(username);walletUserPath=String(verifiedUser?.firebasePath||'');}catch(e){return json(res,503,{ok:false,error:'تعذر التحقق من مسار رصيد المستخدم في Firebase: '+String(e.message||e).slice(0,130),stage:'wallet_lookup'});}if(!verifiedUser?.user||!walletUserPath)return json(res,503,{ok:false,error:'سجل المستخدم غير موجود في مسار Firebase المتوقع؛ لم يتم خصم الرصيد أو إرسال الطلب.',stage:'wallet_lookup'});}
     const userDiscount=Math.max(0,Math.min(100,Number(verifiedUser?.user?.discountPct??verifiedUser?.user?.discount??localUser.discountPct??orderSession?.discountPct??0)||0));
@@ -6401,13 +6416,61 @@ async function routeAPI(req,res,urlObj){
   }
   if(p==='/api/admin/reset' && req.method==='POST'){
     if(!isAdmin(req)) return json(res,403,{ok:false,error:'غير مصرح'});
-    const now=new Date().toISOString();
-    writeJSON('users.json',{users:{}});
-    writeJSON('orders.json',[]);
-    writeJSON('payments.json',[]);
-    writeJSON('settings.json',{...readJSON('settings.json',{}),orderCounter:0,resetAt:now});
-    writeJSON('providers.json',readJSON('providers.json',{activeProvider:'',providers:{}}));
-    return json(res,200,{ok:true,message:'تم تنظيف بيانات Railway والبدء من جديد'});
+    let requestBody={};try{requestBody=await bodyJSON(req,32*1024)}catch(e){return json(res,e.statusCode||400,{ok:false,error:String(e.message||'طلب غير صالح')});}
+    if(String(requestBody.scope||'')!=='customers-and-orders'||String(requestBody.confirmation||'')!=='CLEAN_CUSTOMERS_AND_ORDERS')return json(res,422,{ok:false,error:'نطاق التنظيف غير صالح؛ لم تُحذف أي بيانات.'});
+    const now=new Date().toISOString(),adminEmail=String(ADMIN_USER||'').trim().toLowerCase();
+    const safeObject=(v,label)=>{if(v===null||v===undefined)return {};if(typeof v!=='object'||Array.isArray(v))throw new Error('شكل بيانات '+label+' في Firebase غير صالح؛ أُوقف التنظيف دون تعديل.');return v;};
+    const protectedAdmin=(key,value)=>{
+      const v=value&&typeof value==='object'&&!Array.isArray(value)?value:{};
+      const role=String(v.role||v.userRole||v.type||'').trim().toLowerCase();
+      if(['admin','administrator','owner','superadmin'].includes(role)||v.isAdmin===true||v.admin===true)return true;
+      const candidates=[key,decodeFirebaseSafeKey(key),v.username,v.userName,v.email,v.mail,v.emailAddress].map(x=>String(x||'').trim().toLowerCase()).filter(Boolean);
+      const localPart=adminEmail.includes('@')?adminEmail.split('@')[0]:adminEmail;
+      return candidates.some(x=>x===adminEmail||x===localPart||x==='admin'||x===firebaseSafeKey(ADMIN_USER).toLowerCase());
+    };
+    try{
+      // Read affected branches before writing anything; a failed read aborts the whole action.
+      const [remoteUsersRaw,remoteApiKeysRaw,remoteUserNotificationsRaw,remoteUserSeenRaw]=await Promise.all([
+        firebaseGetJson('users',15000),firebaseGetJson('apiKeys',12000),firebaseGetJson('userNotifications',12000),firebaseGetJson('userNotificationSeen',12000)
+      ]);
+      const remoteUsers=safeObject(remoteUsersRaw,'users'),remoteApiKeys=safeObject(remoteApiKeysRaw,'apiKeys'),remoteUserNotifications=safeObject(remoteUserNotificationsRaw,'userNotifications'),remoteUserSeen=safeObject(remoteUserSeenRaw,'userNotificationSeen');
+      const patch={'orders':null,'settings/orderCounter':2999};
+      const adminSafeNames=new Set([firebaseSafeKey(ADMIN_USER).toLowerCase(),firebaseSafeKey('admin').toLowerCase(),adminEmail,adminEmail.split('@')[0],'admin']);
+      const addIdentity=(set,value)=>{const raw=String(value||'').trim();if(!raw)return;set.add(raw.toLowerCase());set.add(decodeFirebaseSafeKey(raw).toLowerCase());set.add(firebaseSafeKey(raw).toLowerCase());};
+      let deletedUsers=0,deletedApiKeys=0,deletedUserNotificationNodes=0;
+      for(const [key,user] of Object.entries(remoteUsers)){
+        if(protectedAdmin(key,user)){for(const id of [key,decodeFirebaseSafeKey(key),user?.username,user?.userName,user?.email,user?.mail,user?.emailAddress])addIdentity(adminSafeNames,id);continue;}
+        patch['users/'+key]=null;deletedUsers++;
+      }
+      const localUserStore=readJSON('users.json',{users:{}}),localUsers=safeObject(localUserStore?.users||{},'users.json');
+      const keptLocalUsers={};
+      for(const [key,user] of Object.entries(localUsers)){
+        if(protectedAdmin(key,user)){keptLocalUsers[key]=user;for(const id of [key,user?.username,user?.userName,user?.email,user?.mail])addIdentity(adminSafeNames,id);}
+      }
+      // Customer API keys are deleted; admin-owned keys are retained.
+      for(const [hash,record] of Object.entries(remoteApiKeys)){
+        if(protectedAdmin(record?.username||'',record))continue;
+        patch['apiKeys/'+hash]=null;deletedApiKeys++;
+      }
+      const localApiKeys=safeObject(readJSON('api_keys.json',{}),'api_keys.json'),keptLocalApiKeys={};
+      for(const [hash,record] of Object.entries(localApiKeys)){if(protectedAdmin(record?.username||'',record))keptLocalApiKeys[hash]=record;}
+      const adminChildKey=key=>{const lower=String(key||'').trim().toLowerCase(),decoded=decodeFirebaseSafeKey(key).trim().toLowerCase();return adminSafeNames.has(lower)||adminSafeNames.has(decoded)||lower===firebaseSafeKey(ADMIN_USER).toLowerCase()||decoded===adminEmail;};
+      for(const [key] of Object.entries(remoteUserNotifications)){if(!adminChildKey(key)){patch['userNotifications/'+key]=null;deletedUserNotificationNodes++;}}
+      for(const [key] of Object.entries(remoteUserSeen)){if(!adminChildKey(key))patch['userNotificationSeen/'+key]=null;}
+      // One verified Firebase multi-path update: no services, categoryMeta, providerServices,
+      // catalogOrder, provider settings, payments, balance ledger, or discount ledger are touched.
+      await persistFirebaseCatalogPatch(patch,{verify:true,atomic:true,timeoutMs:45000});
+      // Change local mirrors only after every Firebase path has been verified.
+      localUserStore.users=keptLocalUsers;writeJSON('users.json',localUserStore);
+      writeJSON('orders.json',[]);writeJSON('api_keys.json',keptLocalApiKeys);
+      const localSeen=safeObject(readJSON('notification_seen.json',{}),'notification_seen.json'),keptLocalSeen={};for(const [key,value] of Object.entries(localSeen))if(adminChildKey(key))keptLocalSeen[key]=value;writeJSON('notification_seen.json',keptLocalSeen);
+      const localUserNotifs=safeObject(readJSON('user_notifications.json',{}),'user_notifications.json'),keptLocalNotifs={};for(const [key,value] of Object.entries(localUserNotifs))if(adminChildKey(key))keptLocalNotifs[key]=value;writeJSON('user_notifications.json',keptLocalNotifs);
+      const localSettings=readJSON('settings.json',{});writeJSON('settings.json',{...localSettings,orderCounter:2999,resetAt:now,resetScope:'customers-and-orders'});
+      return json(res,200,{ok:true,scope:'customers-and-orders',deletedUsers,deletedApiKeys,deletedUserNotificationNodes,ordersCleared:true,orderCounter:2999,catalogPreserved:true,message:'تم تنظيف حسابات العملاء (بما فيها بيانات وأرصدة الحساب) والطلبات والتحقق من Firebase، مع الحفاظ على الكتالوج والأسعار وإعدادات المزودين وسجلات الدفع المستقلة.'});
+    }catch(e){
+      console.error('Admin customer/order cleanup failed:',String(e.message||e).slice(0,220));
+      return json(res,502,{ok:false,error:'تعذر إكمال التنظيف والتحقق من Firebase؛ لم تُعرض العملية كنجاح. '+String(e.message||e).slice(0,220),catalogPreserved:true});
+    }
   }
   if(p==='/api/admin/user-balance' && req.method==='POST'){
     if(!isAdmin(req)) return json(res,403,{ok:false,error:'غير مصرح'});
@@ -6535,7 +6598,7 @@ async function routeAPI(req,res,urlObj){
     try { buildFile=fs.readFileSync(path.join(ROOT,'BUILD_ID.txt'),'utf8').trim(); } catch(_) {}
     const deploymentConsistent=uiVersion===APP_VERSION && uiBuildId===BUILD_ID && versionFile===APP_VERSION && buildFile===BUILD_ID;
     const dbInfo=firebaseDatabaseDiagnosticInfo();
-    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.46',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
+    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.48',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
     // Keep operational configuration details private; only an authenticated admin can inspect them.
     if(isAdmin(req)){const credentialStatus=firebaseServiceAccountStatus();health.firebaseDatabase={host:dbInfo.host,source:dbInfo.source,databaseProjectHint:dbInfo.databaseProjectHint,serviceAccountProjectId:dbInfo.serviceAccountProjectId||null,configuredWebProjectId:dbInfo.configuredWebProjectId||null,serviceAccountProjectMatch:dbInfo.serviceAccountProjectMatch};health.securityConfig={sessionSecretConfigured:!!String(process.env.SESSION_SECRET||'').trim(),dedicatedEncryptionKeyConfigured:!!String(process.env.SADA_ENCRYPTION_KEY||'').trim(),stableEncryptionAvailable:telegramEncryptionReady(),firebaseConfigured:!!FIREBASE_DATABASE_URL,firebaseServiceAccountConfigured:credentialStatus.ok,firebaseCredentialStatus:{ok:credentialStatus.ok,code:credentialStatus.code,source:credentialStatus.source,message:credentialStatus.message},firebaseDatabaseSecretConfigured:!!String(process.env.FIREBASE_DATABASE_SECRET||'').trim(),firebaseAuthAvailable:firebaseAuthAvailable(),emailServiceConfigured:!!(String(process.env.RESEND_API_KEY||'').trim()&&String(process.env.RESEND_FROM_EMAIL||process.env.EMAIL_FROM||'').trim()),telegramTokenFromEnvironment:!!String(process.env.TELEGRAM_BOT_TOKEN||'').trim(),adminPasswordFromEnvironment:!!(String(process.env.ADMIN_PASSWORD||'').trim()||String(process.env.ADMIN_PASSWORD_HASH||'').trim()),adminPasswordConfigured:adminPasswordConfigured()};}
     return json(res,200,health);
