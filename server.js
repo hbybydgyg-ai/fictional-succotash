@@ -44,8 +44,8 @@ function purgeCatalogServiceSnapshots(){
 }
 purgeCatalogServiceSnapshots();
 const APP_NAME = 'صدى العراق';
-const APP_VERSION = '1.6.48';
-const BUILD_ID = 'SADA-1.6.48-SERVICE-HUB-BULK-SECTION-DELETE-PERF-20261015';
+const APP_VERSION = '1.6.49';
+const BUILD_ID = 'SADA-1.6.49-FAST-IMPORT-SILENT-FIREBASE-PATCH-20261015';
 // Keep the owner's admin identity available after packaging, but store only a scrypt hash
 // in the project. Railway variables can still explicitly override this packaged credential.
 function loadBundledAdminAuth(){
@@ -2165,6 +2165,24 @@ async function firebasePatchJson(pathname,value,timeoutMs=12000){
     return snap.val();
   }
   const out=await firebaseRequest(pathname,'PATCH',value,timeoutMs);return out.data===null?value:out.data;
+}
+// Apply a Realtime Database PATCH without downloading the entire database in the write response.
+// `print=silent` returns an empty success response; the caller verifies only the affected catalog paths.
+async function firebasePatchJsonSilent(pathname,value,timeoutMs=45000){
+  if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('بيانات Firebase PATCH يجب أن تكون كائناً.');
+  if(firebaseAdminEnabled()){
+    await firebaseWithTimeout(firebaseAdminDatabase().ref(String(pathname||'/')).update(value),timeoutMs,'silent patch');
+    return {ok:true,status:200};
+  }
+  const auth=await firebaseAuthContext(),u=firebasePathUrl(pathname,auth.queryAuth);
+  u.searchParams.set('print','silent');
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
+  try{
+    const r=await fetch(u,{method:'PATCH',headers:{'Accept':'application/json','Content-Type':'application/json',...auth.headers},body:JSON.stringify(value),signal:controller.signal,redirect:'error'});
+    if(!r.ok){const detail=await r.text().catch(()=> '');throw new Error('Firebase HTTP '+r.status+(detail?': '+detail.slice(0,180):''));}
+    if(r.body&&typeof r.body.cancel==='function')await r.body.cancel().catch(()=>{});
+    return {ok:true,status:r.status};
+  }finally{clearTimeout(timer);}
 }
 async function firebaseDeleteJson(pathname,timeoutMs=8000){
   if(firebaseAdminEnabled()){
@@ -5222,15 +5240,30 @@ async function routeAPI(req,res,urlObj){
       const old=metaRoot[categoryKey]&&typeof metaRoot[categoryKey]==='object'?metaRoot[categoryKey]:{};
       metaRoot[categoryKey]={...old,...(b.categoryMeta&&typeof b.categoryMeta==='object'?b.categoryMeta:{}),name:dest,serviceKeys:[...new Set([...serviceKeys,...(Array.isArray(old.serviceKeys)?old.serviceKeys.map(String):[])])],updatedAt:at,updatedBy:String(session(req)?.username||ADMIN_USER)};
     }
-    try{writeJSON('services.json',root);ensureNumericSiteServiceIds();if(restoredArchived)writeJSON('quarantined_provider_services.json',quarantineArchive);writeJSON('category_meta.json',metaRoot);const cfg=readJSON('catalog_settings.json',{});cfg.legacySeedAttempted=true;cfg.catalogUpdatedAt=at;cfg.lastImportCount=serviceKeys.length;const order=cfg.catalogOrder&&typeof cfg.catalogOrder==='object'?cfg.catalogOrder:{categories:[],services:{}};if(!Array.isArray(order.categories))order.categories=[];if(!order.services||typeof order.services!=='object'||Array.isArray(order.services))order.services={};if(dest!=='__all__'&&!order.categories.some(x=>normalizeCatalogLabel(x)===normalizeCatalogLabel(dest)))order.categories.push(dest);const destBucket=dest==='__all__'?'__all__':(categoryKey||normalizeCatalogKey(dest));for(const bucket of new Set([destBucket,'__all__'])){const previous=Array.isArray(order.services[bucket])?order.services[bucket].map(String):[];order.services[bucket]=[...serviceKeys,...previous.filter(k=>!serviceKeys.includes(k))];}cfg.catalogOrder=canonicalCatalogOrder(order,metaRoot);writeJSON('catalog_settings.json',cfg);const verify=readJSON('services.json',{});const missing=serviceKeys.filter(k=>!verify[k]||String(verify[k].providerServiceId||verify[k].smmpartyId||'')==='');if(missing.length)throw new Error('فشل التحقق من '+missing.length+' خدمة بعد الحفظ.');
+    let firebasePatchAccepted=false;
+    try{writeJSON('services.json',root);ensureNumericSiteServiceIds();if(restoredArchived)writeJSON('quarantined_provider_services.json',quarantineArchive);writeJSON('category_meta.json',metaRoot);const cfg=readJSON('catalog_settings.json',{});cfg.legacySeedAttempted=true;cfg.catalogUpdatedAt=at;cfg.lastImportCount=serviceKeys.length;const order=cfg.catalogOrder&&typeof cfg.catalogOrder==='object'?cfg.catalogOrder:{categories:[],services:{}};if(!Array.isArray(order.categories))order.categories=[];if(!order.services||typeof order.services!=='object'||Array.isArray(order.services))order.services={};if(dest!=='__all__'&&!order.categories.some(x=>normalizeCatalogLabel(x)===normalizeCatalogLabel(dest)))order.categories.push(dest);const destBucket=dest==='__all__'?'__all__':(categoryKey||normalizeCatalogKey(dest));for(const bucket of new Set([destBucket,'__all__'])){const previous=Array.isArray(order.services[bucket])?order.services[bucket].map(String):[];order.services[bucket]=[...serviceKeys,...previous.filter(k=>!serviceKeys.includes(k))];}cfg.catalogOrder=canonicalCatalogOrder(order,metaRoot);writeJSON('catalog_settings.json',cfg);const verify=readJSON('services.json',{});const missing=serviceKeys.filter(k=>!verify[k]||String(verify[k].providerServiceId||verify[k].smmpartyId||'')==='');if(missing.length)throw new Error('فشل التحقق من '+missing.length+' خدمة بعد الحفظ المحلي.');
       const freshRoot=readJSON('services.json',{}),freshMeta=readJSON('category_meta.json',{}),freshCfg=readJSON('catalog_settings.json',{}),remotePatch={};
       for(const key of serviceKeys){if(!freshRoot[key])throw new Error('الخدمة '+key+' غير موجودة في الكتالوج بعد الحفظ المحلي.');remotePatch['services/'+key]=freshRoot[key];}
       if(dest!=='__all__'&&freshMeta[categoryKey])remotePatch['categoryMeta/'+categoryKey]=freshMeta[categoryKey];
       if(freshCfg.catalogOrder)remotePatch['settings/catalogOrder']=freshCfg.catalogOrder;
-      remotePatch['settings/svcsVersion']=String(Date.now());
-      await persistFirebaseCatalogPatch(remotePatch,{verify:true,atomic:true,timeoutMs:45000});
-      return json(res,200,{ok:true,added,updated,restoredArchived,skipped,total:serviceKeys.length,serviceKeys,verified:true,firebaseVerified:true,destination:dest,storage:'firebase',storageMode:'firebase',checkedAt:nowISO()});}
-    catch(e){try{writeJSON('services.json',servicesBeforeImport);writeJSON('category_meta.json',metaBeforeImport);writeJSON('catalog_settings.json',settingsBeforeImport);writeJSON('quarantined_provider_services.json',quarantineBeforeImport);SITE_SERVICE_IDS_DIRTY=true;}catch(rollbackError){console.error('Firebase service import rollback failed:',String(rollbackError.message||rollbackError));}return json(res,503,{ok:false,persisted:false,error:'لم يتم تأكيد حفظ الخدمات في Firebase، لذلك ألغيت العملية محلياً. '+String(e.message||e).slice(0,180)});}
+      const importVersion=String(Date.now());remotePatch['settings/svcsVersion']=importVersion;
+      // Never download Firebase's entire database as a PATCH response. Silent PATCH is followed by
+      // bounded read-back of only the service catalog, target category, order and version.
+      await firebasePatchJsonSilent('',remotePatch,45000);firebasePatchAccepted=true;
+      const [remoteServicesAfter,remoteMetaAfter,remoteOrderAfter,remoteVersionAfter]=await Promise.all([
+        firebaseGetJson('services',25000),
+        dest!=='__all__'?firebaseGetJson('categoryMeta/'+categoryKey,12000):Promise.resolve(null),
+        firebaseGetJson('settings/catalogOrder',12000),
+        firebaseGetJson('settings/svcsVersion',8000)
+      ]);
+      const remoteCatalog=catalogObject(remoteServicesAfter);
+      const unverifiable=serviceKeys.filter(key=>!remoteCatalog[key]||!catalogValuesEqual(remoteCatalog[key],freshRoot[key]));
+      if(unverifiable.length)throw new Error('لم يتأكد حفظ '+unverifiable.length+' خدمة داخل Firebase.');
+      if(dest!=='__all__'&&freshMeta[categoryKey]&&!catalogValuesEqual(remoteMetaAfter,freshMeta[categoryKey]))throw new Error('لم يتأكد حفظ بيانات القسم داخل Firebase.');
+      if(freshCfg.catalogOrder&&!catalogValuesEqual(remoteOrderAfter,freshCfg.catalogOrder))throw new Error('لم يتأكد حفظ ترتيب الأقسام داخل Firebase.');
+      if(String(remoteVersionAfter??'')!==importVersion)throw new Error('لم يتأكد تحديث إصدار الكتالوج داخل Firebase.');
+      return json(res,200,{ok:true,added,updated,restoredArchived,skipped,total:serviceKeys.length,serviceKeys,verified:true,firebaseVerified:true,destination:dest,storage:'firebase',storageMode:'firebase',verificationMode:'bounded-catalog-readback',checkedAt:nowISO()});}
+    catch(e){try{if(firebasePatchAccepted){await reloadLocalCatalogFromFirebase();}else{writeJSON('services.json',servicesBeforeImport);writeJSON('category_meta.json',metaBeforeImport);writeJSON('catalog_settings.json',settingsBeforeImport);writeJSON('quarantined_provider_services.json',quarantineBeforeImport);SITE_SERVICE_IDS_DIRTY=true;}}catch(rollbackError){console.error('Firebase service import reconciliation failed:',String(rollbackError.message||rollbackError));}return json(res,503,{ok:false,persisted:false,uncertain:firebasePatchAccepted,error:firebasePatchAccepted?'تم إرسال البيانات إلى Firebase، لكن تعذر تأكيد كل القراءات. اضغط تحديث القائمة وتحقق من الخدمات قبل إعادة الاستيراد. '+String(e.message||e).slice(0,140):'لم يتم تأكيد حفظ الخدمات في Firebase، وأُعيدت الملفات المحلية إلى حالتها السابقة. '+String(e.message||e).slice(0,180)});}
   }
   // Support chat is served through the privileged server SDK, never by granting clients write access to chats.
   if(p==='/api/support/chat'&&req.method==='GET'){
@@ -6562,7 +6595,7 @@ async function routeAPI(req,res,urlObj){
     try { buildFile=fs.readFileSync(path.join(ROOT,'BUILD_ID.txt'),'utf8').trim(); } catch(_) {}
     const deploymentConsistent=uiVersion===APP_VERSION && uiBuildId===BUILD_ID && versionFile===APP_VERSION && buildFile===BUILD_ID;
     const dbInfo=firebaseDatabaseDiagnosticInfo();
-    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.48',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
+    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.49',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
     // Keep operational configuration details private; only an authenticated admin can inspect them.
     if(isAdmin(req)){const credentialStatus=firebaseServiceAccountStatus();health.firebaseDatabase={host:dbInfo.host,source:dbInfo.source,databaseProjectHint:dbInfo.databaseProjectHint,serviceAccountProjectId:dbInfo.serviceAccountProjectId||null,configuredWebProjectId:dbInfo.configuredWebProjectId||null,serviceAccountProjectMatch:dbInfo.serviceAccountProjectMatch};health.securityConfig={sessionSecretConfigured:!!String(process.env.SESSION_SECRET||'').trim(),dedicatedEncryptionKeyConfigured:!!String(process.env.SADA_ENCRYPTION_KEY||'').trim(),stableEncryptionAvailable:telegramEncryptionReady(),firebaseConfigured:!!FIREBASE_DATABASE_URL,firebaseServiceAccountConfigured:credentialStatus.ok,firebaseCredentialStatus:{ok:credentialStatus.ok,code:credentialStatus.code,source:credentialStatus.source,message:credentialStatus.message},firebaseDatabaseSecretConfigured:!!String(process.env.FIREBASE_DATABASE_SECRET||'').trim(),firebaseAuthAvailable:firebaseAuthAvailable(),emailServiceConfigured:!!(String(process.env.RESEND_API_KEY||'').trim()&&String(process.env.RESEND_FROM_EMAIL||process.env.EMAIL_FROM||'').trim()),telegramTokenFromEnvironment:!!String(process.env.TELEGRAM_BOT_TOKEN||'').trim(),adminPasswordFromEnvironment:!!(String(process.env.ADMIN_PASSWORD||'').trim()||String(process.env.ADMIN_PASSWORD_HASH||'').trim()),adminPasswordConfigured:adminPasswordConfigured()};}
     return json(res,200,health);
