@@ -27,8 +27,8 @@ function readStaticAssetBuffer(assetPath){
 const DATA = path.resolve(process.env.SADA_DATA_DIR || process.env.DATA_DIR || (process.env.RAILWAY_VOLUME_MOUNT_PATH ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, 'sada-data') : LEGACY_DATA));
 const DATA_IS_EXTERNAL = path.resolve(DATA) !== path.resolve(LEGACY_DATA);
 const APP_NAME = 'صدى العراق';
-const APP_VERSION = '1.6.42';
-const BUILD_ID = 'SADA-1.6.42-PROFIT-PERCENTAGE-FIX-R2-20261014';
+const APP_VERSION = '1.6.43';
+const BUILD_ID = 'SADA-1.6.43-PLATFORM-DELETE-RECLASSIFY-20261014';
 // Keep the owner's admin identity available after packaging, but store only a scrypt hash
 // in the project. Railway variables can still explicitly override this packaged credential.
 function loadBundledAdminAuth(){
@@ -4548,6 +4548,150 @@ async function routeAPI(req,res,urlObj){
     }
     return json(res,200,{ok:true,value,source:'firebase',storage:'firebase+verified-server-cache',storageMode:'firebase',warning:''});
   }
+
+  // Admin service maintenance: filter, reclassify or delete provider-backed catalog services.
+  // Every mutation is Firebase-first, verified, backed up and admin-only.
+  if(p==='/api/admin/catalog/delete-services'&&(req.method==='GET'||req.method==='POST')){
+    if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
+    const normPlatform=value=>{
+      const key=normalizeCatalogLabel(String(value??''));
+      const defs={
+        Instagram:['instagram','insta','انستجرام','انستغرام','انستا'],
+        Tiktok:['tiktok','tik tok','تيك توك','تيكتوك'],
+        Facebook:['facebook','فيسبوك','فيس بوك'],
+        Youtube:['youtube','يوتيوب'],
+        Telegram:['telegram','تلجرام','تيليجرام','تليجرام'],
+        Twitter:['twitter','تويتر','x.com'],
+        Snapchat:['snapchat','سناب شات','سناب'],
+        Whatsapp:['whatsapp','واتساب','واتس اب'],
+        Linkedin:['linkedin','لينكدان','لينكدإن'],
+        Other:['other','عام','اخرى','أخرى','smm']
+      };
+      for(const [platform,aliases] of Object.entries(defs))if(aliases.some(a=>key===normalizeCatalogLabel(a)))return platform;
+      return '';
+    };
+    const platformOf=row=>{
+      for(const value of [row?.servicePlatform,row?.platform,...(Array.isArray(row?.platforms)?row.platforms:[]),...(Array.isArray(row?.apps)?row.apps:[]),row?.app]){
+        const exact=normPlatform(value);if(exact)return exact;
+      }
+      return 'Other';
+    };
+    const providerOf=row=>String(row?.providerId??row?.providerID??row?.provider??row?.sourceProviderId??'').trim();
+    const providerNameMap=()=>{
+      const root=readJSON('providers.runtime.json',readJSON('providers.json',{}));
+      const providers=root?.providers&&typeof root.providers==='object'?root.providers:{};
+      return providers;
+    };
+    if(req.method==='GET'){
+      let services;
+      try{await ensureLocalServiceCatalogSeeded();services=catalogObject(await firebaseGetJson('services',12000));}catch(e){return json(res,503,{ok:false,error:'تعذر قراءة الخدمات من Firebase؛ لم يتم عرض قائمة قديمة. '+String(e.message||e).slice(0,150)});}
+      const provs=providerNameMap();
+      const providerIds=new Set(Object.keys(provs));
+      for(const row of Object.values(services))if(providerOf(row))providerIds.add(providerOf(row));
+      const providers=[...providerIds].map(id=>({id,name:String(provs[id]?.name||provs[id]?.title||id)})).sort((a,b)=>a.name.localeCompare(b.name,'ar'));
+      const items=Object.entries(services).map(([key,row])=>({
+        key,name:String(row?.name||row?.title||'خدمة بدون اسم'),
+        platform:platformOf(row),providerId:providerOf(row),
+        providerName:String(provs[providerOf(row)]?.name||provs[providerOf(row)]?.title||providerOf(row)||'بدون مزود'),
+        providerServiceId:String(row?.providerServiceId||row?.smmpartyId||row?.sourceServiceId||row?.serviceId||''),
+        category:String(row?.category||row?.groups?.[0]||row?.categories?.[0]||'عام'),
+        price:Number(row?.sellingUsd??row?.rateUsd??row?.price??0),
+        active:row?.active!==false&&row?.enabled!==false&&row?.hidden!==true&&row?.deleted!==true
+      }));
+      return json(res,200,{ok:true,source:'firebase',verified:true,providers,items,total:items.length});
+    }
+    const b=await bodyJSON(req,5*1024*1024);
+    const action=String(b.action||'').trim();
+    const platform=normPlatform(b.platform);
+    const providerId=String(b.providerId??'all').trim()||'all';
+    if(action==='reclassify'){
+      const newPlatform=normPlatform(b.newPlatform);
+      const keys=[...new Set((Array.isArray(b.keys)?b.keys:[]).map(x=>String(x??'').trim()).filter(Boolean))];
+      if(!newPlatform||newPlatform==='all')return json(res,422,{ok:false,error:'اختر المنصة الصحيحة التي تريد نقل الخدمات إليها.'});
+      if(!keys.length||keys.length>1000)return json(res,422,{ok:false,error:'حدد من خدمة واحدة إلى 1000 خدمة لتصحيح منصتها.'});
+      if(b.confirmation!=='RECLASSIFY_PLATFORM')return json(res,422,{ok:false,error:'يلزم تأكيد تصحيح المنصة.'});
+      let services;
+      try{await ensureLocalServiceCatalogSeeded();services=catalogObject(await firebaseGetJson('services',12000));}catch(e){return json(res,503,{ok:false,error:'تعذر قراءة Firebase؛ لم يتم تعديل أي خدمة. '+String(e.message||e).slice(0,150)});}
+      const patch={};let changed=0;
+      for(const key of keys){
+        const old=services[key];if(!old||typeof old!=='object')return json(res,409,{ok:false,error:'تغيّرت قائمة الخدمات أو لم تعد الخدمة موجودة؛ حدّث القائمة وأعد الاختيار.'});
+        const row={...old,app:newPlatform,apps:[newPlatform],platforms:[newPlatform],platform:newPlatform,servicePlatform:newPlatform,imagePlatform:newPlatform,updatedAt:nowISO(),updatedBy:String(session(req)?.username||ADMIN_USER)};
+        patch['services/'+key]=row;changed++;
+      }
+      patch['settings/svcsVersion']=String(Date.now());
+      try{await persistFirebaseCatalogPatch(patch,{verify:true,atomic:true,timeoutMs:45000});
+        const localServices=readJSON('services.json',{});
+        const runtimeFields=['providerAvailable','availabilityStatus','providerAvailabilityReason','providerCheckedAt','lastProviderCheckAt','providerMissingSince','lastProviderError','providerSyncError'];
+        for(const key of keys){
+          const localRow=localServices[key]||services[key],updated=patch['services/'+key];
+          localServices[key]={...localRow,...updated};
+          for(const field of runtimeFields)if(localRow&&localRow[field]!==undefined)localServices[key][field]=localRow[field];
+        }
+        writeJSON('services.json',localServices);markCatalogSeeded();
+      }
+      catch(e){return json(res,503,{ok:false,error:'لم يتم تأكيد تصحيح المنصة داخل Firebase. '+String(e.message||e).slice(0,150)});}
+      return json(res,200,{ok:true,action,changed,platform:newPlatform,storage:'firebase',verified:true});
+    }
+    if(action!=='selected'&&action!=='all')return json(res,422,{ok:false,error:'اختر حذف المحدد أو حذف كل خدمات المنصة والمزود.'});
+    if(!platform)return json(res,422,{ok:false,error:'اختر منصة محددة قبل الحذف.'});
+    if(b.confirmation!=='DELETE_PLATFORM_SERVICES')return json(res,422,{ok:false,error:'تأكيد الحذف غير صحيح.'});
+    let servicesBefore,metaBefore,remoteOrder;
+    try{
+      await ensureLocalServiceCatalogSeeded();
+      const loaded=await Promise.all([firebaseGetJson('services',12000),firebaseGetJson('categoryMeta',12000),firebaseGetJson('settings/catalogOrder',9000)]);
+      servicesBefore=catalogObject(loaded[0]);metaBefore=catalogObject(loaded[1]);remoteOrder=loaded[2];
+    }catch(e){return json(res,503,{ok:false,error:'تعذر قراءة كتالوج Firebase؛ لم يتم حذف أي خدمة. '+String(e.message||e).slice(0,150)});}
+    const localServicesBefore=readJSON('services.json',{}),settingsBefore=readJSON('catalog_settings.json',{});
+    if(remoteOrder&&typeof remoteOrder==='object'&&!Array.isArray(remoteOrder))settingsBefore.catalogOrder=canonicalCatalogOrder(remoteOrder,metaBefore);
+    const matchesFilter=(row)=>platformOf(row)===platform&&(providerId==='all'||(providerId==='__none__'?!providerOf(row):providerOf(row)===providerId));
+    let keys=[];
+    if(action==='all'){
+      keys=Object.entries(servicesBefore).filter(([,row])=>matchesFilter(row)).map(([key])=>key);
+    }else{
+      const requested=[...new Set((Array.isArray(b.keys)?b.keys:[]).map(x=>String(x??'').trim()).filter(Boolean))];
+      if(!requested.length||requested.length>1000)return json(res,422,{ok:false,error:'حدد من خدمة واحدة إلى 1000 خدمة للحذف، أو استخدم حذف الكل بعد اختيار المنصة والمزود.'});
+      const invalid=requested.filter(key=>!servicesBefore[key]||!matchesFilter(servicesBefore[key]));
+      if(invalid.length)return json(res,409,{ok:false,error:'بعض الخدمات لا تطابق المنصة أو المزود المحدد. حدّث القائمة وأعد الاختيار.'});
+      keys=requested;
+    }
+    if(!keys.length)return json(res,404,{ok:false,error:'لا توجد خدمات تطابق المنصة والمزود المحددين.'});
+    if(keys.length>8000)return json(res,413,{ok:false,error:'عدد الخدمات كبير جدًا لعملية حذف واحدة؛ اختر مزودًا محددًا أو احذفها على دفعات.'});
+    const selected=new Set(keys);
+    const servicesNext={...servicesBefore};for(const key of keys)delete servicesNext[key];
+    const metaNext={...metaBefore};
+    for(const [metaKey,meta] of Object.entries(metaNext)){
+      if(meta&&typeof meta==='object'&&Array.isArray(meta.serviceKeys)){
+        const serviceKeys=meta.serviceKeys.map(String).filter(key=>!selected.has(key));
+        if(serviceKeys.length!==meta.serviceKeys.length)metaNext[metaKey]={...meta,serviceKeys};
+      }
+    }
+    const settingsNext={...settingsBefore};
+    const order=settingsNext.catalogOrder&&typeof settingsNext.catalogOrder==='object'?settingsNext.catalogOrder:{categories:[],services:{}};
+    const orderServices=order.services&&typeof order.services==='object'&&!Array.isArray(order.services)?{...order.services}:{};
+    for(const [bucket,ids] of Object.entries(orderServices))if(Array.isArray(ids))orderServices[bucket]=ids.map(String).filter(key=>!selected.has(key));
+    settingsNext.catalogOrder=canonicalCatalogOrder({...order,services:orderServices},metaNext);settingsNext.catalogUpdatedAt=nowISO();settingsNext.lastServiceDeleteAt=nowISO();
+    const backupDir=path.join(DATA,'catalog-backups');fs.mkdirSync(backupDir,{recursive:true});
+    const stamp=new Date().toISOString().replace(/[:.]/g,'-');const backupName='platform-service-delete-'+stamp+'.json';
+    fs.writeFileSync(path.join(backupDir,backupName),JSON.stringify({
+      createdAt:nowISO(),action:'delete-services',platform,providerId,
+      services:Object.fromEntries(keys.map(key=>[key,servicesBefore[key]])),
+      categoryMeta:metaBefore,catalogOrder:settingsBefore.catalogOrder||{categories:[],services:{}}
+    },null,2),'utf8');
+    const remotePatch={};
+    for(const key of keys)remotePatch['services/'+key]=null;
+    for(const [metaKey,meta] of Object.entries(metaNext))if(!catalogValuesEqual(metaBefore[metaKey]??null,meta))remotePatch['categoryMeta/'+metaKey]=meta;
+    remotePatch['settings/catalogOrder']=settingsNext.catalogOrder;remotePatch['settings/svcsVersion']=String(Date.now());
+    try{
+      await persistFirebaseCatalogPatch(remotePatch,{verify:true,atomic:true,timeoutMs:60000});
+      const localServicesNext={...localServicesBefore};for(const key of keys)delete localServicesNext[key];
+      writeJSON('services.json',localServicesNext);writeJSON('category_meta.json',metaNext);
+      settingsNext.firebaseSvcsVersion=String(Date.now());writeJSON('catalog_settings.json',settingsNext);markCatalogSeeded();
+    }catch(e){
+      return json(res,503,{ok:false,persisted:false,error:'لم يتم تأكيد حذف الخدمات في Firebase؛ راجع القائمة قبل إعادة المحاولة. '+String(e.message||e).slice(0,160)});
+    }
+    return json(res,200,{ok:true,action,platform,providerId,deleted:keys.length,deletedKeys:keys,backup:'catalog-backups/'+backupName,storage:'firebase',verified:true});
+  }
+
   if(p==='/api/admin/catalog/sections'&&req.method==='POST'){
     if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
     try{await ensureLocalServiceCatalogSeeded();}catch(e){return json(res,503,{ok:false,error:'تعذر الاتصال بقاعدة Firebase؛ لم يتم تعديل الأقسام: '+String(e.message||e).slice(0,160)});}
@@ -6296,7 +6440,7 @@ async function routeAPI(req,res,urlObj){
     try { buildFile=fs.readFileSync(path.join(ROOT,'BUILD_ID.txt'),'utf8').trim(); } catch(_) {}
     const deploymentConsistent=uiVersion===APP_VERSION && uiBuildId===BUILD_ID && versionFile===APP_VERSION && buildFile===BUILD_ID;
     const dbInfo=firebaseDatabaseDiagnosticInfo();
-    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.42',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
+    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.43',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
     // Keep operational configuration details private; only an authenticated admin can inspect them.
     if(isAdmin(req)){const credentialStatus=firebaseServiceAccountStatus();health.firebaseDatabase={host:dbInfo.host,source:dbInfo.source,databaseProjectHint:dbInfo.databaseProjectHint,serviceAccountProjectId:dbInfo.serviceAccountProjectId||null,configuredWebProjectId:dbInfo.configuredWebProjectId||null,serviceAccountProjectMatch:dbInfo.serviceAccountProjectMatch};health.securityConfig={sessionSecretConfigured:!!String(process.env.SESSION_SECRET||'').trim(),dedicatedEncryptionKeyConfigured:!!String(process.env.SADA_ENCRYPTION_KEY||'').trim(),stableEncryptionAvailable:telegramEncryptionReady(),firebaseConfigured:!!FIREBASE_DATABASE_URL,firebaseServiceAccountConfigured:credentialStatus.ok,firebaseCredentialStatus:{ok:credentialStatus.ok,code:credentialStatus.code,source:credentialStatus.source,message:credentialStatus.message},firebaseDatabaseSecretConfigured:!!String(process.env.FIREBASE_DATABASE_SECRET||'').trim(),firebaseAuthAvailable:firebaseAuthAvailable(),emailServiceConfigured:!!(String(process.env.RESEND_API_KEY||'').trim()&&String(process.env.RESEND_FROM_EMAIL||process.env.EMAIL_FROM||'').trim()),telegramTokenFromEnvironment:!!String(process.env.TELEGRAM_BOT_TOKEN||'').trim(),adminPasswordFromEnvironment:!!(String(process.env.ADMIN_PASSWORD||'').trim()||String(process.env.ADMIN_PASSWORD_HASH||'').trim()),adminPasswordConfigured:adminPasswordConfigured()};}
     return json(res,200,health);
