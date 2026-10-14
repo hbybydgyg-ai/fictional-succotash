@@ -28,7 +28,7 @@ const DATA = path.resolve(process.env.SADA_DATA_DIR || process.env.DATA_DIR || (
 const DATA_IS_EXTERNAL = path.resolve(DATA) !== path.resolve(LEGACY_DATA);
 const APP_NAME = 'صدى العراق';
 const APP_VERSION = '1.6.42';
-const BUILD_ID = 'SADA-1.6.42-PROFIT-PERCENTAGE-FIX-20261014';
+const BUILD_ID = 'SADA-1.6.42-PROFIT-PERCENTAGE-FIX-R2-20261014';
 // Keep the owner's admin identity available after packaging, but store only a scrypt hash
 // in the project. Railway variables can still explicitly override this packaged credential.
 function loadBundledAdminAuth(){
@@ -2488,7 +2488,16 @@ async function saveGlobalPricing(v){
   PRICE_GUARD_CFG.at=0;const p=cleanGlobalPricing(v);p.lastUpdatedAt=nowISO();p.lastError='';
   const settings=readJSON('settings.json',{});settings.pricing=p;writeJSON('settings.json',settings);
   let persistedRemotely=false,remoteError='';
-  try{await firebaseWriteJson('config/pricing',p,9000);persistedRemotely=true}catch(e){remoteError=String(e.message||e).slice(0,180)}
+  try{
+    await firebaseWriteJson('config/pricing',p,9000);
+    const pricingCheck=await firebaseGetJson('config/pricing',6000);
+    if(!pricingCheck||Number(pricingCheck.markupPct)!==Number(p.markupPct)||String(pricingCheck.lastUpdatedAt||'')!==String(p.lastUpdatedAt))throw new Error('فشل التحقق من قراءة config/pricing بعد الحفظ');
+    // Keep the legacy import setting in sync too; old import dialogs read settings/markup.
+    await firebaseWriteJson('settings/markup',p.markupPct,9000);
+    const legacyCheck=await firebaseGetJson('settings/markup',6000);
+    if(Number(legacyCheck)!==Number(p.markupPct))throw new Error('فشل التحقق من قراءة settings/markup بعد الحفظ');
+    persistedRemotely=true;
+  }catch(e){remoteError=String(e.message||e).slice(0,180)}
   return {pricing:p,persistedRemotely,remoteError};
 }
 function validRateField(s,keys){
@@ -5332,9 +5341,10 @@ async function routeAPI(req,res,urlObj){
     const b=await bodyJSON(req);const pct=Number(b.markupPct);if(!Number.isFinite(pct)||pct<0||pct>1000)return json(res,422,{ok:false,error:'نسبة الزيادة على تكلفة المزود يجب أن تكون بين 0 و1000%.'});
     const minutes=Number(b.intervalMinutes??10);if(![5,10,15,30,60].includes(minutes))return json(res,422,{ok:false,error:'اختر فترة تحديث من 5 أو 10 أو 15 أو 30 أو 60 دقيقة'});
     const previous=await getGlobalPricing();const saved=await saveGlobalPricing({...previous,markupPct:pct,autoSync:b.autoSync!==false,intervalMinutes:minutes,lastAttemptAt:previous.lastAttemptAt,lastSuccessAt:previous.lastSuccessAt});
+    if(!saved.persistedRemotely)return json(res,503,{ok:false,persistedRemotely:false,error:'لم يتم تأكيد حفظ نسبة الربح في Firebase. لم نعلن نجاح الحفظ ولم نشغّل تحديث الأسعار. السبب: '+String(saved.remoteError||'تعذر التحقق من قاعدة البيانات').slice(0,180),pricing:saved.pricing});
     let cached={updated:0,skipped:0,localUpdated:0},cachedError='';try{cached=await applyCachedGlobalMarkup(pct)}catch(e){cachedError=String(e.message||e).slice(0,180)}
     let live={ok:false,updated:0,providerErrors:[]};if(b.syncNow===true){live=await runProviderPriceSync({manual:true})}
-    return json(res,200,{ok:true,pricing:await getGlobalPricing(),persistedRemotely:saved.persistedRemotely,remoteError:saved.remoteError,cached,cachedError,live});
+    return json(res,200,{ok:true,pricing:await getGlobalPricing(),persistedRemotely:true,remoteError:'',cached,cachedError,live});
   }
   if(p==='/api/admin/pricing/sync' && req.method==='POST'){
     if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});const result=await runProviderPriceSync({manual:true});return json(res,200,result);
