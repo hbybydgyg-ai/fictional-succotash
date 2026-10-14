@@ -1,0 +1,10 @@
+Sada Iraq 2.14-p1 — Multi-category provider import UX fix
+
+- Provider source category picker now supports selecting multiple categories at once.
+- In section-import mode, services from every selected source category are grouped and imported into their corresponding site category.
+- Existing site category names are matched case-insensitively/Arabic-normalized and reused, avoiding duplicate sections when names already exist.
+- Existing site category order is retained; newly created categories append in provider selection order.
+- Missing site categories are created through the admin section API before their services are imported.
+- Added regression checks for multi-select, grouped filtering, canonical category-name reuse, and category order.
+
+The import remains explicit/manual; fetching provider services alone does not add services.

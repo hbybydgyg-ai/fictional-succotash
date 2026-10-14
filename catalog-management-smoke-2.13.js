@@ -62,3 +62,11 @@ assert.equal(state['catalog_settings.json'].catalogOrder.services.instagram[0], 
 assert.equal(state['catalog_settings.json'].catalogOrder.services.__all__[0], 'new-service', 'new service must also be first in All');
 
 console.log('PASS catalog management 2.14 smoke checks: bulk sections, pinning, Firebase-authoritative persistence, delete cleanup, and new-service-first ordering verified');
+
+// Multi-category provider import: mobile-friendly multi-select, grouped service selection,
+// canonical existing site names/order, and batch import into each category.
+assert.ok(html.includes("providerCat.multiple=true") && html.includes("providerCat.size=5"), 'provider source categories must allow selecting more than one category');
+assert.ok(html.includes('function selectedProviderCats36()') && html.includes('cats.some(sel=>key36(c)===key36(sel))'), 'section mode must include services from every selected provider category');
+assert.ok(html.includes('const selectedCats=selectedProviderCats36();const existingNames=categoryNames36();const canonicalName=src=>existingNames.find(n=>key36(n)===key36(src))||src;'), 'provider category import must reuse canonical site category names when they already exist');
+assert.ok(html.includes('الأقسام الموجودة احتفظت بترتيب الموقع، والأقسام الجديدة أُضيفت في نهاية الترتيب.'), 'multi-category import must preserve existing site category order and append new categories');
+console.log('PASS multi-category provider import: multiple source categories, site-name matching, order preservation, and per-category Firebase import');
