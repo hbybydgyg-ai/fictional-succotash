@@ -27,8 +27,8 @@ function readStaticAssetBuffer(assetPath){
 const DATA = path.resolve(process.env.SADA_DATA_DIR || process.env.DATA_DIR || (process.env.RAILWAY_VOLUME_MOUNT_PATH ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, 'sada-data') : LEGACY_DATA));
 const DATA_IS_EXTERNAL = path.resolve(DATA) !== path.resolve(LEGACY_DATA);
 const APP_NAME = 'صدى العراق';
-const APP_VERSION = '1.6.47';
-const BUILD_ID = 'SADA-1.6.47-SAFE-CLEANUP-CATALOG-REPAIR-20261014';
+const APP_VERSION = '1.6.46';
+const BUILD_ID = 'SADA-1.6.46-RESTORE-CATALOG-IMPORT-ADMIN-CLEANUP-20261014';
 // Keep the owner's admin identity available after packaging, but store only a scrypt hash
 // in the project. Railway variables can still explicitly override this packaged credential.
 function loadBundledAdminAuth(){
@@ -471,26 +471,28 @@ function ensureNumericSiteServiceIds(){
 
 function catalogObject(value){return value&&typeof value==='object'&&!Array.isArray(value)?value:{};}
 function catalogStable(value){
-  if(Array.isArray(value))return value.map(catalogStable);
-  if(value&&typeof value==='object')return Object.fromEntries(Object.keys(value).sort().map(k=>[k,catalogStable(value[k])]));
+  // Realtime Database may omit empty objects/arrays and null-valued children when it
+  // serializes REST responses. Treat those representations as the same empty value
+  // during read-back verification; otherwise a valid write such as
+  // {categories:["New section"], services:{}} is falsely reported as failed.
+  if(Array.isArray(value)){
+    if(value.length===0)return null;
+    return value.map(catalogStable);
+  }
+  if(value&&typeof value==='object'){
+    const normalized={};
+    for(const key of Object.keys(value).sort()){
+      const item=value[key];
+      if(item===undefined||item===null)continue;
+      const clean=catalogStable(item);
+      if(clean===null)continue;
+      normalized[key]=clean;
+    }
+    return Object.keys(normalized).length?normalized:null;
+  }
   return value;
 }
 function catalogValuesEqual(a,b){return JSON.stringify(catalogStable(a??null))===JSON.stringify(catalogStable(b??null));}
-function catalogOrderArrayValue(value){
-  if(Array.isArray(value))return value;
-  if(value&&typeof value==='object'&&!Array.isArray(value)){
-    const keys=Object.keys(value);
-    if(keys.length&&keys.every(k=>/^(0|[1-9]\d*)$/.test(k))){keys.sort((a,b)=>Number(a)-Number(b));return keys.map(k=>value[k]);}
-  }
-  return [];
-}
-function catalogOrderComparable(value){
-  const src=catalogObject(value),categories=catalogOrderArrayValue(src.categories).map(x=>String(x??'').trim()).filter(Boolean);
-  const rawServices=catalogObject(src.services),services={};
-  for(const [bucket,raw] of Object.entries(rawServices))services[bucket]=catalogOrderArrayValue(raw).map(x=>String(x??'').trim()).filter(Boolean);
-  return {categories,services};
-}
-function catalogOrderValuesEqual(a,b){return catalogValuesEqual(catalogOrderComparable(a),catalogOrderComparable(b));}
 function catalogMergeOrder(remoteValue,localValue,metaRoot,servicesRoot){
   const remote=catalogObject(remoteValue),local=catalogObject(localValue);
   const categories=[],seenCats=new Set();
@@ -513,25 +515,6 @@ function catalogMergeOrder(remoteValue,localValue,metaRoot,servicesRoot){
   for(const bucket of buckets){const arr=[],seen=new Set();for(const v of [...(Array.isArray(local.services?.[bucket])?local.services[bucket]:[]),...(Array.isArray(remote.services?.[bucket])?remote.services[bucket]:[])]){const key=String(v??'');if(key&&!seen.has(key)){seen.add(key);arr.push(key)}}serviceOrders[bucket]=arr;}
   return canonicalCatalogOrder({categories,services:serviceOrders},metaRoot);
 }
-async function repairAndVerifyFirebaseCatalogOrder(expectedOrder){
-  // Merge the requested order with the latest remote order before a targeted PUT. This
-  // repairs harmless REST multi-path/read-back mismatches without discarding concurrent sections.
-  const [latestOrderRaw,latestMetaRaw,latestServicesRaw]=await Promise.all([
-    firebaseGetJson('settings/catalogOrder',12000),firebaseGetJson('categoryMeta',12000),firebaseGetJson('services',15000)
-  ]);
-  const mergedMeta={...catalogObject(readJSON('category_meta.json',{})),...catalogObject(latestMetaRaw)};
-  const mergedServices={...catalogObject(readJSON('services.json',{})),...catalogObject(latestServicesRaw)};
-  const orderToWrite=catalogMergeOrder(latestOrderRaw,expectedOrder,mergedMeta,mergedServices);
-  await firebaseWriteJson('settings/catalogOrder',orderToWrite,18000);
-  let lastActual=null;
-  for(let attempt=0;attempt<3;attempt++){
-    if(attempt)await new Promise(resolve=>setTimeout(resolve,250*attempt));
-    lastActual=await firebaseGetJson('settings/catalogOrder',12000);
-    if(catalogOrderValuesEqual(lastActual,orderToWrite))return {verified:true,repaired:true};
-  }
-  const wanted=catalogOrderComparable(orderToWrite),actual=catalogOrderComparable(lastActual);
-  throw new Error('فشل التحقق من ترتيب الأقسام حتى بعد إعادة الحفظ المباشر. المتوقع '+wanted.categories.length+' قسمًا، والمقروء '+actual.categories.length+' قسمًا. تحقق من صلاحيات كتابة Firebase أو سجلات Railway.');
-}
 async function persistFirebaseCatalogPatch(patch,options={}){
   if(!patch||typeof patch!=='object'||Array.isArray(patch)||!Object.keys(patch).length)return {count:0};
   const entries=Object.entries(patch);if(entries.length>20000)throw new Error('تحديث الكتالوج يتجاوز الحد المسموح؛ قسّم العملية إلى دفعات.');
@@ -543,16 +526,7 @@ async function persistFirebaseCatalogPatch(patch,options={}){
     for(let i=0;i<nonNull.length;i+=12){
       const group=nonNull.slice(i,i+12);
       const vals=await Promise.all(group.map(([path])=>firebaseGetJson(path,9000)));
-      for(let j=0;j<group.length;j++){
-        const [path,expected]=group[j];
-        const equal=path==='settings/catalogOrder'?catalogOrderValuesEqual(vals[j],expected):catalogValuesEqual(vals[j],expected);
-        if(equal)continue;
-        if(path==='settings/catalogOrder'&&expected&&typeof expected==='object'&&!Array.isArray(expected)){
-          await repairAndVerifyFirebaseCatalogOrder(expected);
-          continue;
-        }
-        throw new Error('لم نتأكد من حفظ المسار '+path+' داخل Firebase.');
-      }
+      for(let j=0;j<group.length;j++)if(!catalogValuesEqual(vals[j],group[j][1]))throw new Error('لم نتأكد من حفظ المسار '+group[j][0]+' داخل Firebase.');
     }
     const deletes=entries.filter(([,v])=>v===null||v===undefined);
     for(let i=0;i<deletes.length;i+=12){const group=deletes.slice(i,i+12);const vals=await Promise.all(group.map(([path])=>firebaseGetJson(path,9000)));for(let j=0;j<group.length;j++)if(vals[j]!==null&&vals[j]!==undefined)throw new Error('لم نتأكد من حذف المسار '+group[j][0]+' من Firebase.');}
@@ -4787,39 +4761,6 @@ async function routeAPI(req,res,urlObj){
     return json(res,200,{ok:true,action,platform,providerId,deleted:keys.length,deletedKeys:keys,backup:'catalog-backups/'+backupName,storage:'firebase',verified:true});
   }
 
-  if(p==='/api/admin/catalog/repair-metadata'&&req.method==='POST'){
-    if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
-    try{
-      const [servicesRaw,metaRaw,orderRaw,versionRaw]=await Promise.all([
-        firebaseGetJson('services',15000),firebaseGetJson('categoryMeta',12000),firebaseGetJson('settings/catalogOrder',10000),firebaseGetJson('settings/svcsVersion',8000)
-      ]);
-      const services=catalogObject(servicesRaw),metaBefore=catalogObject(metaRaw),metaNext={...metaBefore};
-      const known=new Map();for(const [k,v] of Object.entries(metaNext)){const name=String(v?.name||k).trim();if(name)known.set(normalizeCatalogLabel(name),k);}
-      const samples=new Map();
-      for(const row of Object.values(services)){
-        if(!row||typeof row!=='object'||Array.isArray(row))continue;
-        const platforms=[...new Set([...(Array.isArray(row.platforms)?row.platforms:[]),...(Array.isArray(row.apps)?row.apps:[]),row.app].map(x=>String(x||'').trim()).filter(Boolean))];
-        for(const name of catalogRowGroups(row)){const norm=normalizeCatalogLabel(name);if(!norm||!samples.has(norm))samples.set(norm,{name,platforms,image:String(row.categoryImage||row.sectionImage||row.groupImage||'').trim()});else{const sample=samples.get(norm);sample.platforms=[...new Set([...sample.platforms,...platforms])];if(!sample.image)sample.image=String(row.categoryImage||row.sectionImage||row.groupImage||'').trim();}}
-      }
-      let metadataCreated=0;
-      for(const [norm,sample] of samples){
-        if(known.has(norm))continue;
-        let key=normalizeCatalogKey(sample.name),suffix=2;while(Object.prototype.hasOwnProperty.call(metaNext,key)&&normalizeCatalogLabel(metaNext[key]?.name||key)!==norm)key=normalizeCatalogKey(sample.name)+'_'+suffix++;
-        metaNext[key]={name:sample.name,image:sample.image||'sadairaq-logo.jpg',platforms:sample.platforms,updatedAt:nowISO(),recoveredFromServiceRows:true};known.set(norm,key);metadataCreated++;
-      }
-      if(!Object.keys(services).length&&!Object.keys(metaBefore).length){
-        return json(res,409,{ok:false,error:'لم أجد خدمات أو بيانات أقسام محفوظة في Firebase يمكن إصلاحها تلقائياً. لم أضف بيانات وهمية ولم أغيّر قاعدة البيانات. أعد جلب خدمات المزود ثم استورد الأقسام المحددة من لوحة الإدارة.',services:0,sections:0,reimportRequired:true});
-      }
-      const orderNext=catalogMergeOrder(orderRaw,{},metaNext,services);
-      const orderChanged=!catalogOrderValuesEqual(orderRaw,orderNext);
-      const patch={};for(const [k,v] of Object.entries(metaNext))if(!catalogValuesEqual(metaBefore[k]??null,v))patch['categoryMeta/'+k]=v;
-      if(orderChanged)patch['settings/catalogOrder']=orderNext;
-      if(metadataCreated||orderChanged||versionRaw===null||versionRaw===undefined)patch['settings/svcsVersion']=String(Date.now());
-      if(Object.keys(patch).length)await persistFirebaseCatalogPatch(patch,{verify:true,atomic:true,timeoutMs:45000});
-      const refreshed=await reloadLocalCatalogFromFirebase();
-      return json(res,200,{ok:true,verified:true,services:Object.keys(services).length,sectionsBefore:Object.keys(metaBefore).length,sectionsAfter:Object.keys(metaNext).length,metadataCreated,orderRepaired:orderChanged,localReloaded:refreshed.services===Object.keys(services).length,storage:'firebase',checkedAt:nowISO(),message:metadataCreated||orderChanged?'تم إصلاح بيانات الأقسام وترتيبها من الخدمات المحفوظة.':'بيانات الأقسام وترتيبها متسقة بالفعل.'});
-    }catch(e){return json(res,503,{ok:false,error:'تعذر فحص/إصلاح الأقسام في Firebase؛ لم يُعلن نجاح: '+String(e.message||e).slice(0,190)});}
-  }
   if(p==='/api/admin/catalog/sections'&&req.method==='POST'){
     if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
     try{await ensureLocalServiceCatalogSeeded();}catch(e){return json(res,503,{ok:false,error:'تعذر الاتصال بقاعدة Firebase؛ لم يتم تعديل الأقسام: '+String(e.message||e).slice(0,160)});}
@@ -4923,7 +4864,7 @@ async function routeAPI(req,res,urlObj){
     const b=await bodyJSON(req,10*1024*1024);const rawPath=String(b.path||'');const mode=String(b.mode||'set');
     try{await ensureLocalServiceCatalogSeeded();}catch(e){return json(res,503,{ok:false,error:'تعذر الاتصال بقاعدة Firebase؛ لم يتم حفظ التغيير: '+String(e.message||e).slice(0,160)});}
     const out=catalogMutatePath(rawPath,mode,b.value);if(!out.ok)return json(res,422,out);
-    try{const verified=await persistCatalogPathMutation(rawPath,mode,b.value);const spec=catalogPathSpec(rawPath);if(spec&&(spec.bucket==='services'||spec.bucket==='categoryMeta')){const cfg=readJSON('catalog_settings.json',{}),followup={'settings/svcsVersion':String(Date.now())};if(cfg.catalogOrder)followup['settings/catalogOrder']=cfg.catalogOrder;await persistFirebaseCatalogPatch(followup,{verify:true,atomic:true,timeoutMs:30000});}return json(res,200,{ok:true,persisted:true,storage:'firebase',storageMode:'firebase',path:verified.path,verified:true});}
+    try{const verified=await persistCatalogPathMutation(rawPath,mode,b.value);const spec=catalogPathSpec(rawPath);if(spec&&(spec.bucket==='services'||spec.bucket==='categoryMeta')){const cfg=readJSON('catalog_settings.json',{});if(cfg.catalogOrder)await firebaseWriteJson('settings/catalogOrder',cfg.catalogOrder,12000);await firebaseWriteJson('settings/svcsVersion',String(Date.now()),8000);}return json(res,200,{ok:true,persisted:true,storage:'firebase',storageMode:'firebase',path:verified.path,verified:true});}
     catch(e){try{await reloadLocalCatalogFromFirebase();}catch(reloadError){console.error('Firebase catalog rollback reload failed:',String(reloadError.message||reloadError));}return json(res,503,{ok:false,persisted:false,path:rawPath,error:'لم يتم تأكيد حفظ التغيير في Firebase؛ أُلغيت نتيجة العملية ولم تُعرض كنجاح. '+String(e.message||e).slice(0,160)});}
   }
   if(p==='/api/admin/catalog/batch'&&req.method==='POST'){
@@ -5278,7 +5219,7 @@ async function routeAPI(req,res,urlObj){
       const existing=key?(fromArchive?quarantineArchive[key]:root[key]):null;
       const category=dest==='__all__'?(String(data.category||data.groups?.[0]||'عام')):dest;
       const groups=dest==='__all__'?(Array.isArray(data.groups)?data.groups:[category]):[dest];
-      const wasQuarantined=existing?.unapprovedAutoImport===true||fromArchive||!!(existing&&isLegacyAutoImportedProviderRow(key,existing));const row={...(existing||{}),...data,providerId,providerServiceId:sourceId,smmpartyId:sourceId,serviceId:sourceId,name,category,groups:[...new Set(groups.map(x=>String(x||'').trim()).filter(Boolean))],categories:[...new Set(groups.map(x=>String(x||'').trim()).filter(Boolean))],sellingUsd:Number(price.toFixed(6)),price:Number((price*FIXED_RATE).toFixed(4)),basePrice:Number((price*FIXED_RATE).toFixed(4)),source:'smmparty',createdAt:existing?.createdAt||at,updatedAt:at,...(wasQuarantined?{unapprovedAutoImport:false,active:true,providerAvailable:true,availabilityStatus:'available',providerAvailabilityReason:'',explicitlyApprovedAt:at,explicitlyApprovedBy:String(session(req)?.username||ADMIN_USER)}:{})};if(wasQuarantined)delete row.unapprovedAutoImport;
+      const wasQuarantined=existing?.unapprovedAutoImport===true||fromArchive||!!(existing&&isLegacyAutoImportedProviderRow(key,existing));const row={...(existing||{}),...data,providerId,providerServiceId:sourceId,smmpartyId:sourceId,serviceId:sourceId,name,category,groups:[...new Set(groups.map(x=>String(x||'').trim()).filter(Boolean))],categories:[...new Set(groups.map(x=>String(x||'').trim()).filter(Boolean))],sellingUsd:Number(price.toFixed(6)),price:Number((price*FIXED_RATE).toFixed(4)),basePrice:(Number.isFinite(Number(data.basePrice))&&Number(data.basePrice)>=0?Number(Number(data.basePrice).toFixed(4)):Number((price*FIXED_RATE).toFixed(4))),source:'smmparty',createdAt:existing?.createdAt||at,updatedAt:at,...(wasQuarantined?{unapprovedAutoImport:false,active:true,providerAvailable:true,availabilityStatus:'available',providerAvailabilityReason:'',explicitlyApprovedAt:at,explicitlyApprovedBy:String(session(req)?.username||ADMIN_USER)}:{})};if(wasQuarantined)delete row.unapprovedAutoImport;
       if(!key)key='svc_'+crypto.randomBytes(12).toString('hex');root[key]=row;if(fromArchive){delete quarantineArchive[key];restoredArchived++;}serviceKeys.push(key);if(existing&&!fromArchive)updated++;else if(fromArchive)updated++;else added++;
     }
     if(!serviceKeys.length)return json(res,422,{ok:false,error:'لم توجد خدمات صالحة؛ تأكد من اسم الخدمة وProvider ID وService ID والسعر.',skipped});
@@ -6432,21 +6373,73 @@ async function routeAPI(req,res,urlObj){
     const orders=readJSON('orders.json',[]); const payments=readJSON('payments.json',[]);
     return json(res,200,{ok:true,counts:{users:Object.keys(users).length,orders:Array.isArray(orders)?orders.length:0,payments:Array.isArray(payments)?payments.length:0}});
   }
-  if(p==='/api/admin/cleanup/operational' && req.method==='POST'){
+  if(p==='/api/admin/cleanup' && req.method==='POST'){
     if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
-    if(!requestHasSameOrigin(req))return json(res,403,{ok:false,error:'رفض طلب التنظيف لاختلاف مصدر الصفحة؛ أعد فتح لوحة الإدارة الرسمية.'});
-    const b=await bodyJSON(req,16*1024);
-    if(String(b.confirmation||'')!=='CLEAN_OPERATIONAL_DATA')return json(res,422,{ok:false,error:'تأكيد التنظيف غير صحيح. لم تُحذف أي بيانات.'});
-    try{return json(res,200,await performOperationalCleanup());}
-    catch(e){return json(res,Number(e.statusCode)||503,{ok:false,error:'فشل تنظيف البيانات دون إعلان نجاح: '+String(e.message||e).slice(0,220),backupFile:e.backupFile||undefined,remoteMayHaveChanged:e.remoteMayHaveChanged===true});}
+    const body=await bodyJSON(req,64*1024);
+    if(body.confirmation!=='CLEAN_ALL_APP_DATA')return json(res,422,{ok:false,error:'يلزم تأكيد تنظيف قاعدة الموقع.'});
+    const now=new Date().toISOString(),version=String(Date.now());
+    const email=String(ADMIN_USER||'').trim().toLowerCase();
+    const isAdminRecord=(key,row)=>{
+      if(!row||typeof row!=='object'||Array.isArray(row))return false;
+      const role=String(row.role||row.userRole||'').trim().toLowerCase();
+      const identities=[row.username,row.userName,row.user,row.email,key].map(value=>String(value||'').trim().toLowerCase()).filter(Boolean);
+      return role==='admin'||role==='owner'||row.isAdmin===true||!!email&&identities.includes(email);
+    };
+    let remoteUsers={},localUserStore=readJSON('users.json',{users:{}}),localUsers=localUserStore?.users&&typeof localUserStore.users==='object'&&!Array.isArray(localUserStore.users)?localUserStore.users:{};
+    try{
+      const remote=await firebaseGetJson('users',12000);
+      for(const [key,row] of Object.entries(remote&&typeof remote==='object'&&!Array.isArray(remote)?remote:{}))if(isAdminRecord(key,row))remoteUsers[key]=row;
+    }catch(e){return json(res,503,{ok:false,persisted:false,error:'تعذر قراءة حسابات Firebase؛ لم يبدأ التنظيف. '+String(e.message||e).slice(0,150)});}
+    const remoteDeletes=[
+      'orders','payments','chats','notifications','services','categoryMeta','providerServices',
+      'asiacellTransfers','balanceLedger','discountLedger','userNotifications','userNotificationSeen',
+      'earnRequests','earnRequestsByUser','apiRefills','apiKeys','apiKeyBlocks'
+    ];
+    const patch={};
+    patch.users=Object.keys(remoteUsers).length?remoteUsers:null;
+    for(const node of remoteDeletes)patch[node]=null;
+    // Preserve all site/payment/provider settings while resetting only the order sequence and catalog state.
+    patch['settings/orderCounter']=2999;
+    patch['settings/catalogOrder']={categories:[],services:{}};
+    patch['config/orderAuditState']=null;
+    patch['settings/svcsVersion']=version;
+    try{
+      await persistFirebaseCatalogPatch(patch,{verify:true,atomic:true,timeoutMs:60000});
+    }catch(e){
+      return json(res,503,{ok:false,persisted:false,error:'رفض Firebase أو لم يؤكد التنظيف؛ لم تُصفّر ملفات الاستضافة. '+String(e.message||e).slice(0,180)});
+    }
+    try{
+      const keptLocalUsers={};for(const [key,row] of Object.entries(localUsers))if(isAdminRecord(key,row))keptLocalUsers[key]=row;
+      writeJSON('users.json',{...localUserStore,users:keptLocalUsers});
+      writeJSON('orders.json',[]);writeJSON('payments.json',[]);writeJSON('chats.json',{});
+      writeJSON('notifications.json',[]);writeJSON('telegram_notifications.json',[]);
+      writeJSON('notification_seen.json',{});writeJSON('user_notifications.json',{});
+      writeJSON('earn_requests.json',[]);writeJSON('api_refills.json',[]);writeJSON('api_keys.json',{});
+      writeJSON('balance_ledger.json',[]);writeJSON('discount_ledger.json',[]);writeJSON('refunds.json',[]);
+      writeJSON('google_accounts.json',{});writeJSON('email_challenges.json',{});writeJSON('free_service_usage.json',{});
+      writeJSON('services.json',{});writeJSON('category_meta.json',{});writeJSON('provider_services.json',{});writeJSON('api_services.json',[]);
+      const localSettings=readJSON('settings.json',{});writeJSON('settings.json',{...localSettings,orderCounter:2999,resetAt:now});
+      writeJSON('catalog_settings.json',{catalogOrder:{categories:[],services:{}},catalogUpdatedAt:now,lastFullCleanupAt:now,firebaseSvcsVersion:version,firebaseCatalogLastVerifiedAt:now,firebaseCatalogLastVerifiedCounts:{services:0,sections:0}});
+      writeJSON('stats_state.json',{resetAt:now});writeJSON('order_audit_state.json',{alerts:{},resetAt:now});
+      SITE_SERVICE_IDS_DIRTY=true;ensureNumericSiteServiceIds();
+      markCatalogSeeded();CATALOG_FIREBASE_READY=true;
+      // Invalidate non-admin sessions on this instance without disturbing the current administrator.
+      for(const [sessionId,sessionValue] of sessions)if(String(sessionValue?.role||'')!=='admin')sessions.delete(sessionId);
+    }catch(e){
+      return json(res,503,{ok:false,persisted:true,hostCacheCleared:false,error:'تم تنظيف Firebase والتحقق منه، لكن تعذر تنظيف بعض ملفات الاستضافة: '+String(e.message||e).slice(0,150)});
+    }
+    return json(res,200,{ok:true,verified:true,persisted:true,hostCacheCleared:true,preservedAdminAccounts:Object.keys(remoteUsers).length,deletedNodes:remoteDeletes,remainingOrders:0,remainingPayments:0,remainingServices:0,remainingSections:0,nextOrderNumber:3000,settingsPreserved:true,message:'تم تنظيف بيانات المستخدمين والطلبات والشحنات والمحادثات والإشعارات والكتالوج وسجلاتها. حُفظ حساب الإدارة وإعدادات الموقع والمزودين وطرق الدفع؛ الرقم التالي للطلب 3000.'});
   }
+
   if(p==='/api/admin/reset' && req.method==='POST'){
-    // Backwards-compatible alias; do not silently perform the old local-only partial reset.
-    if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
-    const b=await bodyJSON(req,16*1024);
-    if(String(b.confirmation||'')!=='CLEAN_OPERATIONAL_DATA')return json(res,422,{ok:false,error:'تم إيقاف مسار التصفير القديم. استخدم التنظيف المحمي من لوحة الإدارة؛ لم تُحذف أي بيانات.'});
-    try{return json(res,200,await performOperationalCleanup());}
-    catch(e){return json(res,Number(e.statusCode)||503,{ok:false,error:'فشل تنظيف البيانات دون إعلان نجاح: '+String(e.message||e).slice(0,220),backupFile:e.backupFile||undefined});}
+    if(!isAdmin(req)) return json(res,403,{ok:false,error:'غير مصرح'});
+    const now=new Date().toISOString();
+    writeJSON('users.json',{users:{}});
+    writeJSON('orders.json',[]);
+    writeJSON('payments.json',[]);
+    writeJSON('settings.json',{...readJSON('settings.json',{}),orderCounter:0,resetAt:now});
+    writeJSON('providers.json',readJSON('providers.json',{activeProvider:'',providers:{}}));
+    return json(res,200,{ok:true,message:'تم تنظيف بيانات Railway والبدء من جديد'});
   }
   if(p==='/api/admin/user-balance' && req.method==='POST'){
     if(!isAdmin(req)) return json(res,403,{ok:false,error:'غير مصرح'});
@@ -6574,7 +6567,7 @@ async function routeAPI(req,res,urlObj){
     try { buildFile=fs.readFileSync(path.join(ROOT,'BUILD_ID.txt'),'utf8').trim(); } catch(_) {}
     const deploymentConsistent=uiVersion===APP_VERSION && uiBuildId===BUILD_ID && versionFile===APP_VERSION && buildFile===BUILD_ID;
     const dbInfo=firebaseDatabaseDiagnosticInfo();
-    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.47',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
+    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.46',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
     // Keep operational configuration details private; only an authenticated admin can inspect them.
     if(isAdmin(req)){const credentialStatus=firebaseServiceAccountStatus();health.firebaseDatabase={host:dbInfo.host,source:dbInfo.source,databaseProjectHint:dbInfo.databaseProjectHint,serviceAccountProjectId:dbInfo.serviceAccountProjectId||null,configuredWebProjectId:dbInfo.configuredWebProjectId||null,serviceAccountProjectMatch:dbInfo.serviceAccountProjectMatch};health.securityConfig={sessionSecretConfigured:!!String(process.env.SESSION_SECRET||'').trim(),dedicatedEncryptionKeyConfigured:!!String(process.env.SADA_ENCRYPTION_KEY||'').trim(),stableEncryptionAvailable:telegramEncryptionReady(),firebaseConfigured:!!FIREBASE_DATABASE_URL,firebaseServiceAccountConfigured:credentialStatus.ok,firebaseCredentialStatus:{ok:credentialStatus.ok,code:credentialStatus.code,source:credentialStatus.source,message:credentialStatus.message},firebaseDatabaseSecretConfigured:!!String(process.env.FIREBASE_DATABASE_SECRET||'').trim(),firebaseAuthAvailable:firebaseAuthAvailable(),emailServiceConfigured:!!(String(process.env.RESEND_API_KEY||'').trim()&&String(process.env.RESEND_FROM_EMAIL||process.env.EMAIL_FROM||'').trim()),telegramTokenFromEnvironment:!!String(process.env.TELEGRAM_BOT_TOKEN||'').trim(),adminPasswordFromEnvironment:!!(String(process.env.ADMIN_PASSWORD||'').trim()||String(process.env.ADMIN_PASSWORD_HASH||'').trim()),adminPasswordConfigured:adminPasswordConfigured()};}
     return json(res,200,health);
@@ -6790,68 +6783,6 @@ ensureData();
 ensureTelegramDefaults();
 // Startup must never move, hide, or delete service rows/categories. Imports require an explicit admin action.
 startGlobalPriceSyncScheduler();
-let OPERATIONAL_CLEANUP_RUNNING = false;
-async function performOperationalCleanup(){
-  if(OPERATIONAL_CLEANUP_RUNNING)throw Object.assign(new Error('يوجد تنظيف آخر قيد التنفيذ؛ انتظر حتى ينتهي.'),{statusCode:409});
-  OPERATIONAL_CLEANUP_RUNNING=true;
-  let backupName='',remotePatchStarted=false;
-  try{
-    // Read every affected node before writing anything. A read/permission error aborts cleanly.
-    // Include user-specific notification, reward, ledger and API refill roots; preserve catalog and provider config.
-    const remotePaths=['users','orders','payments','chats','notifications','userNotifications','userNotificationSeen','apiKeys','apiKeyBlocks','apiRefills','balanceLedger','discountLedger','earnRequests','earnRequestsByUser','asiacellTransfers','asiacellSessions','asiacellPendingByUser','asiacellOperationLocks','config/googleAccounts'];
-    const remoteValues=await Promise.all(remotePaths.map(p=>firebaseGetJson(p,12000)));
-    const remoteBefore=Object.fromEntries(remotePaths.map((p,i)=>[p,remoteValues[i]]));
-    const counterBefore=await firebaseGetJson('settings/orderCounter',8000);
-    const localNames=['users.json','orders.json','payments.json','api_keys.json','free_service_usage.json','refunds.json','earn_requests.json','balance_ledger.json','discount_ledger.json','api_refills.json','notifications.json','user_notifications.json','notification_seen.json','telegram_notifications.json','telegram_order_state.json','push_notifications.json','push_tokens.json','provider_failures.json','google_accounts.json','stats_state.json','order_audit_state.json','email_challenges.json'];
-    const defaults={'users.json':{users:{}},'orders.json':[],'payments.json':[],'api_keys.json':{},'free_service_usage.json':{},'refunds.json':[],'earn_requests.json':[],'balance_ledger.json':[],'discount_ledger.json':[],'api_refills.json':[],'notifications.json':[],'user_notifications.json':{},'notification_seen.json':{},'telegram_notifications.json':[],'telegram_order_state.json':{},'push_notifications.json':[],'push_tokens.json':{},'provider_failures.json':[],'google_accounts.json':{},'stats_state.json':{resetAt:null},'order_audit_state.json':{alerts:{}},'email_challenges.json':{}};
-    const localBefore={};
-    for(const name of localNames)localBefore[name]=readJSON(name,defaults[name]);
-    const now=nowISO();
-    const backupDir=path.join(DATA,'cleanup-backups');fs.mkdirSync(backupDir,{recursive:true});
-    backupName='operational-cleanup-'+Date.now()+'-'+crypto.randomBytes(3).toString('hex')+'.json';
-    const backupFull=path.join(backupDir,backupName);
-    const backup={format:'sada-operational-cleanup-backup-v1',createdAt:now,appVersion:APP_VERSION,remote:remoteBefore,remoteSettings:{orderCounter:counterBefore},local:localBefore,notice:'Private recovery copy. Contains personal/account and financial-history data; do not share publicly.'};
-    fs.writeFileSync(backupFull,JSON.stringify(backup,null,2),{encoding:'utf8',flag:'wx',mode:0o600});
-    try{fs.chmodSync(backupFull,0o600)}catch(_){}
-
-    // Firebase REST multi-location PATCH is atomic. All targets are explicit; service catalog,
-    // category metadata/order, provider credentials and general settings are intentionally excluded.
-    const patch={};for(const p of remotePaths)patch[p]=null;
-    patch['settings/orderCounter']=0;
-    patch['settings/operationalResetAt']=now;
-    remotePatchStarted=true;
-    await firebasePatchJson('',patch,45000);
-
-    const verifyValues=await Promise.all(remotePaths.map(p=>firebaseGetJson(p,10000)));
-    const leftovers=remotePaths.filter((p,i)=>verifyValues[i]!==null&&verifyValues[i]!==undefined);
-    const newCounter=await firebaseGetJson('settings/orderCounter',8000);
-    if(leftovers.length||Number(newCounter)!==0){
-      const error=new Error('لم يؤكد Firebase تصفير جميع البيانات. لم يتم مسح النسخ المحلية؛ راجع النسخة الاحتياطية. المسارات غير المحققة: '+leftovers.join(', '));
-      error.statusCode=503;error.backupFile=backupName;throw error;
-    }
-
-    // Only clear local ledgers/caches after the remote write and read-back both succeed.
-    writeJSON('users.json',{users:{}});
-    writeJSON('orders.json',[]);writeJSON('payments.json',[]);writeJSON('api_keys.json',{});
-    writeJSON('free_service_usage.json',{});writeJSON('refunds.json',[]);writeJSON('earn_requests.json',[]);
-    writeJSON('balance_ledger.json',[]);writeJSON('discount_ledger.json',[]);writeJSON('api_refills.json',[]);
-    writeJSON('notifications.json',[]);writeJSON('user_notifications.json',{});writeJSON('notification_seen.json',{});
-    writeJSON('telegram_notifications.json',[]);writeJSON('telegram_order_state.json',{});writeJSON('push_notifications.json',[]);writeJSON('push_tokens.json',{});
-    writeJSON('provider_failures.json',[]);writeJSON('google_accounts.json',{});writeJSON('stats_state.json',{resetAt:now});
-    writeJSON('order_audit_state.json',{alerts:{}});writeJSON('email_challenges.json',{});
-    const settings=readJSON('settings.json',{});settings.orderCounter=0;settings.resetAt=now;writeJSON('settings.json',settings);
-
-    const count=v=>Array.isArray(v)?v.length:(v&&typeof v==='object'?Object.keys(v).length:(v===null||v===undefined?0:1));
-    const countsBefore={};for(const p of remotePaths)countsBefore[p]=count(remoteBefore[p]);
-    return {ok:true,cleaned:true,countsBefore,backupFile:backupName,catalogPreserved:true,providersPreserved:true,settingsPreserved:true,orderCounter:0,verified:true,checkedAt:now};
-  }catch(e){
-    if(backupName)e.backupFile=backupName;
-    const definitivelyDenied=/PERMISSION_DENIED|Permission denied|Firebase HTTP (?:401|403)|unauthorized/i.test(String(e.message||''));
-    e.remoteMayHaveChanged=remotePatchStarted&&!definitivelyDenied;
-    throw e;
-  }finally{OPERATIONAL_CLEANUP_RUNNING=false;}
-}
-
 const server=http.createServer(async (req,res)=>{
   try{
     res._forwardedProto=String(req.headers['x-forwarded-proto']||'').split(',')[0].trim();
