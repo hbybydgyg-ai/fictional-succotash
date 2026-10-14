@@ -5,12 +5,12 @@
   "description": "صدى العراق — hosted service catalog, server-authoritative wallet and orders",
   "scripts": {
     "start": "node server.js",
-    "test": "node --check server.js && node --check catalog-performance-smoke-2.11.js && node catalog-performance-smoke-2.11.js && node --check release-smoke-1.6.41.js && node release-smoke-1.6.41.js && node --check api-runtime-smoke-1.6.41.js && node api-runtime-smoke-1.6.41.js && node --check asiacell-runtime-smoke-1.6.41.js && node asiacell-runtime-smoke-1.6.41.js"
+    "test": "node --check server.js && node --check catalog-management-smoke-2.13.js && node catalog-management-smoke-2.13.js && node --check catalog-performance-smoke-2.11.js && node catalog-performance-smoke-2.11.js && node --check release-smoke-1.6.41.js && node release-smoke-1.6.41.js && node --check api-runtime-smoke-1.6.41.js && node api-runtime-smoke-1.6.41.js && node --check asiacell-runtime-smoke-1.6.41.js && node asiacell-runtime-smoke-1.6.41.js"
   },
   "engines": {
     "node": ">=22"
   },
-  "buildId": "SADA-1.6.41-HOST-CATALOG-ONLY-2.12-20261014",
+  "buildId": "SADA-1.6.41-HOST-CATALOG-ONLY-2.13-20261014",
   "dependencies": {
     "google-auth-library": "^11.2.0",
     "firebase-admin": "^14.5.0"

@@ -28,7 +28,7 @@ const DATA = path.resolve(process.env.SADA_DATA_DIR || process.env.DATA_DIR || (
 const DATA_IS_EXTERNAL = path.resolve(DATA) !== path.resolve(LEGACY_DATA);
 const APP_NAME = 'صدى العراق';
 const APP_VERSION = '1.6.41';
-const BUILD_ID = 'SADA-1.6.41-HOST-CATALOG-ONLY-2.12-20261014';
+const BUILD_ID = 'SADA-1.6.41-HOST-CATALOG-ONLY-2.13-20261014';
 // Keep the owner's admin identity available after packaging, but store only a scrypt hash
 // in the project. Railway variables can still explicitly override this packaged credential.
 function loadBundledAdminAuth(){
@@ -311,14 +311,61 @@ function catalogReadPath(rawPath){
   for(const part of spec.parts){if(!value||typeof value!=='object'||!Object.prototype.hasOwnProperty.call(value,part)){value=null;break;}value=value[part];}
   return {ok:true,value:value===undefined?null:value};
 }
-function catalogMutatePath(rawPath,mode,value){
+function normalizeCatalogLabel(value){return String(value??'').trim().toLocaleLowerCase('ar');}
+function normalizeCatalogKey(value){return String(value??'').trim().toLowerCase().replace(/[^a-zA-Z0-9\u0600-\u06ff_-]+/g,'_').slice(0,90)||('cat_'+Date.now());}
+function catalogRowGroups(row){
+  const out=[],seen=new Set();const add=value=>{const name=String(value??'').trim(),key=normalizeCatalogLabel(name);if(name&&key&&!seen.has(key)){seen.add(key);out.push(name)}};
+  if(Array.isArray(row?.groups))row.groups.forEach(add);if(Array.isArray(row?.categories))row.categories.forEach(add);add(row?.category);return out;
+}
+function canonicalCatalogOrder(orderValue,metaRoot=readJSON('category_meta.json',{})){
+  const order=orderValue&&typeof orderValue==='object'&&!Array.isArray(orderValue)?{...orderValue}:{};
+  const existing=Array.isArray(order.categories)?order.categories.map(x=>String(x??'').trim()).filter(Boolean):[];
+  const byKey=new Map();for(const name of existing)if(!byKey.has(normalizeCatalogLabel(name)))byKey.set(normalizeCatalogLabel(name),name);
+  const pinned=[];for(const [key,value] of Object.entries(metaRoot&&typeof metaRoot==='object'&&!Array.isArray(metaRoot)?metaRoot:{})){const name=String(value?.name||key).trim();if(name&&value?.pinned===true&&!pinned.some(x=>normalizeCatalogLabel(x)===normalizeCatalogLabel(name)))pinned.push(name);}
+  const pinKeys=new Set(pinned.map(normalizeCatalogLabel));const seen=new Set();const names=[];
+  for(const name of [...pinned,...existing]){const k=normalizeCatalogLabel(name);if(!k||seen.has(k))continue;seen.add(k);names.push(name)}
+  names.sort((a,b)=>{const ap=pinKeys.has(normalizeCatalogLabel(a)),bp=pinKeys.has(normalizeCatalogLabel(b));if(ap!==bp)return ap?-1:1;const ai=existing.findIndex(x=>normalizeCatalogLabel(x)===normalizeCatalogLabel(a)),bi=existing.findIndex(x=>normalizeCatalogLabel(x)===normalizeCatalogLabel(b));if(ai>=0&&bi>=0)return ai-bi;if(ai>=0)return -1;if(bi>=0)return 1;return String(a).localeCompare(String(b),'ar')});
+  order.categories=names;
+  order.services=order.services&&typeof order.services==='object'&&!Array.isArray(order.services)?{...order.services}:{};
+  return order;
+}
+function syncCatalogServiceOrderChanges(changes){
+  if(!Array.isArray(changes)||!changes.length)return false;
+  const settings=readJSON('catalog_settings.json',{}),oldOrder=settings.catalogOrder&&typeof settings.catalogOrder==='object'?settings.catalogOrder:{categories:[],services:{}};
+  let order={...oldOrder,categories:Array.isArray(oldOrder.categories)?oldOrder.categories.slice():[],services:oldOrder.services&&typeof oldOrder.services==='object'&&!Array.isArray(oldOrder.services)?{...oldOrder.services}:{}};let changed=false;
+  const prepend=(bucket,key)=>{const id=String(key||'').trim();if(!id)return;const before=Array.isArray(order.services[bucket])?order.services[bucket].map(String):[];const next=[id,...before.filter(x=>x!==id)];if(JSON.stringify(before)!==JSON.stringify(next)){order.services[bucket]=next;changed=true;}};
+  const remove=(key)=>{const id=String(key||'');for(const [bucket,raw] of Object.entries(order.services)){if(!Array.isArray(raw))continue;const next=raw.map(String).filter(x=>x!==id);if(next.length!==raw.length){order.services[bucket]=next;changed=true;}}};
+  const addCategory=(name)=>{const label=String(name||'').trim();if(!label)return;if(!order.categories.some(x=>normalizeCatalogLabel(x)===normalizeCatalogLabel(label))){order.categories.push(label);changed=true;}};
+  for(const entry of changes){const key=String(entry?.key||'').trim();if(!key)continue;const before=entry.oldRow&&typeof entry.oldRow==='object'?entry.oldRow:null;const after=entry.newRow&&typeof entry.newRow==='object'?entry.newRow:null;
+    if(!after){if(before)remove(key);continue;}
+    const oldGroups=before?catalogRowGroups(before):[],nextGroups=catalogRowGroups(after),oldKeys=new Set(oldGroups.map(normalizeCatalogLabel));
+    const groupsToPromote=before?nextGroups.filter(name=>!oldKeys.has(normalizeCatalogLabel(name))):nextGroups;
+    for(const name of nextGroups)addCategory(name);
+    for(const name of groupsToPromote)prepend(normalizeCatalogKey(name),key);
+    const wasAll=before&&(before.showInAll===true||before.scope==='all'||(!catalogRowGroups(before).length));
+    const isAll=after.showInAll===true||after.scope==='all'||(!nextGroups.length);
+    if(!before||groupsToPromote.length||(!wasAll&&isAll))prepend('__all__',key);
+  }
+  const nextOrder=canonicalCatalogOrder(order,readJSON('category_meta.json',{}));
+  if(JSON.stringify(nextOrder)!==JSON.stringify(settings.catalogOrder||{}))changed=true;
+  if(changed){settings.catalogOrder=nextOrder;writeJSON('catalog_settings.json',settings);}
+  return changed;
+}
+function catalogMutatePath(rawPath,mode,value,options={}){
   const spec=catalogPathSpec(rawPath);if(!spec)return {ok:false,error:'مسار الكتالوج غير مسموح'};
+  const serviceBefore=spec.bucket==='services'?readJSON('services.json',{}):null;
+  const beforeRows=[];
+  if(spec.bucket==='services'){
+    if(spec.parts.length===1){const key=spec.parts[0];beforeRows.push({key,oldRow:serviceBefore?.[key]||null});}
+    else if(spec.parts.length===0&&mode!=='update'){for(const [key,row] of Object.entries(serviceBefore&&typeof serviceBefore==='object'?serviceBefore:{}))beforeRows.push({key,oldRow:row||null});}
+  }
   if(!spec.parts.length){
     if(mode==='set'){if(!value||typeof value!=='object'||Array.isArray(value))return {ok:false,error:'قيمة الكتالوج يجب أن تكون كائناً'};writeJSON(spec.file,value);}
     else if(mode==='update'){const old=readJSON(spec.file,{});if(!value||typeof value!=='object'||Array.isArray(value))return {ok:false,error:'تحديث الكتالوج غير صالح'};writeJSON(spec.file,{...old,...value});}
     else if(mode==='remove')writeJSON(spec.file,{});
     else return {ok:false,error:'نوع تعديل غير مدعوم'};
-    if(spec.bucket==='services'){ensureNumericSiteServiceIds();markCatalogSeeded();}
+    if(spec.bucket==='services'){ensureNumericSiteServiceIds();markCatalogSeeded();if(!options.skipServiceOrdering){const after=readJSON('services.json',{}),changes=beforeRows.map(x=>({key:x.key,oldRow:x.oldRow,newRow:after?.[x.key]||null}));for(const [key,row] of Object.entries(after&&typeof after==='object'?after:{}))if(!beforeRows.some(x=>x.key===key))changes.push({key,oldRow:null,newRow:row});syncCatalogServiceOrderChanges(changes);}}
+    if(spec.bucket==='settings'&&spec.parts.length===0){const settings=readJSON('catalog_settings.json',{});if(settings.catalogOrder){settings.catalogOrder=canonicalCatalogOrder(settings.catalogOrder);writeJSON('catalog_settings.json',settings);}}
     return {ok:true};
   }
   const root=readJSON(spec.file,{});let parent=root;
@@ -330,7 +377,10 @@ function catalogMutatePath(rawPath,mode,value){
     const cur=parent[key];parent[key]={...(cur&&typeof cur==='object'&&!Array.isArray(cur)?cur:{}),...value};
   }else if(mode==='remove')delete parent[key];
   else return {ok:false,error:'نوع تعديل غير مدعوم'};
-  writeJSON(spec.file,root);if(spec.bucket==='services'){ensureNumericSiteServiceIds();markCatalogSeeded();}return {ok:true};
+  if(spec.bucket==='settings'&&spec.parts[0]==='catalogOrder')root.catalogOrder=canonicalCatalogOrder(root.catalogOrder,readJSON('category_meta.json',{}));
+  writeJSON(spec.file,root);
+  if(spec.bucket==='services'){ensureNumericSiteServiceIds();markCatalogSeeded();if(!options.skipServiceOrdering){if(spec.parts.length===1){const after=readJSON('services.json',{});syncCatalogServiceOrderChanges([{key,oldRow:beforeRows[0]?.oldRow||null,newRow:after?.[key]||null}]);}else if(spec.parts.length===0){const after=readJSON('services.json',{});syncCatalogServiceOrderChanges(beforeRows.map(x=>({key:x.key,oldRow:x.oldRow,newRow:after?.[x.key]||null})));}}}
+  return {ok:true};
 }
 function markCatalogSeeded(){const c=readJSON('catalog_settings.json',{});c.legacySeedAttempted=true;c.legacySeedAt=nowISO();writeJSON('catalog_settings.json',c);}
 const SITE_SERVICE_ID_MIN = 1000;
@@ -434,9 +484,24 @@ async function ensureLocalServiceCatalogSeeded(){
 function catalogApplyBatch(updates){
   if(!updates||typeof updates!=='object'||Array.isArray(updates))return {ok:false,error:'قائمة تحديثات الكتالوج غير صالحة'};
   const entries=Object.entries(updates);if(!entries.length||entries.length>10000)return {ok:false,error:'عدد تحديثات الكتالوج غير صالح'};
-  // Validate every path before changing any files.
-  for(const [p,v] of entries){if(!catalogPathSpec(p))return {ok:false,error:'يتضمن التحديث مساراً غير مسموح: '+String(p).slice(0,100)};if(v===undefined)return {ok:false,error:'قيمة تحديث مفقودة'};}
-  for(const [p,v] of entries){const r=catalogMutatePath(p,'set',v);if(!r.ok)return r;}
+  const validated=[];for(const [p,v] of entries){const spec=catalogPathSpec(p);if(!spec)return {ok:false,error:'يتضمن التحديث مساراً غير مسموح: '+String(p).slice(0,100)};if(v===undefined)return {ok:false,error:'قيمة تحديث مفقودة'};if(!spec.parts.length&&(!v||typeof v!=='object'||Array.isArray(v)))return {ok:false,error:'قيمة الكتالوج يجب أن تكون كائناً'};validated.push({path:p,value:v,spec});}
+  const beforeServices=readJSON('services.json',{}),roots=new Map(),serviceKeys=new Set();
+  for(const item of validated){const {spec,path:rawPath,value}=item;if(!roots.has(spec.file))roots.set(spec.file,readJSON(spec.file,{}));let root=roots.get(spec.file);
+    if(!spec.parts.length){roots.set(spec.file,{...value});continue;}
+    let parent=root;for(let i=0;i<spec.parts.length-1;i++){const part=spec.parts[i];if(!parent[part]||typeof parent[part]!=='object'||Array.isArray(parent[part]))parent[part]={};parent=parent[part];}
+    parent[spec.parts[spec.parts.length-1]]=value;
+    if(spec.bucket==='services'&&spec.parts.length===1)serviceKeys.add(spec.parts[0]);
+  }
+  // Keep pinned category precedence even when a batch includes an explicit sort update.
+  if(roots.has('catalog_settings.json')){const c=roots.get('catalog_settings.json');if(c.catalogOrder)c.catalogOrder=canonicalCatalogOrder(c.catalogOrder,roots.get('category_meta.json')||readJSON('category_meta.json',{}));}
+  for(const [file,root] of roots)writeJSON(file,root);
+  if(roots.has('services.json')){ensureNumericSiteServiceIds();markCatalogSeeded();const after=readJSON('services.json',{});const changes=[];
+    if(serviceKeys.size){for(const key of serviceKeys)changes.push({key,oldRow:beforeServices?.[key]||null,newRow:after?.[key]||null});}
+    else if(!validated.some(x=>x.spec.bucket==='services'&&x.spec.parts.length>0)){const keys=new Set([...Object.keys(beforeServices||{}),...Object.keys(after||{})]);for(const key of keys)if(JSON.stringify(beforeServices?.[key]||null)!==JSON.stringify(after?.[key]||null))changes.push({key,oldRow:beforeServices?.[key]||null,newRow:after?.[key]||null});}
+    syncCatalogServiceOrderChanges(changes);
+  }
+  // Re-run canonical ordering after possible new category metadata and service memberships.
+  const cfg=readJSON('catalog_settings.json',{});if(cfg.catalogOrder){const normalized=canonicalCatalogOrder(cfg.catalogOrder,readJSON('category_meta.json',{}));if(JSON.stringify(normalized)!==JSON.stringify(cfg.catalogOrder)){cfg.catalogOrder=normalized;writeJSON('catalog_settings.json',cfg);}}
   return {ok:true,count:entries.length,storage:'hosting-json'};
 }
 function json(res, status, obj, extra={}) {
@@ -4352,6 +4417,106 @@ async function routeAPI(req,res,urlObj){
     }
     const got=catalogReadPath(raw);return json(res,200,{ok:true,value:got.value,source:'hosting-file',storageMode:DATA_IS_EXTERNAL?'persistent-volume':'release-local'});
   }
+  if(p==='/api/admin/catalog/sections'&&req.method==='POST'){
+    if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
+    const b=await bodyJSON(req,2*1024*1024),action=String(b.action||'').trim().toLowerCase();
+    const labelKey=value=>normalizeCatalogLabel(String(value??'').normalize('NFKC').replace(/[\u200B-\u200F\uFEFF]/g,'').replace(/\s+/g,' '));
+    const metaKeyFor=(root,name)=>Object.keys(root||{}).find(k=>labelKey(root[k]?.name||k)===labelKey(name))||'';
+    const allowedPlatforms=new Set(['Instagram','Tiktok','Facebook','Youtube','Telegram','Twitter','Snapchat','Whatsapp','Linkedin','Other']);
+    const cleanPlatforms=value=>[...new Set((Array.isArray(value)?value:[value]).map(x=>String(x??'').trim()).filter(x=>allowedPlatforms.has(x)))].slice(0,10);
+    const serviceName=(row)=>String(row?.name||row?.title||'').trim();
+    const categoryName=String(b.name||'').replace(/[\u200B-\u200F\uFEFF]/g,'').replace(/\s+/g,' ').trim().slice(0,150);
+    const servicesBefore=readJSON('services.json',{}),metaBefore=readJSON('category_meta.json',{}),settingsBefore=readJSON('catalog_settings.json',{});
+    let servicesNext={...servicesBefore},metaNext={...metaBefore},settingsNext={...settingsBefore};
+    try{
+      if(action==='create'){
+        const raw=Array.isArray(b.sections)?b.sections:[];
+        if(!raw.length||raw.length>100)return json(res,422,{ok:false,error:'أدخل من قسم واحد إلى 100 قسم في العملية الواحدة.'});
+        const seen=new Set(),requested=[];
+        for(const item of raw){
+          const name=String(item?.name??'').replace(/[\u200B-\u200F\uFEFF]/g,'').replace(/\s+/g,' ').trim().slice(0,150);
+          if(!name)return json(res,422,{ok:false,error:'يوجد اسم قسم فارغ؛ لم يتم حفظ أي تغيير.'});
+          const n=labelKey(name);if(seen.has(n))continue;seen.add(n);
+          const platforms=cleanPlatforms(item?.platforms??b.platforms);
+          requested.push({name,platforms,pinned:typeof item?.pinned==='boolean'?item.pinned:(typeof b.pinned==='boolean'?b.pinned:false),image:String(item?.image||'').trim().slice(0,2000)});
+        }
+        if(!requested.length)return json(res,422,{ok:false,error:'لا توجد أسماء أقسام فريدة للحفظ.'});
+        for(const item of requested){
+          let key=metaKeyFor(metaNext,item.name)||normalizeCatalogKey(item.name),suffix=1;
+          while(Object.prototype.hasOwnProperty.call(metaNext,key)&&labelKey(metaNext[key]?.name||key)!==labelKey(item.name)){key=(normalizeCatalogKey(item.name)+'_'+suffix++).slice(0,100);}
+          const old=metaNext[key]&&typeof metaNext[key]==='object'?metaNext[key]:{};
+          metaNext[key]={...old,name:item.name,platforms:item.platforms.length?item.platforms:(Array.isArray(old.platforms)?old.platforms:[]),...(item.image?{image:item.image}:{}),pinned:item.pinned===true||old.pinned===true,createdAt:old.createdAt||nowISO(),updatedAt:nowISO(),updatedBy:String(session(req)?.username||ADMIN_USER)};
+          if(!Array.isArray(settingsNext.catalogOrder?.categories))settingsNext.catalogOrder={...(settingsNext.catalogOrder||{}),categories:[],services:settingsNext.catalogOrder?.services||{}};
+          if(!settingsNext.catalogOrder.categories.some(x=>labelKey(x)===labelKey(item.name)))settingsNext.catalogOrder.categories.push(item.name);
+        }
+        settingsNext.catalogOrder=canonicalCatalogOrder(settingsNext.catalogOrder,metaNext);settingsNext.catalogUpdatedAt=nowISO();
+        writeJSON('category_meta.json',metaNext);writeJSON('catalog_settings.json',settingsNext);
+        return json(res,200,{ok:true,action,created:requested.length,sections:requested.map(x=>x.name),storage:'hosting-json',storageMode:DATA_IS_EXTERNAL?'persistent-volume':'release-local',warning:!DATA_IS_EXTERNAL?'اربط Railway Volume دائماً على /data واجعل SADA_DATA_DIR=/data حتى تبقى الأقسام بعد إعادة النشر.':''});
+      }
+      if(action==='pin'){
+        const name=categoryName;if(!name)return json(res,422,{ok:false,error:'اسم القسم مطلوب.'});
+        if(typeof b.pinned!=='boolean')return json(res,422,{ok:false,error:'حدد حالة التثبيت.'});
+        let key=metaKeyFor(metaNext,name)||normalizeCatalogKey(name);const old=metaNext[key]&&typeof metaNext[key]==='object'?metaNext[key]:{};
+        metaNext[key]={...old,name:String(old.name||name),pinned:b.pinned,createdAt:old.createdAt||nowISO(),updatedAt:nowISO(),updatedBy:String(session(req)?.username||ADMIN_USER)};
+        const ord=settingsNext.catalogOrder&&typeof settingsNext.catalogOrder==='object'?settingsNext.catalogOrder:{categories:[],services:{}};
+        if(!Array.isArray(ord.categories))ord.categories=[];if(!ord.categories.some(x=>labelKey(x)===labelKey(name)))ord.categories.push(name);
+        settingsNext.catalogOrder=canonicalCatalogOrder(ord,metaNext);settingsNext.catalogUpdatedAt=nowISO();
+        writeJSON('category_meta.json',metaNext);writeJSON('catalog_settings.json',settingsNext);
+        return json(res,200,{ok:true,action,pinned:b.pinned,name,storage:'hosting-json',storageMode:DATA_IS_EXTERNAL?'persistent-volume':'release-local'});
+      }
+      if(action==='delete'){
+        const name=categoryName;if(!name)return json(res,422,{ok:false,error:'اسم القسم مطلوب.'});
+        if(b.confirmation!=='DELETE_SECTION')return json(res,422,{ok:false,error:'تأكيد الحذف غير صحيح.'});
+        const target=labelKey(name),matchedMetaKeys=Object.keys(metaNext).filter(k=>labelKey(metaNext[k]?.name||k)===target);
+        const serviceIdsDeleted=[],serviceIdsUnlinked=[];let matches=0;
+        for(const [key,row] of Object.entries(servicesNext)){
+          if(!row||typeof row!=='object')continue;const groups=catalogRowGroups(row);if(!groups.some(g=>labelKey(g)===target))continue;matches++;
+          const remaining=groups.filter(g=>labelKey(g)!==target);const isAll=row.showInAll===true||String(row.scope||'').toLowerCase()==='all';
+          if(!remaining.length&&!isAll){delete servicesNext[key];serviceIdsDeleted.push(key);continue;}
+          servicesNext[key]={...row,groups:remaining,categories:remaining,category:remaining[0]||'',...(isAll?{scope:'all',showInAll:true}:{})};serviceIdsUnlinked.push(key);
+        }
+        for(const key of matchedMetaKeys)delete metaNext[key];
+        // Purge dangling service references from every remaining section metadata record.
+        const remainingIds=new Set(Object.keys(servicesNext));
+        for(const [metaKey,meta] of Object.entries(metaNext))if(meta&&typeof meta==='object'&&Array.isArray(meta.serviceKeys))metaNext[metaKey]={...meta,serviceKeys:[...new Set(meta.serviceKeys.map(String))].filter(k=>remainingIds.has(k))};
+        const order=settingsNext.catalogOrder&&typeof settingsNext.catalogOrder==='object'?settingsNext.catalogOrder:{categories:[],services:{}};
+        order.categories=(Array.isArray(order.categories)?order.categories:[]).filter(x=>labelKey(x)!==target);
+        const orderServices=order.services&&typeof order.services==='object'&&!Array.isArray(order.services)?order.services:{};
+        for(const [bucket,ids] of Object.entries(orderServices)){
+          if(labelKey(bucket)===target||matchedMetaKeys.some(k=>labelKey(k)===labelKey(bucket))){delete orderServices[bucket];continue;}
+          if(Array.isArray(ids))orderServices[bucket]=ids.map(String).filter(k=>!serviceIdsDeleted.includes(k)&&remainingIds.has(k));
+        }
+        order.services=orderServices;settingsNext.catalogOrder=canonicalCatalogOrder(order,metaNext);settingsNext.catalogUpdatedAt=nowISO();settingsNext.lastSectionDeleteAt=nowISO();
+        // Preserve a full recovery snapshot before changing catalog files.
+        const backupDir=path.join(DATA,'catalog-backups');fs.mkdirSync(backupDir,{recursive:true});const stamp=new Date().toISOString().replace(/[:.]/g,'-');const backupName='section-delete-'+stamp+'-'+normalizeCatalogKey(name).slice(0,40)+'.json';const backupFull=path.join(backupDir,backupName);
+        fs.writeFileSync(backupFull,JSON.stringify({createdAt:nowISO(),action:'delete-section',section:name,services:servicesBefore,categoryMeta:metaBefore,catalogSettings:settingsBefore},null,2),'utf8');
+        let wroteServices=false,wroteMeta=false,wroteSettings=false;
+        try{writeJSON('services.json',servicesNext);wroteServices=true;ensureNumericSiteServiceIds();writeJSON('category_meta.json',metaNext);wroteMeta=true;writeJSON('catalog_settings.json',settingsNext);wroteSettings=true;}
+        catch(e){try{if(wroteServices)writeJSON('services.json',servicesBefore);if(wroteMeta)writeJSON('category_meta.json',metaBefore);if(wroteSettings)writeJSON('catalog_settings.json',settingsBefore);ensureNumericSiteServiceIds();}catch(rollbackError){console.error('Catalog section delete rollback failed:',String(rollbackError.message||rollbackError));}throw e;}
+        // Clean up obsolete Firebase mirrors as well as the authoritative hosting JSON.
+        // Host files remain the catalog source of truth; this multi-location patch prevents
+        // stale Firebase service/category records from reappearing as ghost entries later.
+        const remoteWarnings=[],remotePatch={};
+        const legacyServiceKeys=[...new Set([...serviceIdsDeleted,...serviceIdsUnlinked])];
+        for(const key of legacyServiceKeys)remotePatch['services/'+key]=null;
+        for(const key of matchedMetaKeys)remotePatch['categoryMeta/'+key]=null;
+        for(const [metaKey,meta] of Object.entries(metaNext)){
+          const old=metaBefore[metaKey]&&typeof metaBefore[metaKey]==='object'?metaBefore[metaKey]:{};
+          const beforeKeys=Array.isArray(old.serviceKeys)?old.serviceKeys.map(String):[];
+          const nextKeys=Array.isArray(meta?.serviceKeys)?meta.serviceKeys.map(String):[];
+          if(JSON.stringify(beforeKeys)!==JSON.stringify(nextKeys))remotePatch['categoryMeta/'+metaKey+'/serviceKeys']=nextKeys.length?nextKeys:null;
+        }
+        const remoteEntries=Object.entries(remotePatch);let firebaseCleanupCount=0;
+        for(let i=0;i<remoteEntries.length;i+=100){
+          const patch=Object.fromEntries(remoteEntries.slice(i,i+100));
+          try{await firebasePatchJson('',patch,12000);firebaseCleanupCount+=Object.keys(patch).length;}
+          catch(e){remoteWarnings.push(String(e.message||e).slice(0,140));break;}
+        }
+        return json(res,200,{ok:true,action,name,matchedServices:matches,deletedServices:serviceIdsDeleted.length,unlinkedServices:serviceIdsUnlinked.length,deletedServiceKeys:serviceIdsDeleted,deletedMetadataKeys:matchedMetaKeys,backup:'catalog-backups/'+backupName,storage:'hosting-json',storageMode:DATA_IS_EXTERNAL?'persistent-volume':'release-local',firebaseLegacyCatalogCleanupCount:firebaseCleanupCount,firebaseLegacyCatalogCleanupWarning:remoteWarnings.length?remoteWarnings.join('; '):'',warning:!DATA_IS_EXTERNAL?'الكتالوج محفوظ في مساحة الإصدار الحالية فقط؛ اربط Railway Volume لضمان بقائه بعد إعادة النشر.':''});
+      }
+      return json(res,422,{ok:false,error:'عملية الأقسام غير مدعومة. استخدم create أو pin أو delete.'});
+    }catch(e){return json(res,500,{ok:false,error:'تعذر حفظ تغيير الأقسام. لم نعرض العملية كنجاح: '+String(e.message||e).slice(0,180)});}
+  }
   if(p==='/api/admin/catalog'&&req.method==='POST'){
     if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
     const b=await bodyJSON(req,10*1024*1024);const rawPath=String(b.path||'');const mode=String(b.mode||'set');
@@ -4723,9 +4888,9 @@ async function routeAPI(req,res,urlObj){
     if(!serviceKeys.length)return json(res,422,{ok:false,error:'لم توجد خدمات صالحة؛ تأكد من اسم الخدمة وProvider ID وService ID والسعر.',skipped});
     if(dest!=='__all__'){
       const old=metaRoot[categoryKey]&&typeof metaRoot[categoryKey]==='object'?metaRoot[categoryKey]:{};
-      metaRoot[categoryKey]={...old,...(b.categoryMeta&&typeof b.categoryMeta==='object'?b.categoryMeta:{}),name:dest,serviceKeys:[...new Set([...(Array.isArray(old.serviceKeys)?old.serviceKeys.map(String):[]),...serviceKeys])],updatedAt:at,updatedBy:String(session(req)?.username||ADMIN_USER)};
+      metaRoot[categoryKey]={...old,...(b.categoryMeta&&typeof b.categoryMeta==='object'?b.categoryMeta:{}),name:dest,serviceKeys:[...new Set([...serviceKeys,...(Array.isArray(old.serviceKeys)?old.serviceKeys.map(String):[])])],updatedAt:at,updatedBy:String(session(req)?.username||ADMIN_USER)};
     }
-    try{writeJSON('services.json',root);ensureNumericSiteServiceIds();if(restoredArchived)writeJSON('quarantined_provider_services.json',quarantineArchive);writeJSON('category_meta.json',metaRoot);const cfg=readJSON('catalog_settings.json',{});cfg.legacySeedAttempted=true;cfg.catalogUpdatedAt=at;cfg.lastImportCount=serviceKeys.length;writeJSON('catalog_settings.json',cfg);const verify=readJSON('services.json',{});const missing=serviceKeys.filter(k=>!verify[k]||String(verify[k].providerServiceId||verify[k].smmpartyId||'')==='');if(missing.length)throw new Error('فشل التحقق من '+missing.length+' خدمة بعد الحفظ.');
+    try{writeJSON('services.json',root);ensureNumericSiteServiceIds();if(restoredArchived)writeJSON('quarantined_provider_services.json',quarantineArchive);writeJSON('category_meta.json',metaRoot);const cfg=readJSON('catalog_settings.json',{});cfg.legacySeedAttempted=true;cfg.catalogUpdatedAt=at;cfg.lastImportCount=serviceKeys.length;const order=cfg.catalogOrder&&typeof cfg.catalogOrder==='object'?cfg.catalogOrder:{categories:[],services:{}};if(!Array.isArray(order.categories))order.categories=[];if(!order.services||typeof order.services!=='object'||Array.isArray(order.services))order.services={};if(dest!=='__all__'&&!order.categories.some(x=>normalizeCatalogLabel(x)===normalizeCatalogLabel(dest)))order.categories.push(dest);const destBucket=dest==='__all__'?'__all__':(categoryKey||normalizeCatalogKey(dest));for(const bucket of new Set([destBucket,'__all__'])){const previous=Array.isArray(order.services[bucket])?order.services[bucket].map(String):[];order.services[bucket]=[...serviceKeys,...previous.filter(k=>!serviceKeys.includes(k))];}cfg.catalogOrder=canonicalCatalogOrder(order,metaRoot);writeJSON('catalog_settings.json',cfg);const verify=readJSON('services.json',{});const missing=serviceKeys.filter(k=>!verify[k]||String(verify[k].providerServiceId||verify[k].smmpartyId||'')==='');if(missing.length)throw new Error('فشل التحقق من '+missing.length+' خدمة بعد الحفظ.');
       let imageMirrored=false,imageMirrorWarning='';
       if(dest!=='__all__'&&metaRoot[categoryKey]&&isCustomCategoryImage(metaRoot[categoryKey])){try{await firebaseWriteJson('categoryMeta/'+categoryKey,metaRoot[categoryKey],12000);imageMirrored=true;}catch(e){imageMirrorWarning=String(e.message||e).slice(0,140);}}
       const warning=imageMirrorWarning?('حُفظت الصورة في ملفات الخادم لكن تعذرت مزامنتها إلى Firebase: '+imageMirrorWarning+(DATA_IS_EXTERNAL?'':' — اربط Railway Volume قبل إعادة النشر حتى لا تضيع النسخة المحلية.')):(!imageMirrored&&!DATA_IS_EXTERNAL?'تم الحفظ في ملفات الخادم دون نسخة Firebase للصورة؛ اربط Railway Volume دائماً.':'');
