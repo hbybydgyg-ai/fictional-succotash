@@ -1,0 +1,3 @@
+تم تضمين واجهة نوع ثالث: موقع HTML/CSS/JS ثابت.
+الملفات الداعمة: index.html و app.py و requirements.txt و Procfile و railway.toml.
+يجب رفع محتويات الحزمة إلى جذر التطبيق وليس إلى مجلد فرعي.
