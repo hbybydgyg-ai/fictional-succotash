@@ -26,9 +26,26 @@ function readStaticAssetBuffer(assetPath){
 // Prefer a Railway Volume or explicit persistent directory; only fall back to release-local data.
 const DATA = path.resolve(process.env.SADA_DATA_DIR || process.env.DATA_DIR || (process.env.RAILWAY_VOLUME_MOUNT_PATH ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, 'sada-data') : LEGACY_DATA));
 const DATA_IS_EXTERNAL = path.resolve(DATA) !== path.resolve(LEGACY_DATA);
+// This release intentionally retains no service/section catalog snapshots. Purge those
+// legacy files on startup and after verified deletes so stale catalog rows cannot be restored.
+function purgeCatalogServiceSnapshots(){
+  const dir=path.join(DATA,'catalog-backups');
+  const ownedNames=/^(?:catalog-delete-all|catalog-service-delete|section-delete|firebase-services)-.*\.json$/i;
+  let removed=0;
+  try{
+    if(!fs.existsSync(dir))return 0;
+    for(const name of fs.readdirSync(dir)){
+      if(!ownedNames.test(name))continue;
+      try{fs.rmSync(path.join(dir,name),{force:true});removed++;}catch(e){console.error('Catalog snapshot cleanup failed:',name,String(e.message||e));}
+    }
+    if(!fs.readdirSync(dir).length){try{fs.rmdirSync(dir)}catch(_){}}
+  }catch(e){console.error('Catalog snapshot cleanup unavailable:',String(e.message||e));}
+  return removed;
+}
+purgeCatalogServiceSnapshots();
 const APP_NAME = 'صدى العراق';
-const APP_VERSION = '1.6.46';
-const BUILD_ID = 'SADA-1.6.46-RESTORE-CATALOG-IMPORT-ADMIN-CLEANUP-20261014';
+const APP_VERSION = '1.6.48';
+const BUILD_ID = 'SADA-1.6.48-SERVICE-HUB-BULK-SECTION-DELETE-PERF-20261015';
 // Keep the owner's admin identity available after packaging, but store only a scrypt hash
 // in the project. Railway variables can still explicitly override this packaged credential.
 function loadBundledAdminAuth(){
@@ -548,34 +565,46 @@ async function ensureLocalServiceCatalogSeeded(){
   if(CATALOG_FIREBASE_READY)return {count:Object.keys(readJSON('services.json',{})).length,source:'firebase',storage:'firebase'};
   if(CATALOG_FIREBASE_READY_IN_FLIGHT)return CATALOG_FIREBASE_READY_IN_FLIGHT;
   CATALOG_FIREBASE_READY_IN_FLIGHT=(async()=>{
-    // Firebase is the source of truth. During the one-time bridge, preserve local-only rows
-    // by adding them to Firebase without replacing current Firebase rows with stale local copies.
     const localServices=catalogObject(readJSON('services.json',{})),localMeta=catalogObject(readJSON('category_meta.json',{})),localProviders=catalogObject(readJSON('provider_services.json',{})),localCfg=catalogObject(readJSON('catalog_settings.json',{}));
     const [remoteServicesRaw,remoteMetaRaw,remoteProvidersRaw,remoteOrderRaw,remoteVersion]=await Promise.all([
       firebaseGetJson('services',15000),firebaseGetJson('categoryMeta',12000),firebaseGetJson('providerServices',12000),firebaseGetJson('settings/catalogOrder',10000),firebaseGetJson('settings/svcsVersion',8000)
     ]);
     const remoteServices=catalogObject(remoteServicesRaw),remoteMeta=catalogObject(remoteMetaRaw),remoteProviders=catalogObject(remoteProvidersRaw);
-    const mergedServices={...localServices,...remoteServices};
-    const mergedMeta={};for(const key of new Set([...Object.keys(localMeta),...Object.keys(remoteMeta)]))mergedMeta[key]={...(localMeta[key]&&typeof localMeta[key]==='object'?localMeta[key]:{}),...(remoteMeta[key]&&typeof remoteMeta[key]==='object'?remoteMeta[key]:{})};
-    const mergedProviders={...localProviders,...remoteProviders};
-    const mergedOrder=catalogMergeOrder(remoteOrderRaw,localCfg.catalogOrder,mergedMeta,mergedServices);
+    const orderObj=remoteOrderRaw&&typeof remoteOrderRaw==='object'&&!Array.isArray(remoteOrderRaw)?remoteOrderRaw:{};
+    const hasSavedOrder=(Array.isArray(orderObj.categories)&&orderObj.categories.length>0)||(orderObj.services&&typeof orderObj.services==='object'&&Object.keys(orderObj.services).length>0);
+    const hasVersion=remoteVersion!==null&&remoteVersion!==undefined&&String(remoteVersion).trim()!=='';
+    // One-time legacy bootstrap is allowed only when Firebase is genuinely uninitialized.
+    // A saved version/order or any existing catalog node prevents local cache data being re-imported.
+    const remoteCatalogUninitialized=!hasVersion&&remoteServicesRaw==null&&remoteProvidersRaw==null&&remoteOrderRaw==null&&!hasSavedOrder;
+    const mergedServices=remoteCatalogUninitialized?{...localServices,...remoteServices}:remoteServices;
+    const mergedMeta={};
+    if(remoteCatalogUninitialized){
+      for(const key of new Set([...Object.keys(localMeta),...Object.keys(remoteMeta)]))mergedMeta[key]={...(localMeta[key]&&typeof localMeta[key]==='object'?localMeta[key]:{}),...(remoteMeta[key]&&typeof remoteMeta[key]==='object'?remoteMeta[key]:{})};
+    }else Object.assign(mergedMeta,remoteMeta);
+    const mergedProviders=remoteCatalogUninitialized?{...localProviders,...remoteProviders}:remoteProviders;
+    const mergedOrder=catalogMergeOrder(remoteOrderRaw,remoteCatalogUninitialized?localCfg.catalogOrder:null,mergedMeta,mergedServices);
     const patch={};
-    for(const [key,row] of Object.entries(mergedServices))if(!Object.prototype.hasOwnProperty.call(remoteServices,key))patch['services/'+key]=row;
-    for(const [key,row] of Object.entries(mergedMeta))if(!catalogValuesEqual(remoteMeta[key]??null,row))patch['categoryMeta/'+key]=row;
-    for(const [key,row] of Object.entries(mergedProviders))if(!Object.prototype.hasOwnProperty.call(remoteProviders,key))patch['providerServices/'+key]=row;
+    if(remoteCatalogUninitialized){
+      for(const [key,row] of Object.entries(mergedServices))if(!Object.prototype.hasOwnProperty.call(remoteServices,key))patch['services/'+key]=row;
+      for(const [key,row] of Object.entries(mergedMeta))if(!catalogValuesEqual(remoteMeta[key]??null,row))patch['categoryMeta/'+key]=row;
+      for(const [key,row] of Object.entries(mergedProviders))if(!Object.prototype.hasOwnProperty.call(remoteProviders,key))patch['providerServices/'+key]=row;
+    }
     if(!catalogValuesEqual(remoteOrderRaw??null,mergedOrder))patch['settings/catalogOrder']=mergedOrder;
-    const freshVersion=String(Date.now());if(Object.keys(patch).length||remoteVersion===null||remoteVersion===undefined)patch['settings/svcsVersion']=freshVersion;
-    if(Object.keys(patch).length)await persistFirebaseCatalogPatch(patch,{verify:true,batchSize:150});
-    // Re-read Firebase after migration; never treat the local copy as authoritative.
-    const [finalServicesRaw,finalMetaRaw,finalProvidersRaw,finalOrderRaw,finalVersion]=await Promise.all([
-      firebaseGetJson('services',15000),firebaseGetJson('categoryMeta',12000),firebaseGetJson('providerServices',12000),firebaseGetJson('settings/catalogOrder',10000),firebaseGetJson('settings/svcsVersion',8000)
-    ]);
+    const freshVersion=String(Date.now());
+    if(Object.keys(patch).length||!hasVersion)patch['settings/svcsVersion']=freshVersion;
+    let finalServicesRaw=remoteServicesRaw,finalMetaRaw=remoteMetaRaw,finalProvidersRaw=remoteProvidersRaw,finalOrderRaw=remoteOrderRaw,finalVersion=remoteVersion;
+    if(Object.keys(patch).length){
+      await persistFirebaseCatalogPatch(patch,{verify:true,batchSize:150});
+      [finalServicesRaw,finalMetaRaw,finalProvidersRaw,finalOrderRaw,finalVersion]=await Promise.all([
+        firebaseGetJson('services',15000),firebaseGetJson('categoryMeta',12000),firebaseGetJson('providerServices',12000),firebaseGetJson('settings/catalogOrder',10000),firebaseGetJson('settings/svcsVersion',8000)
+      ]);
+    }
     const finalServices=catalogObject(finalServicesRaw),finalMeta=catalogObject(finalMetaRaw),finalProviders=catalogObject(finalProvidersRaw);
-    for(const key of Object.keys(mergedServices))if(!Object.prototype.hasOwnProperty.call(finalServices,key))throw new Error('فشل التحقق من ترحيل الخدمة '+key+' إلى Firebase.');
+    // Verify local bootstrap rows still exist only when this was the one-time empty-DB migration.
+    if(remoteCatalogUninitialized)for(const key of Object.keys(mergedServices))if(!Object.prototype.hasOwnProperty.call(finalServices,key))throw new Error('فشل التحقق من ترحيل الخدمة '+key+' إلى Firebase.');
     writeJSON('services.json',finalServices);writeJSON('category_meta.json',finalMeta);writeJSON('provider_services.json',finalProviders);
-    const cfg=readJSON('catalog_settings.json',{});cfg.catalogOrder=catalogMergeOrder(finalOrderRaw,mergedOrder,finalMeta,finalServices);cfg.firebaseSvcsVersion=finalVersion??freshVersion;cfg.firebaseCatalogLastVerifiedAt=nowISO();cfg.firebaseCatalogLastVerifiedCounts={services:Object.keys(finalServices).length,sections:Object.keys(finalMeta).length};writeJSON('catalog_settings.json',cfg);
+    const cfg=readJSON('catalog_settings.json',{});cfg.catalogOrder=catalogMergeOrder(finalOrderRaw,remoteCatalogUninitialized?mergedOrder:null,finalMeta,finalServices);cfg.firebaseSvcsVersion=finalVersion??freshVersion;cfg.firebaseCatalogLastVerifiedAt=nowISO();cfg.firebaseCatalogLastVerifiedCounts={services:Object.keys(finalServices).length,sections:Object.keys(finalMeta).length};writeJSON('catalog_settings.json',cfg);
     SITE_SERVICE_IDS_DIRTY=true;ensureNumericSiteServiceIds();
-    // Persist ID normalization as well, so order APIs and the UI see identical service records.
     const normalized=readJSON('services.json',{}),normalizedPatch={};for(const [key,row] of Object.entries(normalized))if(!catalogValuesEqual(finalServices[key]??null,row))normalizedPatch['services/'+key]=row;
     if(Object.keys(normalizedPatch).length){await persistFirebaseCatalogPatch(normalizedPatch,{verify:true,batchSize:150});}
     CATALOG_FIREBASE_READY=true;
@@ -583,6 +612,7 @@ async function ensureLocalServiceCatalogSeeded(){
   })();
   try{return await CATALOG_FIREBASE_READY_IN_FLIGHT;}finally{CATALOG_FIREBASE_READY_IN_FLIGHT=null;}
 }
+
 function catalogPathToFirebase(rawPath){
   const spec=catalogPathSpec(rawPath);if(!spec)return null;
   const p=String(rawPath||'').split('/').filter(Boolean);
@@ -4525,29 +4555,7 @@ async function routeAPI(req,res,urlObj){
   }
   if(p==='/api/admin/catalog/migration'&&req.method==='POST'){
     if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
-    const b=await bodyJSON(req,1024*1024),action=String(b.action||'preview');
-    if(!['copy','copy-and-delete'].includes(action))return json(res,422,{ok:false,error:'اختر عملية النسخ أو النسخ مع حذف النسخة القديمة.'});
-    if(action==='copy-and-delete'&&(b.confirmation!=='DELETE_FIREBASE_SERVICES'))return json(res,422,{ok:false,error:'يلزم تأكيد حذف services من Firebase بعد النسخ والتحقق.'});
-    if(action==='copy-and-delete'&&!DATA_IS_EXTERNAL)return json(res,503,{ok:false,error:'تم منع الحذف: لا يوجد Railway Volume دائم مؤكد. اربط Volume على /data واجعل SADA_DATA_DIR=/data ثم أعد المحاولة.'});
-    try{
-      const remote=await firebaseGetJson('services',15000);
-      const remoteRoot=remote&&typeof remote==='object'&&!Array.isArray(remote)?remote:{};
-      const local=readJSON('services.json',{}),localRoot=local&&typeof local==='object'&&!Array.isArray(local)?local:{};
-      const remoteKeys=Object.keys(remoteRoot);
-      const merged={...remoteRoot,...localRoot};
-      const dir=path.join(DATA,'catalog-backups');fs.mkdirSync(dir,{recursive:true});
-      const stamp=new Date().toISOString().replace(/[:.]/g,'-');
-      const backupPath=path.join(dir,'firebase-services-'+stamp+'.json');
-      fs.writeFileSync(backupPath,JSON.stringify({createdAt:nowISO(),source:'firebase/services',remoteCount:remoteKeys.length,services:remoteRoot},null,2),{flag:'wx',mode:0o600});
-      writeJSON('services.json',merged);markCatalogSeeded();
-      const verified=readJSON('services.json',{}),missing=remoteKeys.filter(k=>!Object.prototype.hasOwnProperty.call(verified||{},k));
-      if(missing.length)return json(res,503,{ok:false,error:'تم حفظ نسخة احتياطية ونسخ البيانات محلياً، لكن فشل تحقق بعض الخدمات؛ لم نحذف Firebase.',backupFile:path.basename(backupPath),missingCount:missing.length,remoteCount:remoteKeys.length,localCount:Object.keys(verified||{}).length});
-      if(action==='copy')return json(res,200,{ok:true,copied:true,deletedRemote:false,remoteCount:remoteKeys.length,localCount:Object.keys(verified||{}).length,backupFile:path.basename(backupPath),storageMode:'persistent-volume',message:'تم نسخ كتالوج Firebase والتحقق منه إلى ملفات الاستضافة. بقيت نسخة Firebase كما هي.'});
-      await firebaseDeleteJson('services',15000);
-      const after=await firebaseGetJson('services',10000);
-      if(after!==null&&after!==undefined&&Object.keys(after||{}).length)return json(res,502,{ok:false,copied:true,deletedRemote:false,error:'تم حفظ النسخة الاحتياطية ونسخ الخدمات إلى الاستضافة، لكن تعذر تأكيد حذف الخدمات القديمة من Firebase.',backupFile:path.basename(backupPath),remoteCount:remoteKeys.length,localCount:Object.keys(verified||{}).length});
-      return json(res,200,{ok:true,copied:true,deletedRemote:true,remoteCount:remoteKeys.length,localCount:Object.keys(verified||{}).length,backupFile:path.basename(backupPath),storageMode:'persistent-volume',message:'تم التحقق من نسخة الاستضافة والنسخة الاحتياطية، ثم حذف عقدة services القديمة من Firebase.'});
-    }catch(e){return json(res,503,{ok:false,error:'توقفت عملية النقل قبل إعلان نجاحها. افحص نسخة الاستضافة الاحتياطية قبل إعادة المحاولة. '+String(e.message||e).slice(0,180)});}
+    return json(res,410,{ok:false,error:'تم تعطيل نقل/نسخ كتالوج الخدمات حتى لا تُنشأ نسخ احتياطية أو تُحذف بيانات من مسار غير مقصود. استخدم إدارة الخدمات والأقسام للحذف النهائي من Firebase.'});
   }
   // Server-backed host-file catalog API. Only these catalog nodes leave Firebase.
   if(p==='/api/catalog'&&req.method==='GET'){
@@ -4606,17 +4614,12 @@ async function routeAPI(req,res,urlObj){
       try{await reloadLocalCatalogFromFirebase();}catch(reloadError){console.error('Global catalog delete recovery reload failed:',String(reloadError.message||reloadError));}
       return json(res,503,{ok:false,persisted:false,error:'لم يتم تأكيد حذف الكتالوج في Firebase؛ راجع القائمة قبل إعادة المحاولة. '+String(e.message||e).slice(0,160)});
     }
-    // Remove old snapshots made by earlier versions of this exact global-delete operation.
-    // Scoped per-service/section recovery files from other operations are intentionally untouched.
-    try{
-      const backupDir=path.join(DATA,'catalog-backups');
-      if(fs.existsSync(backupDir))for(const name of fs.readdirSync(backupDir))if(/^catalog-delete-all-.*\.json$/i.test(name))fs.rmSync(path.join(backupDir,name),{force:true});
-    }catch(e){console.error('Could not purge old global-delete snapshots:',String(e.message||e));}
+    purgeCatalogServiceSnapshots();
     return json(res,200,{ok:true,deleted:Object.keys(servicesBefore).length,deletedSections:sectionNames.size,remainingServices:0,remainingSections:0,storage:'firebase+verified-server-cache',verified:true,backupCreated:false,message:'تم حذف الخدمات وبيانات الأقسام وترتيبها من Firebase ونسخة الاستضافة. لم تُنشأ نسخة احتياطية، وتم تنظيف النسخ القديمة الخاصة بحذف الكل.'});
   }
 
   // Admin service maintenance: filter, reclassify or delete provider-backed catalog services.
-  // Every mutation is Firebase-first, verified, backed up and admin-only.
+  // Every mutation is Firebase-first, verified, permanently applied and admin-only; catalog snapshots are not retained.
   if(p==='/api/admin/catalog/delete-services'&&(req.method==='GET'||req.method==='POST')){
     if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
     const normPlatform=value=>{
@@ -4739,13 +4742,6 @@ async function routeAPI(req,res,urlObj){
     const orderServices=order.services&&typeof order.services==='object'&&!Array.isArray(order.services)?{...order.services}:{};
     for(const [bucket,ids] of Object.entries(orderServices))if(Array.isArray(ids))orderServices[bucket]=ids.map(String).filter(key=>!selected.has(key));
     settingsNext.catalogOrder=canonicalCatalogOrder({...order,services:orderServices},metaNext);settingsNext.catalogUpdatedAt=nowISO();settingsNext.lastServiceDeleteAt=nowISO();
-    const backupDir=path.join(DATA,'catalog-backups');fs.mkdirSync(backupDir,{recursive:true});
-    const stamp=new Date().toISOString().replace(/[:.]/g,'-');const backupName='catalog-service-delete-'+stamp+'.json';
-    fs.writeFileSync(path.join(backupDir,backupName),JSON.stringify({
-      createdAt:nowISO(),action:'delete-services',platform,providerId,
-      services:Object.fromEntries(keys.map(key=>[key,servicesBefore[key]])),
-      categoryMeta:metaBefore,catalogOrder:settingsBefore.catalogOrder||{categories:[],services:{}}
-    },null,2),'utf8');
     const remotePatch={};
     for(const key of keys)remotePatch['services/'+key]=null;
     for(const [metaKey,meta] of Object.entries(metaNext))if(!catalogValuesEqual(metaBefore[metaKey]??null,meta))remotePatch['categoryMeta/'+metaKey]=meta;
@@ -4758,7 +4754,8 @@ async function routeAPI(req,res,urlObj){
     }catch(e){
       return json(res,503,{ok:false,persisted:false,error:'لم يتم تأكيد حذف الخدمات في Firebase؛ راجع القائمة قبل إعادة المحاولة. '+String(e.message||e).slice(0,160)});
     }
-    return json(res,200,{ok:true,action,platform,providerId,deleted:keys.length,deletedKeys:keys,backup:'catalog-backups/'+backupName,storage:'firebase',verified:true});
+    purgeCatalogServiceSnapshots();
+    return json(res,200,{ok:true,action,platform,providerId,deleted:keys.length,deletedKeys:keys,backupCreated:false,storage:'firebase',verified:true});
   }
 
   if(p==='/api/admin/catalog/sections'&&req.method==='POST'){
@@ -4838,9 +4835,6 @@ async function routeAPI(req,res,urlObj){
           if(Array.isArray(ids))orderServices[bucket]=ids.map(String).filter(k=>!serviceIdsDeleted.includes(k)&&remainingIds.has(k));
         }
         order.services=orderServices;settingsNext.catalogOrder=canonicalCatalogOrder(order,metaNext);settingsNext.catalogUpdatedAt=nowISO();settingsNext.lastSectionDeleteAt=nowISO();
-        // Preserve a full recovery snapshot before changing catalog files.
-        const backupDir=path.join(DATA,'catalog-backups');fs.mkdirSync(backupDir,{recursive:true});const stamp=new Date().toISOString().replace(/[:.]/g,'-');const backupName='section-delete-'+stamp+'-'+normalizeCatalogKey(name).slice(0,40)+'.json';const backupFull=path.join(backupDir,backupName);
-        fs.writeFileSync(backupFull,JSON.stringify({createdAt:nowISO(),action:'delete-section',section:name,services:servicesBefore,categoryMeta:metaBefore,catalogSettings:settingsBefore},null,2),'utf8');
         let wroteServices=false,wroteMeta=false,wroteSettings=false;
         try{writeJSON('services.json',servicesNext);wroteServices=true;ensureNumericSiteServiceIds();writeJSON('category_meta.json',metaNext);wroteMeta=true;writeJSON('catalog_settings.json',settingsNext);wroteSettings=true;}
         catch(e){try{if(wroteServices)writeJSON('services.json',servicesBefore);if(wroteMeta)writeJSON('category_meta.json',metaBefore);if(wroteSettings)writeJSON('catalog_settings.json',settingsBefore);ensureNumericSiteServiceIds();}catch(rollbackError){console.error('Catalog section delete rollback failed:',String(rollbackError.message||rollbackError));}throw e;}
@@ -4854,7 +4848,8 @@ async function routeAPI(req,res,urlObj){
         remotePatch['settings/catalogOrder']=settingsNext.catalogOrder;remotePatch['settings/svcsVersion']=String(Date.now());
         try{await persistFirebaseCatalogPatch(remotePatch,{verify:true,atomic:true,timeoutMs:45000});}
         catch(e){try{writeJSON('services.json',servicesBefore);writeJSON('category_meta.json',metaBefore);writeJSON('catalog_settings.json',settingsBefore);ensureNumericSiteServiceIds();}catch(rollbackError){console.error('Catalog Firebase rollback failed:',String(rollbackError.message||rollbackError));}return json(res,503,{ok:false,error:'فشل تأكيد حذف القسم وتعديل الخدمات في Firebase؛ لم تُعرض العملية كنجاح. '+String(e.message||e).slice(0,160)});}
-        return json(res,200,{ok:true,action,name,matchedServices:matches,deletedServices:serviceIdsDeleted.length,unlinkedServices:serviceIdsUnlinked.length,deletedServiceKeys:serviceIdsDeleted,deletedMetadataKeys:matchedMetaKeys,backup:'catalog-backups/'+backupName,storage:'firebase',storageMode:'firebase',firebaseVerified:true});
+        purgeCatalogServiceSnapshots();
+        return json(res,200,{ok:true,action,name,matchedServices:matches,deletedServices:serviceIdsDeleted.length,unlinkedServices:serviceIdsUnlinked.length,deletedServiceKeys:serviceIdsDeleted,deletedMetadataKeys:matchedMetaKeys,backupCreated:false,storage:'firebase',storageMode:'firebase',firebaseVerified:true});
       }
       return json(res,422,{ok:false,error:'عملية الأقسام غير مدعومة. استخدم create أو pin أو delete.'});
     }catch(e){return json(res,500,{ok:false,error:'تعذر حفظ تغيير الأقسام. لم نعرض العملية كنجاح: '+String(e.message||e).slice(0,180)});}
@@ -6567,7 +6562,7 @@ async function routeAPI(req,res,urlObj){
     try { buildFile=fs.readFileSync(path.join(ROOT,'BUILD_ID.txt'),'utf8').trim(); } catch(_) {}
     const deploymentConsistent=uiVersion===APP_VERSION && uiBuildId===BUILD_ID && versionFile===APP_VERSION && buildFile===BUILD_ID;
     const dbInfo=firebaseDatabaseDiagnosticInfo();
-    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.46',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
+    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.48',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
     // Keep operational configuration details private; only an authenticated admin can inspect them.
     if(isAdmin(req)){const credentialStatus=firebaseServiceAccountStatus();health.firebaseDatabase={host:dbInfo.host,source:dbInfo.source,databaseProjectHint:dbInfo.databaseProjectHint,serviceAccountProjectId:dbInfo.serviceAccountProjectId||null,configuredWebProjectId:dbInfo.configuredWebProjectId||null,serviceAccountProjectMatch:dbInfo.serviceAccountProjectMatch};health.securityConfig={sessionSecretConfigured:!!String(process.env.SESSION_SECRET||'').trim(),dedicatedEncryptionKeyConfigured:!!String(process.env.SADA_ENCRYPTION_KEY||'').trim(),stableEncryptionAvailable:telegramEncryptionReady(),firebaseConfigured:!!FIREBASE_DATABASE_URL,firebaseServiceAccountConfigured:credentialStatus.ok,firebaseCredentialStatus:{ok:credentialStatus.ok,code:credentialStatus.code,source:credentialStatus.source,message:credentialStatus.message},firebaseDatabaseSecretConfigured:!!String(process.env.FIREBASE_DATABASE_SECRET||'').trim(),firebaseAuthAvailable:firebaseAuthAvailable(),emailServiceConfigured:!!(String(process.env.RESEND_API_KEY||'').trim()&&String(process.env.RESEND_FROM_EMAIL||process.env.EMAIL_FROM||'').trim()),telegramTokenFromEnvironment:!!String(process.env.TELEGRAM_BOT_TOKEN||'').trim(),adminPasswordFromEnvironment:!!(String(process.env.ADMIN_PASSWORD||'').trim()||String(process.env.ADMIN_PASSWORD_HASH||'').trim()),adminPasswordConfigured:adminPasswordConfigured()};}
     return json(res,200,health);
@@ -6780,6 +6775,7 @@ async function runBundledLegacySeedBootstrap(){
 }
 
 ensureData();
+purgeCatalogServiceSnapshots(); // Also purge snapshots copied from legacy release-local DATA by ensureData().
 ensureTelegramDefaults();
 // Startup must never move, hide, or delete service rows/categories. Imports require an explicit admin action.
 startGlobalPriceSyncScheduler();
@@ -6810,6 +6806,9 @@ const server=http.createServer(async (req,res)=>{
 });
 server.listen(PORT,'0.0.0.0',()=>{
   console.log(`${APP_NAME} v${APP_VERSION} build ${BUILD_ID} running on port ${PORT}`);
+  // Prepare the shared Firebase catalog after the listener is live. Routes share this in-flight
+  // promise, so a user's first catalog page doesn't trigger an extra cold set of Firebase reads.
+  setTimeout(()=>{ensureLocalServiceCatalogSeeded().then(result=>console.log('Firebase catalog ready:',JSON.stringify({services:result.count,source:result.source}))).catch(error=>console.warn('Firebase catalog warm-up deferred:',String(error.message||error).slice(0,180)));},250);
   if(!adminPasswordConfigured()) console.warn('SECURITY WARNING: Admin login is not configured. Set ADMIN_PASSWORD/ADMIN_PASSWORD_HASH or restore a valid bundled admin hash.');
   if(!process.env.SESSION_SECRET){if(SESSION_SECRET_SOURCE==='firebase-service-credential')console.warn('SECURITY NOTICE: SESSION_SECRET is not set; using a stable, purpose-separated key derived from the server-only Firebase service credential. Set SESSION_SECRET explicitly for independent key rotation.');else console.warn('SECURITY WARNING: configure a long random SESSION_SECRET for stable, multi-instance signed sessions.');}
   if(!process.env.SADA_ENCRYPTION_KEY && !telegramEncryptionReady()) console.warn('SECURITY WARNING: could not create a stable encryption key; set a strong fixed SESSION_SECRET or attach persistent Railway storage.');
