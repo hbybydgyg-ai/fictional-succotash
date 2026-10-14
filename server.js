@@ -28,7 +28,7 @@ const DATA = path.resolve(process.env.SADA_DATA_DIR || process.env.DATA_DIR || (
 const DATA_IS_EXTERNAL = path.resolve(DATA) !== path.resolve(LEGACY_DATA);
 const APP_NAME = 'صدى العراق';
 const APP_VERSION = '1.6.41';
-const BUILD_ID = 'SADA-1.6.41-FIREBASE-CATALOG-PRIMARY-2.14-20261014';
+const BUILD_ID = 'SADA-1.6.41-FIREBASE-CATALOG-PRIMARY-2.15-PRICE-SORT-CLEAN-20261014';
 // Keep the owner's admin identity available after packaging, but store only a scrypt hash
 // in the project. Railway variables can still explicitly override this packaged credential.
 function loadBundledAdminAuth(){
