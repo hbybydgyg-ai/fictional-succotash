@@ -20,7 +20,7 @@ function setAt(root,parts,value){if(!parts.length)throw new Error('root mutation
 async function requestJson(url,opts={}){const response=await fetch(url,opts);const text=await response.text();let data;try{data=text?JSON.parse(text):null;}catch{data={raw:text};}return {status:response.status,data,headers:response.headers};}
 async function main(){
   const tempDir=fs.mkdtempSync(path.join(os.tmpdir(),'sada-api-smoke-'));
-  const rootDb={users:{tester:{username:'tester',email:'tester@example.com',balance:100000,discountPct:0}},orders:{},apiKeys:{}};
+  const rootDb={users:{tester:{username:'tester',email:'tester@example.com',balance:100000,discountPct:0}},orders:{},apiKeys:{},categoryMeta:{'RemoteOnlyCategory':{name:'Provider Ghost Category',image:'provider-generated.png'}}};
   let dbVersion=1;let providerAddCalls=0;let providerSeen=[];
   const db=http.createServer(async(req,res)=>{
     try{
@@ -55,10 +55,21 @@ async function main(){
   });
   const providerPort=await listen(provider);
   const dataDir=path.join(tempDir,'data');fs.mkdirSync(dataDir,{recursive:true});
-  fs.writeFileSync(path.join(dataDir,'services.json'),JSON.stringify({
+  const initialServices={
     'svc-test':{fbKey:'svc-test',siteServiceId:'1001',providerId:'mock-provider',providerServiceId:'77',smmpartyId:'77',serviceId:'1001',name:'Safe mock test service',category:'Test',sellingUsd:5,providerRateUsd:2.5,markupPct:100,min:1,max:1000,active:true,refill:false,cancel:true,type:'default'},
     'svc-removed':{fbKey:'svc-removed',siteServiceId:'1002',providerId:'mock-provider',providerServiceId:'88',smmpartyId:'88',serviceId:'1002',name:'Previously hidden by unsafe auto-check',category:'Test',sellingUsd:4,providerRateUsd:2,min:1,max:1000,active:true,providerAvailable:false,availabilityStatus:'unavailable',providerAvailabilityReason:'not_found_in_live_supplier_catalog',refill:false,cancel:true,type:'default'},
-    'svc-admin-disabled':{fbKey:'svc-admin-disabled',siteServiceId:'1003',providerId:'mock-provider',providerServiceId:'77',smmpartyId:'77',serviceId:'1003',name:'Manually disabled by site admin',category:'ManualDisableTest',sellingUsd:4,providerRateUsd:2,min:1,max:1000,active:false,providerAvailable:false,availabilityStatus:'unavailable',providerAvailabilityReason:'not_found_in_live_supplier_catalog',refill:false,cancel:true,type:'default'}
+    'svc-admin-disabled':{fbKey:'svc-admin-disabled',siteServiceId:'1003',providerId:'mock-provider',providerServiceId:'77',smmpartyId:'77',serviceId:'1003',name:'Manually disabled by site admin',category:'ManualDisableTest',sellingUsd:4,providerRateUsd:2,min:1,max:1000,active:false,providerAvailable:false,availabilityStatus:'unavailable',providerAvailabilityReason:'not_found_in_live_supplier_catalog',refill:false,cancel:true,type:'default'},
+    'svc_auto_unapproved_test':{fbKey:'svc_auto_unapproved_test',siteServiceId:'1004',providerId:'mock-provider',providerServiceId:'79',smmpartyId:'79',serviceId:'1004',name:'Unapproved automatic import test',category:'MustStayHidden',sellingUsd:6,providerRateUsd:3,min:1,max:1000,active:true,source:'provider-live-sync',providerAvailable:true,availabilityStatus:'available',refill:false,cancel:true,type:'default'}
+  };
+  // Simulate a legacy release that accidentally filled the active catalog with a provider's entire list.
+  for(let i=0;i<1200;i++){const k='svc_auto_bulk_'+i;initialServices[k]={fbKey:k,providerId:'mock-provider',providerServiceId:String(10000+i),smmpartyId:String(10000+i),serviceId:String(10000+i),name:'Legacy bulk service '+i,category:'Bulk provider section',groups:['Bulk provider section'],sellingUsd:1,providerRateUsd:.5,min:1,max:1000,active:true,source:'provider-live-sync',providerAvailable:true,availabilityStatus:'available'};}
+  fs.writeFileSync(path.join(dataDir,'services.json'),JSON.stringify(initialServices));
+  // This legacy compatibility mirror must never be promoted into the active service catalog on read.
+  fs.writeFileSync(path.join(dataDir,'api_services.json'),JSON.stringify([{fbKey:'legacy-api-only',providerId:'mock-provider',providerServiceId:'666',smmpartyId:'666',siteServiceId:'6666',serviceId:'6666',name:'Legacy mirror only',category:'MustNotAutoImport',sellingUsd:1,providerRateUsd:0.5,source:'legacy-api-cache',active:true}]));
+  fs.writeFileSync(path.join(dataDir,'category_meta.json'),JSON.stringify({
+    'Test':{name:'Test',description:'Locally managed section'},
+    'MustStayHidden':{name:'MustStayHidden',image:'sadairaq-logo.jpg',serviceKeys:['svc_auto_unapproved_test']},
+    'BulkProviderSection':{name:'Bulk provider section',image:'sadairaq-logo.jpg',serviceKeys:Array.from({length:1200},(_,i)=>'svc_auto_bulk_'+i)}
   }));
   fs.writeFileSync(path.join(dataDir,'providers.runtime.json'),JSON.stringify({activeProvider:'mock-provider',providers:{'mock-provider':{id:'mock-provider',name:'Mock SMM Provider',url:`http://127.0.0.1:${providerPort}`,key:'mock-provider-secret'}},deletedProviderIds:[]}));
   fs.writeFileSync(path.join(dataDir,'providers.json'),JSON.stringify({activeProvider:'',providers:{},deletedProviderIds:[]}));
@@ -125,8 +136,10 @@ async function main(){
 
     const services=await req('/api/v1',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({action:'services',key:apiKey}).toString()});
     assert.equal(services.status,200,`services action should authorize the same key: ${JSON.stringify(services.data)}`);
-    assert(Array.isArray(services.data));assert.equal(services.data[0]?.id,'1001');assert.equal(services.data[0]?.name,'Safe mock test service');
-    console.log('PASS runtime: services action returns the internal numeric ID on the same API key');
+    assert(Array.isArray(services.data));const safeApiService=services.data.find(x=>String(x.id)==='1001');assert(safeApiService,'canonical active service ID 1001 must remain in the API list even with many pre-existing services');assert.equal(safeApiService.name,'Safe mock test service');
+    assert(!services.data.some(x=>String(x.id)==='6666'||String(x.name)==='Legacy mirror only'),'API read must not automatically import rows that exist only in api_services.json');
+    assert(!Object.values(JSON.parse(fs.readFileSync(path.join(dataDir,'services.json'),'utf8'))).some(x=>String(x?.providerServiceId||'')==='666'||String(x?.name)==='Legacy mirror only'),'legacy API mirror must not be copied into the active website catalog');
+    console.log('PASS runtime: services action returns canonical IDs and never imports api_services.json-only rows automatically');
 
     const addBody=new URLSearchParams({action:'add',key:apiKey,service:'1001',link:'https://example.com/safe-api-smoke-test',quantity:'10',idempotency_key:'SAFE_LOCAL_SMOKE_1628'}).toString();
     const added=await req('/api/v1',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:addBody});
@@ -171,14 +184,45 @@ async function main(){
     assert.equal(sync.status,200,`manual provider service sync should run: ${JSON.stringify(sync.data)}`);
     assert.equal(sync.data.ok,true,`provider catalog sync should succeed: ${JSON.stringify(sync.data)}`);
     assert(sync.data.updated>=1,'existing services should receive current supplier prices');
-    assert(sync.data.imported>=1,'new provider service should be imported');
+    assert.equal(sync.data.imported,0,'automatic price sync must never import any provider service');
+    assert(sync.data.newServicesRequireApproval>=1,'new provider services must be counted as awaiting explicit administrator approval');
     assert.equal(sync.data.unavailable,0,'a missing ID alone must not disable a catalog service');assert(sync.data.unverified>=1,'missing provider IDs should be reported as unverified');assert(sync.data.recovered>=1,'services hidden by the old auto-check reason should be recovered');
     const syncedCatalog=JSON.parse(fs.readFileSync(path.join(dataDir,'services.json'),'utf8'));
     assert.equal(syncedCatalog['svc-test'].providerRateUsd,5,'service provider cost must update to the live mock rate');
     assert.equal(syncedCatalog['svc-test'].sellingUsd,10,'100 percent markup means sale price is twice live provider cost');
     assert.equal(syncedCatalog['svc-removed'].providerAvailable,true,"old transient auto-hidden flag should be recovered without overriding the site's active flag");assert.equal(syncedCatalog['svc-removed'].availabilityStatus,'available');assert.equal(syncedCatalog['svc-admin-disabled'].active,false,'explicit site admin disable flag must be preserved');assert.equal(syncedCatalog['svc-admin-disabled'].providerAvailable,false,'recovery must not override an explicitly disabled service');
-    const importedKey=Object.keys(syncedCatalog).find(k=>syncedCatalog[k]?.providerServiceId==='78');
-    assert(importedKey,'new service should be imported');assert.equal(syncedCatalog[importedKey].providerRateUsd,3);assert.equal(syncedCatalog[importedKey].sellingUsd,6);
+    assert.equal(Object.keys(syncedCatalog).some(k=>String(syncedCatalog[k]?.providerServiceId)==='78'),false,'a new provider service must not be added by automatic price sync');
+    assert(syncedCatalog['svc_auto_unapproved_test'],'legacy provider rows must not be deleted automatically during startup or price sync');
+    assert.equal(Object.keys(syncedCatalog).filter(k=>k.startsWith('svc_auto_bulk_')).length,1200,'all 1200 existing provider rows must remain in the live catalog');
+    const quarantinedArchive=fs.existsSync(path.join(dataDir,'quarantined_provider_services.json'))?JSON.parse(fs.readFileSync(path.join(dataDir,'quarantined_provider_services.json'),'utf8')):{};
+    assert.equal(Object.keys(quarantinedArchive).length,0,'ordinary startup, catalog reads, and automatic sync must not move existing rows into an archive');
+    const catalogSettings=fs.existsSync(path.join(dataDir,'catalog_settings.json'))?JSON.parse(fs.readFileSync(path.join(dataDir,'catalog_settings.json'),'utf8')):{};
+    assert.equal(catalogSettings.providerAutoImportQuarantineVersion,undefined,'non-destructive release must not mark destructive quarantine as completed');
+    const cleanedMeta=JSON.parse(fs.readFileSync(path.join(dataDir,'category_meta.json'),'utf8'));
+    assert(cleanedMeta.MustStayHidden,'existing category metadata must be retained when provider rows are not imported or deleted');
+    assert(cleanedMeta.BulkProviderSection,'large existing provider category must remain available instead of being pruned automatically');
+    assert.equal(cleanedMeta.Test.name,'Test','user-managed section metadata must be preserved');
+    const defaultCatalog=await req('/api/catalog?path=services',{headers:adminCookie});
+    assert.equal(defaultCatalog.status,200);assert(defaultCatalog.data.value?.svc_auto_unapproved_test,'default catalog should retain the previously saved provider service without a background migration');
+    const inspectQuarantine=await req('/api/catalog?path=services&includeUnapprovedAutoImports=1',{headers:adminCookie});
+    assert.equal(inspectQuarantine.status,200);assert(inspectQuarantine.data.value?.svc_auto_unapproved_test,'administrator catalogue reads should remain non-destructive regardless of archive-inspection flag');
+    const sectionMeta=await req('/api/catalog?path=categoryMeta',{headers:adminCookie});
+    assert.equal(sectionMeta.status,200);assert.equal(sectionMeta.data.value?.RemoteOnlyCategory,undefined,'legacy Firebase-only category metadata must not create phantom sections');assert.equal(sectionMeta.data.value?.Test?.name,'Test','local category metadata must remain available');
+    const beforeServiceSyncCount=Object.keys(syncedCatalog).length;
+    const unapprovedSync=await req('/api/admin/service-sync',{method:'POST',headers:{...adminCookie,'Content-Type':'application/json'},body:JSON.stringify({services:[{fbKey:'should-not-auto-add',id:'90',providerId:'mock-provider',providerServiceId:'90',name:'Must not auto add',sellingUsd:2}]})});
+    assert.equal(unapprovedSync.status,200);assert.equal(unapprovedSync.data.skippedUnapprovedNew,1,'legacy catalog refresh must skip new rows unless explicitly added through the selected-service importer');
+    const afterServiceSyncCatalog=JSON.parse(fs.readFileSync(path.join(dataDir,'services.json'),'utf8'));
+    assert.equal(Object.keys(afterServiceSyncCatalog).length,beforeServiceSyncCount,'background/compat catalog refresh must not grow the service catalog');assert.equal(Object.values(afterServiceSyncCatalog).some(v=>String(v?.providerServiceId)==='90'),false);
+    const explicitImport=await req('/api/admin/services/import',{method:'POST',headers:{...adminCookie,'Content-Type':'application/json'},body:JSON.stringify({destination:'Test',categoryKey:'Test',categoryMeta:{name:'Test'},services:[{data:{providerId:'mock-provider',providerServiceId:'99',smmpartyId:'99',name:'Manually approved mock service',sellingUsd:2,category:'Test',groups:['Test'],min:1,max:1000}}]})});
+    assert.equal(explicitImport.status,200,`explicit selected-service import should still work: ${JSON.stringify(explicitImport.data)}`);assert.equal(explicitImport.data.added,1);
+    const afterExplicitImport=JSON.parse(fs.readFileSync(path.join(dataDir,'services.json'),'utf8'));
+    assert.equal(Object.values(afterExplicitImport).some(v=>String(v?.providerServiceId)==='99'&&v.name==='Manually approved mock service'),true,'explicit admin import must remain available');
+    const restoreArchived=await req('/api/admin/services/import',{method:'POST',headers:{...adminCookie,'Content-Type':'application/json'},body:JSON.stringify({destination:'Test',categoryKey:'Test',categoryMeta:{name:'Test'},services:[{data:{providerId:'mock-provider',providerServiceId:'79',smmpartyId:'79',name:'Admin reapproved archived service',sellingUsd:6,category:'Test',groups:['Test'],min:1,max:1000}}]})});
+    assert.equal(restoreArchived.status,200,`explicit import should be able to restore a quarantined service: ${JSON.stringify(restoreArchived.data)}`);assert.equal(restoreArchived.data.updated,1,'manual selection upgrades the existing legacy row in-place');assert.equal(restoreArchived.data.restoredArchived,0,'no archive should be created by automatic migration');
+    const afterRestore=JSON.parse(fs.readFileSync(path.join(dataDir,'services.json'),'utf8'));
+    assert.equal(Object.values(afterRestore).some(v=>String(v?.providerServiceId)==='79'&&v.explicitlyApprovedAt&&v.unapprovedAutoImport!==true),true,'explicit admin selection should restore the archived row without auto-import');
+    assert.equal(afterRestore['svc_auto_unapproved_test'].explicitlyApprovedAt?true:false,true,'manually selected legacy rows are explicitly approved in-place');assert.equal(fs.existsSync(path.join(dataDir,'quarantined_provider_services.json')),false,'no archive is generated by automatic catalog cleanup');
+    console.log('PASS runtime: no provider auto-import or automatic catalog deletion; previous rows/categories stay stable and explicit selected import works');
     const freshKeyResponse=await req('/api/user/api-key',{method:'POST',headers:{Cookie:cookie}});
     assert.equal(freshKeyResponse.status,200,`a fresh test key is needed after revocation: ${JSON.stringify(freshKeyResponse.data)}`);
     const freshKey=String(freshKeyResponse.data.apiKey||'');assert.match(freshKey,/^sr_[A-Za-z0-9_-]{30,}$/);
@@ -282,12 +326,13 @@ async function main(){
     const secondSync=await req('/api/admin/pricing/sync',{method:'POST',headers:adminCookie});
     assert.equal(secondSync.status,200,`second provider sync should run: ${JSON.stringify(secondSync.data)}`);assert.equal(secondSync.data.ok,true,`second provider sync should succeed: ${JSON.stringify(secondSync.data)}`);
     const afterSecondSync=JSON.parse(fs.readFileSync(path.join(dataDir,'services.json'),'utf8'));
-    assert.equal(afterSecondSync['svc-removed'].providerAvailable,false,'a service absent from two consecutive complete mock catalogs must be removed from active listings');
-    assert.equal(afterSecondSync['svc-removed'].providerAvailabilityReason,'provider_confirmed_removed');
-    assert.equal(afterSecondSync['svc-removed'].providerMissingChecks,2,'absence confirmation must require two successful complete catalog checks');
-    assert(afterSecondSync['svc-removed'],'removed service record must remain for historic orders and audit');
-    console.log('PASS runtime: service missing from two complete provider catalogs is hidden safely while its historical record is retained');
-    console.log('PASS runtime: live mock sync refreshes prices, imports new services, and confirms removals only after two complete catalogs');
+    assert.equal(afterSecondSync['svc-removed'].providerAvailable,true,'two provider misses must not change storefront availability automatically');
+    assert.notEqual(afterSecondSync['svc-removed'].providerAvailabilityReason,'provider_confirmed_removed','provider absence alone must not mark a saved site service as deleted');
+    assert.equal(afterSecondSync['svc-removed'].providerMissingChecks,2,'absence count may be recorded for diagnosis without changing visibility');
+    assert(afterSecondSync['svc-removed'],'service record remains intact for browsing and historical orders');
+    const secondMissCatalog=await req('/api/catalog?path=services',{headers:{Cookie:cookie}});assert(secondMissCatalog.data.value?.['svc-removed'],'saved service must stay visible after repeated provider misses');
+    console.log('PASS runtime: repeated provider misses stay visible; actual order validation fails closed without debiting or dispatching');
+    console.log('PASS runtime: live mock sync refreshes approved prices, never auto-imports, removes, or hides existing service rows');
 
     const diag=await req('/api/admin/api-key-diagnostics',{headers:adminCookie});
     assert.equal(diag.status,200,`admin diagnostics should be readable in test: ${JSON.stringify(diag.data)}`);

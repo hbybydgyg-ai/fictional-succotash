@@ -28,7 +28,7 @@ const DATA = path.resolve(process.env.SADA_DATA_DIR || process.env.DATA_DIR || (
 const DATA_IS_EXTERNAL = path.resolve(DATA) !== path.resolve(LEGACY_DATA);
 const APP_NAME = 'صدى العراق';
 const APP_VERSION = '1.6.41';
-const BUILD_ID = 'SADA-1.6.41-PROVIDER-SYNC-SAFE-20261014';
+const BUILD_ID = 'SADA-1.6.41-HOST-CATALOG-ONLY-2.12-20261014';
 // Keep the owner's admin identity available after packaging, but store only a scrypt hash
 // in the project. Railway variables can still explicitly override this packaged credential.
 function loadBundledAdminAuth(){
@@ -282,6 +282,15 @@ function writeJSON(file, value) {
   fs.renameSync(tmp, target);
   if(SITE_SERVICE_ID_FILES.has(String(file)))SITE_SERVICE_IDS_DIRTY=true;
 }
+// Use only for updates that cannot add/remove service rows or change their ID fields (prices/status telemetry).
+// Unlike writeJSON, this preserves the current service-ID allocation dirty flag.
+function writeCatalogNonStructuralJSON(file, value) {
+  if(!SITE_SERVICE_ID_FILES.has(String(file)))throw new Error('writeCatalogNonStructuralJSON only supports service-ID catalog files');
+  ensureData();
+  const target=path.join(DATA,file),tmp=target+'.tmp';
+  fs.writeFileSync(tmp,JSON.stringify(value,null,2),'utf8');
+  fs.renameSync(tmp,target);
+}
 
 // The service catalog and its display metadata live in small host JSON files.
 // Users, balances/recharges, chats and real orders continue to use their existing server/Firebase paths.
@@ -357,7 +366,7 @@ function allSiteServiceRows(){
   for(const [file,bucket] of specs){
     const root=readJSON(file,{});
     if(!root||typeof root!=='object'||Array.isArray(root))continue;
-    for(const [key,row] of Object.entries(root))if(row&&typeof row==='object'&&!Array.isArray(row))out.push({file,bucket,key,row,root});
+    for(const [key,row] of Object.entries(root))if(row&&typeof row==='object'&&!Array.isArray(row)){if(bucket==='catalog'&&row.unapprovedAutoImport===true)continue;out.push({file,bucket,key,row,root});}
   }
   return out;
 }
@@ -2310,15 +2319,13 @@ function appendServicePricePatch(out,key,values){for(const [field,value] of Obje
 async function applyCachedGlobalMarkup(pct){
   await ensureLocalServiceCatalogSeeded();
   const root=readJSON('services.json',{});if(!root||typeof root!=='object'||Array.isArray(root))return {updated:0,skipped:0};
-  const patch={};let updated=0,skipped=0;const localServices=readJSON('api_services.json',[]);let localUpdated=0;
+  const patch={};let updated=0,skipped=0;
   for(const [key,s] of Object.entries(root)){
-    if(!s||typeof s!=='object')continue;const pid=String(s.providerId||'').trim(),sid=providerServiceKey(s);if(!pid||!sid){skipped++;continue}const base=catalogRate(s);if(base===null){skipped++;continue}
+    if(!s||typeof s!=='object'||s.unapprovedAutoImport===true||s.adminFreeService===true||s.serviceKind==='manual_support')continue;const pid=String(s.providerId||'').trim(),sid=providerServiceKey(s);if(!pid||!sid){skipped++;continue}const base=catalogRate(s);if(base===null){skipped++;continue}
     const priced=pricedPatch(s,base,pct);appendServicePricePatch(patch,key,priced);updated++;
-    for(const a of localServices){if(pid&&String(a.providerId||'')!==pid)continue;if(sid&&String(a.providerServiceId||a.id||'')!==sid)continue;if(!sid&&!pid)continue;Object.assign(a,priced,{rateUsd:priced.sellingUsd,rate:priced.sellingUsd});localUpdated++}
   }
-  if(updated){for(const [composite,value] of Object.entries(patch)){const split=composite.indexOf('/');if(split<1)continue;const key=composite.slice(0,split),field=composite.slice(split+1);if(root[key]&&typeof root[key]==='object')root[key][field]=value;}writeJSON('services.json',root);markCatalogSeeded();}
-  if(localUpdated)writeJSON('api_services.json',localServices);
-  return {updated,skipped,localUpdated,storage:'hosting-json'};
+  if(updated){for(const [composite,value] of Object.entries(patch)){const split=composite.indexOf('/');if(split<1)continue;const key=composite.slice(0,split),field=composite.slice(split+1);if(root[key]&&typeof root[key]==='object')root[key][field]=value;}writeCatalogNonStructuralJSON('services.json',root);markCatalogSeeded();}
+  return {updated,skipped,localUpdated:0,storage:'hosting-json'};
 }
 // ===== Real-time provider price guard (patch 1.6.29-p1) =====
 // A provider price increase must never be sold at the old (lower) price, and nobody should have to press a button:
@@ -2377,7 +2384,7 @@ function priceGuardPersist(pid,sid,fbKey,patch){
   let key=fbKey&&root[fbKey]&&typeof root[fbKey]==='object'&&String(root[fbKey].providerId||'').trim()===pid?String(fbKey):'';
   if(!key){for(const [k,v] of Object.entries(root)){if(v&&typeof v==='object'&&String(v.providerId||'').trim()===pid&&providerServiceKey(v)===sid){key=k;break;}}}
   if(!key)return false;
-  Object.assign(root[key],patch);writeJSON('services.json',root);return true;
+  Object.assign(root[key],patch);writeCatalogNonStructuralJSON('services.json',root);return true;
 }
 // Automatic live-price checks may hide a service only when the provider explicitly confirms
 // its state. A missing row, malformed response, timeout or suspicious rate is not evidence
@@ -2402,13 +2409,15 @@ function providerCatalogLooksComplete(raw,byId){
   return Array.isArray(raw)&&raw.length>0&&byId instanceof Map&&byId.size>0&&byId.size>=Math.ceil(raw.length*0.8);
 }
 function recordProviderMissingCheck(row,completeCatalog,now=nowISO()){
-  if(!row||typeof row!=='object'||hasExplicitSiteServiceDisable(row))return {changed:false,removed:false};
-  if(!completeCatalog)return {changed:false,removed:false};
-  const checks=Math.max(0,Number(row.providerMissingChecks)||0)+1;
-  row.providerMissingChecks=checks;row.providerMissingLastCheckedAt=now;row.providerLastCatalogVerifiedAt=now;
-  if(checks>=2){const changed=row.providerAvailable!==false||row.availabilityStatus!=='unavailable'||row.providerAvailabilityReason!=='provider_confirmed_removed';row.providerAvailable=false;row.availabilityStatus='unavailable';row.providerAvailabilityReason='provider_confirmed_removed';row.providerRemovedConfirmedAt=row.providerRemovedConfirmedAt||now;return {changed,removed:true};}
+  if(!row||typeof row!=='object'||hasExplicitSiteServiceDisable(row)||!completeCatalog)return {changed:false,removed:false};
+  // Keep the service in the site's catalog even after repeated provider misses. Provider mismatch is
+  // enforced at order time (fail closed, no debit); only the site administrator may hide a service.
+  row.providerMissingChecks=Math.max(0,Number(row.providerMissingChecks)||0)+1;
+  row.providerMissingLastCheckedAt=now;
+  row.providerLastCatalogVerifiedAt=now;
   return {changed:true,removed:false};
 }
+
 function clearProviderMissingChecks(row,now=nowISO()){
   if(!row||typeof row!=='object')return false;const changed=Number(row.providerMissingChecks||0)!==0||isProviderConfirmedRemoved(row);row.providerMissingChecks=0;row.providerMissingLastCheckedAt='';row.providerRemovedConfirmedAt='';
   if(isProviderConfirmedRemoved(row)){row.providerAvailable=true;row.availabilityStatus='available';row.providerAvailabilityReason='';row.providerCheckedAt=now;}return changed;
@@ -2424,7 +2433,7 @@ function recoverTransientlyHiddenServices(root,source='provider-sync'){
     row.providerAvailabilityRecoveredAt=nowISO();
     recovered++;
   }
-  if(recovered){writeJSON('services.json',root);try{appendJsonLedger('catalog_recovery.json',{at:nowISO(),via:source,recovered,reason:'recovered_old_transient_provider_unavailable_flags'});}catch(_){}}
+  if(recovered){writeCatalogNonStructuralJSON('services.json',root);try{appendJsonLedger('catalog_recovery.json',{at:nowISO(),via:source,recovered,reason:'recovered_old_transient_provider_unavailable_flags'});}catch(_){}}
   return recovered;
 }
 function transientProviderCheckFailure(svc,reason){
@@ -2527,21 +2536,22 @@ async function runProviderPriceSync(options={}){
   if(GLOBAL_PRICE_SYNC_RUNNING)return {ok:false,busy:true,updated:0,errors:['مزامنة أخرى قيد التنفيذ']};
   GLOBAL_PRICE_SYNC_RUNNING=true;
   let cfg=await getGlobalPricing();cfg.lastAttemptAt=nowISO();const settings=readJSON('settings.json',{});settings.pricing=cfg;writeJSON('settings.json',settings);
-  const result={ok:true,updated:0,skipped:0,providers:0,providerErrors:[],localUpdated:0,imported:0,unavailable:0,unverified:0,recovered:0,priceVerified:0};
+  const result={ok:true,updated:0,skipped:0,providers:0,providerErrors:[],localUpdated:0,imported:0,newServicesRequireApproval:0,unavailable:0,unverified:0,recovered:0,priceVerified:0};
   try{
     // Migrate the legacy catalog once, then keep automatic pricing on host JSON.
     await ensureLocalServiceCatalogSeeded();
     let root=readJSON('services.json',{});if(!root||typeof root!=='object'||Array.isArray(root))throw new Error('تعذر قراءة كتالوج الخدمات من ملفات الاستضافة');
     result.recovered=recoverTransientlyHiddenServices(root,'provider-sync-recovery');
     if(result.recovered)root=readJSON('services.json',{});
-    const rows=Object.entries(root).filter(([k,v])=>v&&typeof v==='object'&&!Array.isArray(v));
+    const rows=Object.entries(root).filter(([k,v])=>v&&typeof v==='object'&&!Array.isArray(v)&&v.unapprovedAutoImport!==true);
     if(!rows.length)throw new Error('كتالوج الخدمات على الاستضافة فارغ؛ لم تُجرَ مزامنة. استورد الخدمات أولاً أو تحقق من ملف services.json.');
-    const providerIds=[...new Set(rows.map(([,v])=>String(v.providerId||'').trim()).filter(Boolean))];
+    const rowsByProvider=new Map();for(const pair of rows){const pid=String(pair[1]?.providerId||'').trim();if(!pid)continue;if(!rowsByProvider.has(pid))rowsByProvider.set(pid,[]);rowsByProvider.get(pid).push(pair)}
+    const providerIds=[...rowsByProvider.keys()];
     if(!providerIds.length){result.ok=false;result.providerErrors.push('لا توجد خدمات مرتبطة بمزود وسعر تكلفة محفوظ');}
     const pct=cleanGlobalPricing(cfg).markupPct;
-    const allPatches={};const localServices=readJSON('api_services.json',[]);let localUpdated=0;
+    const allPatches={},availabilitySnapshots={};
     for(const pid of providerIds.slice(0,20)){
-      const importedBeforeProvider=result.imported;
+      const pendingBeforeProvider=result.newServicesRequireApproval;
       try{
         await ensureProviderRuntime(pid);const found=getProviderById(pid,{allowSingleFallback:false});if(!found.prov?.url||!found.prov?.key)throw new Error('بيانات المزود غير متوفرة');
         const raw=normalizeProviderServices(await providerRequest(found.prov,{action:'services'},22000));
@@ -2550,19 +2560,19 @@ async function runProviderPriceSync(options={}){
         const catalogComplete=providerCatalogLooksComplete(raw,byId);
         if(!catalogComplete)result.providerErrors.push(pid+': كتالوج المزود غير مكتمل؛ لن تُخفى أي خدمة غائبة');
         let pUpdated=0;
-        const existingIds=new Set(rows.filter(([,v])=>String(v.providerId||'')===pid).map(([,v])=>providerServiceKey(v)).filter(Boolean));
-        for(const [key,svc] of rows){
-          if(String(svc.providerId||'')!==pid)continue;
+        const providerRows=rowsByProvider.get(pid)||[];
+        const existingIds=new Set(providerRows.map(([,v])=>providerServiceKey(v)).filter(Boolean));
+        for(const [key,svc] of providerRows){
           const sid=providerServiceKey(svc);if(!sid){result.skipped++;continue}
           const latest=byId.get(sid);
           if(!latest){
             // Only a second consecutive absence from a well-formed, non-empty catalog confirms removal.
             // Never delete the record: order history and provider mapping must remain auditable.
             result.unverified++;result.skipped++;
-            if(catalogComplete){const absent=recordProviderMissingCheck(svc,true);if(absent.changed){result.availabilityChanged=(result.availabilityChanged||0)+1;}if(absent.removed){result.unavailable++;result.removedConfirmed=(result.removedConfirmed||0)+1;}}
+            if(catalogComplete){const absent=recordProviderMissingCheck(svc,true);if(absent.changed){result.availabilityChanged=(result.availabilityChanged||0)+1;availabilitySnapshots[key]={...svc};}if(absent.removed){result.unavailable++;result.removedConfirmed=(result.removedConfirmed||0)+1;}}
             continue;
           }
-          clearProviderMissingChecks(svc);
+          if(clearProviderMissingChecks(svc))availabilitySnapshots[key]={...svc};
           // Repair only generic/empty saved labels when the provider supplies a real name.
           // Never overwrite a meaningful custom name already saved by the site owner.
           const originalProviderName=providerOriginalServiceName(latest);
@@ -2579,46 +2589,70 @@ async function runProviderPriceSync(options={}){
             continue;
           }
           const priced=pricedPatch(svc,base,pct);
-          const canRestore=!hasExplicitSiteServiceDisable(svc)&&(svc.providerAvailable!==false||isAutoHiddenProviderService(svc));
+          const canRestore=!hasExplicitSiteServiceDisable(svc)&&canRestoreProviderAvailability(svc);
           appendServicePricePatch(allPatches,key,canRestore?{...priced,providerAvailable:true,availabilityStatus:'available',providerCheckedAt:nowISO(),providerAvailabilityReason:''}:{...priced});
           pUpdated++;result.updated++;result.priceVerified++;
-          for(const a of localServices){
-            if(String(a.providerId||'')===pid&&String(a.providerServiceId||a.id||'')===sid){
-              if(originalProviderName&&(!String(a.name||'').trim()||/^(?:service|خدمة|service\s*#?\s*\d*|خدمة\s*#?\s*\d*|unknown service|خدمة غير مسماة)$/i.test(String(a.name||'').trim())))a.name=originalProviderName;
-              Object.assign(a,priced,{rateUsd:priced.sellingUsd,rate:priced.sellingUsd,...(!hasExplicitSiteServiceDisable(a)&&(a.providerAvailable!==false||isAutoHiddenProviderService(a))?{providerAvailable:true,availabilityStatus:'available',providerCheckedAt:nowISO(),providerAvailabilityReason:''}:{})});localUpdated++;
-            }
-          }
         }
-        // Auto-import new services only when the provider responded with a non-empty catalog and a valid ID + rate.
+        // Automatic synchronization is price/status-only. Never add provider catalog rows or categories here.
+        // New services are imported only through the admin's explicit selected-service import UI.
         for(const latest of raw){
           const sid=String(latest?.service??latest?.service_id??latest?.serviceId??latest?.id??latest?.serviceID??'').trim();
-          if(!sid||existingIds.has(sid))continue;
-          const base=providerServiceRate(latest);if(base===null){result.skipped++;continue;}
-          const key='svc_auto_'+sha256(pid+'|'+sid).slice(0,24);
-          const foundExisting=Object.entries(root).some(([k,v])=>v&&typeof v==='object'&&String(v.providerId||'')===pid&&providerServiceKey(v)===sid);
-          if(foundExisting){existingIds.add(sid);continue;}
-          const originalName=providerOriginalServiceName(latest)||('خدمة '+sid);
-          const category=String(latest.category||latest.type||latest.category_name||latest.group||latest.providerCategory||'عام').trim().slice(0,180)||'عام';
-          const description=providerServiceDescription(latest);
-          const priced=pricedPatch({},base,pct);
-          root[key]={fbKey:key,providerId:pid,providerName:found.prov.name||pid,providerServiceId:sid,smmpartyId:sid,serviceId:sid,id:key,siteServiceId:'',name:originalName,description,providerDescription:description,category,groups:[category],categories:[category],min:Math.max(1,Number(latest.min||latest.minimum||100)||100),max:Math.max(Math.max(1,Number(latest.min||latest.minimum||100)||100),Number(latest.max||latest.maximum||10000)||10000),refill:!!latest.refill,cancel:!!latest.cancel,source:'provider-live-sync',providerAvailable:true,availabilityStatus:'available',providerCheckedAt:nowISO(),providerAvailabilityReason:'',createdAt:nowISO(),...priced};
-          existingIds.add(sid);result.imported++;result.priceVerified++;
+          if(sid&&!existingIds.has(sid))result.newServicesRequireApproval++;
         }
-        result.providers++;if(!pUpdated&&result.imported===importedBeforeProvider)result.providerErrors.push(pid+': لم تتم مطابقة معرّفات الخدمات أو لم يوجد سعر صالح');
+        result.providers++;if(!pUpdated&&result.newServicesRequireApproval===pendingBeforeProvider)result.providerErrors.push(pid+': لم تتم مطابقة معرّفات الخدمات أو لم يوجد سعر صالح');
       }catch(e){result.ok=false;result.providerErrors.push(pid+': '+String(e.message||e).slice(0,160))}
     }
-    if(Object.keys(allPatches).length){for(const [composite,value] of Object.entries(allPatches)){const split=composite.indexOf('/');if(split<1)continue;const key=composite.slice(0,split),field=composite.slice(split+1);if(Object.prototype.hasOwnProperty.call(root,key)&&root[key]&&typeof root[key]==='object')root[key][field]=value;}}
-    if(Object.keys(allPatches).length||result.imported||result.availabilityChanged){writeJSON('services.json',root);ensureNumericSiteServiceIds();markCatalogSeeded();result.storage='hosting-json';}
-    if(localUpdated)writeJSON('api_services.json',localServices);result.localUpdated=localUpdated;
-    cfg=localGlobalPricing();cfg.lastAttemptAt=nowISO();cfg.lastResult={updated:result.updated,skipped:result.skipped,providers:result.providers,localUpdated:result.localUpdated,namesFixed:Number(result.namesFixed||0),imported:result.imported,unavailable:result.unavailable,unverified:result.unverified,recovered:result.recovered,priceVerified:result.priceVerified};cfg.lastError=result.providerErrors.join(' | ').slice(0,700);if(result.updated>0){cfg.lastSuccessAt=nowISO();}else if(!result.providerErrors.length){cfg.lastError='لم يتم العثور على خدمات مطابقة للتحديث'};
+    if(Object.keys(allPatches).length||result.availabilityChanged){
+      // Provider requests are awaited above. Re-read the latest catalog before applying narrow field patches
+      // so an admin service import/edit completed during the request is never overwritten by a stale snapshot.
+      const persistRoot=readJSON('services.json',{});let applied=0;
+      const expectedMappings=new Map(rows.map(([key,svc])=>[key,{providerId:String(svc.providerId||''),providerServiceId:providerServiceKey(svc)}]));
+      const patchesByKey=new Map();
+      for(const [composite,value] of Object.entries(allPatches)){const split=composite.indexOf('/');if(split<1)continue;const key=composite.slice(0,split),field=composite.slice(split+1);if(!patchesByKey.has(key))patchesByKey.set(key,{});patchesByKey.get(key)[field]=value;}
+      for(const [key,fields] of patchesByKey){const current=persistRoot[key],expected=expectedMappings.get(key);if(!current||typeof current!=='object'||current.unapprovedAutoImport===true||!expected)continue;if(String(current.providerId||'')!==expected.providerId||providerServiceKey(current)!==expected.providerServiceId)continue;
+        for(const [field,value] of Object.entries(fields)){
+          if(field==='name') {const nm=String(current.name||'').trim();if(nm&&!/^(?:service|خدمة|service\s*#?\s*\d*|خدمة\s*#?\s*\d*|unknown service|خدمة غير مسماة)$/i.test(nm))continue;}
+          if(['providerAvailable','availabilityStatus','providerAvailabilityReason'].includes(field)&&hasExplicitSiteServiceDisable(current))continue;
+          if(['providerAvailable','availabilityStatus','providerAvailabilityReason'].includes(field)&&value===true&&!canRestoreProviderAvailability(current))continue;
+          current[field]=value;applied++;
+        }
+      }
+      const availabilityFields=['providerMissingChecks','providerMissingLastCheckedAt','providerLastCatalogVerifiedAt','providerAvailable','availabilityStatus','providerAvailabilityReason','providerRemovedConfirmedAt','providerCheckedAt'];
+      for(const [key,snapshot] of Object.entries(availabilitySnapshots)){const current=persistRoot[key],expected=expectedMappings.get(key);if(!current||typeof current!=='object'||current.unapprovedAutoImport===true||!expected||String(current.providerId||'')!==expected.providerId||providerServiceKey(current)!==expected.providerServiceId||hasExplicitSiteServiceDisable(current))continue;for(const field of availabilityFields)if(Object.prototype.hasOwnProperty.call(snapshot,field)){current[field]=snapshot[field];applied++;}}
+      if(applied){writeCatalogNonStructuralJSON('services.json',persistRoot);markCatalogSeeded();result.storage='hosting-json';result.fieldsApplied=applied;}
+    }
+    // api_services.json is a compatibility mirror only. Avoid rewriting the whole legacy mirror on every price poll.
+    // The authoritative approved catalog above powers API service discovery and order validation.
+    result.localUpdated=0;
+    cfg=localGlobalPricing();cfg.lastAttemptAt=nowISO();cfg.lastResult={updated:result.updated,skipped:result.skipped,providers:result.providers,localUpdated:result.localUpdated,namesFixed:Number(result.namesFixed||0),imported:0,newServicesRequireApproval:result.newServicesRequireApproval,unavailable:result.unavailable,unverified:result.unverified,recovered:result.recovered,priceVerified:result.priceVerified};cfg.lastError=result.providerErrors.join(' | ').slice(0,700);if(result.updated>0){cfg.lastSuccessAt=nowISO();}else if(!result.providerErrors.length){cfg.lastError='لم يتم العثور على خدمات مطابقة للتحديث'};
     const st=readJSON('settings.json',{});st.pricing=cfg;writeJSON('settings.json',st);try{await firebaseWriteJson('config/pricing',cfg,7000)}catch(_){}
-    result.safetyPolicy='Missing or unverified provider rows do not disable site services; order attempts still fail closed until live cost is verified.';result.pricing=cfg;return result;
+    result.importPolicy='manual-approval-required';result.safetyPolicy='Automatic sync updates approved existing services only. It never creates services/categories; import is available only through the admin selected-service action. Missing/invalid provider rows never trigger bulk deletion.';result.pricing=cfg;return result;
   }catch(e){result.ok=false;result.providerErrors.push(String(e.message||e).slice(0,180));const st=readJSON('settings.json',{});const p=cleanGlobalPricing(st.pricing||{});p.lastAttemptAt=nowISO();p.lastError=result.providerErrors.join(' | ').slice(0,700);st.pricing=p;writeJSON('settings.json',st);try{await firebaseWriteJson('config/pricing',p,5000)}catch(_){}return result;
   }finally{GLOBAL_PRICE_SYNC_RUNNING=false}
 }
+function isLegacyAutoImportedProviderRow(key,row={}){
+  const rowKey=String(key||row.fbKey||row.catalogKey||row.key||'').trim();
+  // Explicit re-import by the administrator is an approval boundary, even if an old legacy key/source remains.
+  if(row.unapprovedAutoImport!==true&&row.explicitlyApprovedAt)return false;
+  return row.unapprovedAutoImport===true||/^svc_auto_/.test(rowKey)||String(row.source||'')==='provider-live-sync';
+}
+function providerPairKey(row={}){
+  const providerId=String(row.providerId||'').trim();
+  const providerServiceId=String(row.providerServiceId||row.smmpartyId||row.sourceServiceId||row.provider_service_id||row.service_id||row.serviceId||row.id||'').trim();
+  return providerId&&providerServiceId?providerId+'|'+providerServiceId:'';
+}
+function quarantineUnapprovedAutoImportedServices(){
+  // Backwards-compatible no-op. Historical releases could move provider rows and section metadata
+  // out of the live catalog during startup, page reads, or price sync. That made existing services
+  // disappear without an administrator action. Keep all existing rows in place; the only path that
+  // creates a provider service now is POST /api/admin/services/import after an explicit selection.
+  const root=readJSON('services.json',{});
+  return {changed:0,preserved:Object.keys(root&&typeof root==='object'&&!Array.isArray(root)?root:{}).length,automatic:false,policy:'manual-import-only'};
+}
+
 function startGlobalPriceSyncScheduler(){
-  // Automatic provider catalog + price sync at the configured 5–60 minute interval. This is polling, not a webhook,
-  // so changes appear within the next successful cycle. The admin autoSync switch still controls it.
+  // Automatic updates apply only to services already approved in the site catalog. New provider rows require an explicit admin import.
+  // Polling is not a webhook; approved prices update in the next successful cycle. The admin autoSync switch controls it.
   const runIfDue=async()=>{try{const p=await getGlobalPricing();if(!p.autoSync)return;const last=Date.parse(p.lastAttemptAt||p.lastSuccessAt||'')||0;const gap=Math.max(5,Number(p.intervalMinutes)||10)*60*1000;if(Date.now()-last<gap)return;await runProviderPriceSync({automatic:true})}catch(e){console.error('Sada pricing scheduler:',String(e.message||e))}};
   const t=setInterval(runIfDue,60*1000);t.unref();const first=setTimeout(runIfDue,120000);first.unref();
 }
@@ -3188,30 +3222,15 @@ async function authoritativeWebsiteService(providerId, serviceId, firebaseServic
 }
 
 function internalApiServices(){
-  // Sada Iraq owns the service ID. Keep the provider's ID in providerServiceId only.
-  let root=readJSON('services.json',{}); if(!root||typeof root!=='object'||Array.isArray(root))root={};
-  const legacy=readJSON('api_services.json',[]); let changed=false;
-  for(const old of Array.isArray(legacy)?legacy:[]){
-    if(!old||typeof old!=='object')continue;
-    const providerId=String(old.providerId||'').trim();
-    const providerServiceId=String(old.providerServiceId||old.smmpartyId||old.serviceId||old.id||'').trim();
-    if(!providerId||!providerServiceId)continue;
-    const exists=Object.values(root).some(v=>v&&String(v.providerId||'').trim()===providerId&&String(v.providerServiceId||v.smmpartyId||v.serviceId||'').trim()===providerServiceId);
-    if(exists)continue;
-    const key='svc_api_'+sha256(providerId+'|'+providerServiceId).slice(0,24);
-    const sellRaw=old.sellingUsd??old.rateUsd??old.rate??(old.price!==undefined&&old.price!==null&&old.price!==''?Number(old.price)/FIXED_RATE:undefined);
-    const sellValue=sellRaw===undefined?undefined:Number(sellRaw);const priceFields=Number.isFinite(sellValue)&&sellValue>=0?{sellingUsd:sellValue}:{};
-    root[key]={...old,...priceFields,fbKey:key,siteServiceId:'',providerId,providerServiceId,smmpartyId:providerServiceId,serviceId:providerServiceId,name:String(old.name||'خدمة'),min:Number(old.min||1),max:Number(old.max||1000000),source:'api-service-migration'};
-    changed=true;
-  }
-  if(changed)writeJSON('services.json',root);
+  // The hosting catalog is authoritative. Never create service records from api_services.json on a
+  // read/API call; legacy mirror data must be selected and imported by an administrator explicitly.
   ensureNumericSiteServiceIds();
-  root=readJSON('services.json',{});
+  const root=readJSON('services.json',{});
   const entries=Object.entries(root&&typeof root==='object'&&!Array.isArray(root)?root:{});
   const rows=[];
   for(const [fbKey,raw] of entries){
     if(!raw||typeof raw!=='object'||Array.isArray(raw))continue;
-    if(raw.active===false||raw.enabled===false||raw.isActive===false||raw.hidden===true||raw.isHidden===true||raw.deleted===true||String(raw.status||'').toLowerCase()==='disabled'||raw.providerAvailable===false||String(raw.availabilityStatus||'').toLowerCase()==='unavailable')continue;
+    if(raw.active===false||raw.enabled===false||raw.isActive===false||raw.hidden===true||raw.isHidden===true||raw.deleted===true||raw.unapprovedAutoImport===true||String(raw.status||'').toLowerCase()==='disabled')continue;
     const providerId=String(raw.providerId||'').trim();
     const providerServiceId=String(raw.providerServiceId||raw.smmpartyId||raw.sourceServiceId||raw.service_id||raw.serviceId||'').trim();
     const siteServiceId=String(raw.siteServiceId||raw.internalServiceId||raw.sadaServiceId||'').trim();
@@ -3224,6 +3243,7 @@ function internalApiServices(){
   }
   return rows.sort((a,b)=>Number(a.siteServiceId)-Number(b.siteServiceId));
 }
+
 function publicApiService(s){
   const rate=Number(s?.sellingUsd??s?.rateUsd??s?.rate??0);
   const out={id:String(s?.siteServiceId||s?.id||''),name:String(s?.name||'خدمة'),category:String(s?.category||((Array.isArray(s?.groups)&&s.groups[0])||'عام')),rate:Number((Number.isFinite(rate)&&rate>=0?rate:0).toFixed(6)),min:Number(s?.min||1),max:Number(s?.max||1000000),refill:!!s?.refill,cancel:!!s?.cancel,type:String(s?.type||'default')};
@@ -3911,7 +3931,7 @@ const SADA_DB_BACKUP_FILES=[
   'notifications.json','user_notifications.json','earn_requests.json','refunds.json',
   'order_audit_state.json','telegram_order_state.json','telegram_notifications.json',
   'notification_seen.json','stats_state.json','api_services.json','api_refills.json','providers.json',
-  'providers.runtime.json','settings.json','provider_failures.json','services.json','free_services.json','manual_services.json','free_service_usage.json','category_meta.json','provider_services.json','catalog_settings.json',
+  'providers.runtime.json','settings.json','provider_failures.json','services.json','quarantined_provider_services.json','free_services.json','manual_services.json','free_service_usage.json','category_meta.json','provider_services.json','catalog_settings.json',
   'legacy_import_staging.json','legacy_import_state.json','legacy_import_users_private.json',
   'legacy_import_transactions_private.json','legacy_seed_bootstrap_status.json'
 ];
@@ -4323,11 +4343,12 @@ async function routeAPI(req,res,urlObj){
   if(p==='/api/catalog'&&req.method==='GET'){
     const raw=String(urlObj.searchParams.get('path')||'services');const spec=catalogPathSpec(raw);
     if(!spec)return json(res,422,{ok:false,error:'مسار الكتالوج غير مسموح'});
-    if(raw==='services'||raw.startsWith('services/')){const seed=await ensureLocalServiceCatalogSeeded();ensureNumericSiteServiceIds();const got=catalogReadPath(raw);let value=got.value;if(raw==='services'&&value&&typeof value==='object'&&!Array.isArray(value)){value=Object.fromEntries(Object.entries(value).filter(([,v])=>v&&typeof v==='object'&&(isAdmin(req)||(v.providerAvailable!==false&&String(v.availabilityStatus||'').toLowerCase()!=='unavailable'))));for(const [freeKey,freeRow] of Object.entries(readAdminFreeServices())){if(!freeRow||freeRow.adminFreeService!==true||freeRow.enabled===false||freeRow.deleted===true)continue;const safeRow=isAdmin(req)?{...freeRow,fbKey:freeKey,adminFreeServiceKey:freeKey}:{...adminFreeServicePublic({...freeRow,fbKey:freeKey,adminFreeServiceKey:freeKey})};value[freeKey]=safeRow;}for(const [manualKey,manualRow] of Object.entries(readAdminManualServices())){if(!manualRow||manualRow.serviceKind!=='manual_support'||manualRow.enabled===false||manualRow.deleted===true)continue;value[manualKey]=adminManualServicePublic(manualRow,manualKey);}}else if(raw.startsWith('services/')){const serviceKey=raw.slice('services/'.length),freeRow=readAdminFreeServices()[serviceKey],manualFound=findAdminManualService(serviceKey,'');if(freeRow&&freeRow.adminFreeService===true)value=(freeRow.enabled===false||freeRow.deleted===true)?null:(isAdmin(req)?{...freeRow,fbKey:serviceKey,adminFreeServiceKey:serviceKey}:{...adminFreeServicePublic({...freeRow,fbKey:serviceKey,adminFreeServiceKey:serviceKey})});else if(manualFound&&manualFound.row?.serviceKind==='manual_support')value=(manualFound.row.enabled===false||manualFound.row.deleted===true)?null:adminManualServicePublic(manualFound.row,manualFound.key);else if(!isAdmin(req)&&value&&typeof value==='object'&&(value.providerAvailable===false||String(value.availabilityStatus||'').toLowerCase()==='unavailable'))value=null;}return json(res,200,{ok:true,value,source:seed.source,storageMode:DATA_IS_EXTERNAL?'persistent-volume':'release-local',warning:seed.warning||(!DATA_IS_EXTERNAL?'الكتالوج محفوظ في ملفات الخادم؛ لثبات التعديلات بعد إعادة نشر Railway يجب أن يكون مجلد البيانات مرتبطاً بوحدة تخزين دائمة.':'')});}
+    if(raw==='services'||raw.startsWith('services/')){const seed=await ensureLocalServiceCatalogSeeded();ensureNumericSiteServiceIds();const got=catalogReadPath(raw);let value=got.value;if(raw==='services'&&value&&typeof value==='object'&&!Array.isArray(value)){const includeUnapproved=isAdmin(req)&&urlObj.searchParams.get('includeUnapprovedAutoImports')==='1';value=Object.fromEntries(Object.entries(value).filter(([,v])=>v&&typeof v==='object'&&(includeUnapproved||v.unapprovedAutoImport!==true)&&(isAdmin(req)||!hasExplicitSiteServiceDisable(v))));if(includeUnapproved){const archived=readJSON('quarantined_provider_services.json',{});for(const [archiveKey,archiveRow] of Object.entries(archived&&typeof archived==='object'&&!Array.isArray(archived)?archived:{}))if(archiveRow&&typeof archiveRow==='object')value[archiveKey]=archiveRow;}for(const [freeKey,freeRow] of Object.entries(readAdminFreeServices())){if(!freeRow||freeRow.adminFreeService!==true||freeRow.enabled===false||freeRow.deleted===true)continue;const safeRow=isAdmin(req)?{...freeRow,fbKey:freeKey,adminFreeServiceKey:freeKey}:{...adminFreeServicePublic({...freeRow,fbKey:freeKey,adminFreeServiceKey:freeKey})};value[freeKey]=safeRow;}for(const [manualKey,manualRow] of Object.entries(readAdminManualServices())){if(!manualRow||manualRow.serviceKind!=='manual_support'||manualRow.enabled===false||manualRow.deleted===true)continue;value[manualKey]=adminManualServicePublic(manualRow,manualKey);}}else if(raw.startsWith('services/')){const serviceKey=raw.slice('services/'.length),freeRow=readAdminFreeServices()[serviceKey],manualFound=findAdminManualService(serviceKey,'');if(freeRow&&freeRow.adminFreeService===true)value=(freeRow.enabled===false||freeRow.deleted===true)?null:(isAdmin(req)?{...freeRow,fbKey:serviceKey,adminFreeServiceKey:serviceKey}:{...adminFreeServicePublic({...freeRow,fbKey:serviceKey,adminFreeServiceKey:serviceKey})});else if(manualFound&&manualFound.row?.serviceKind==='manual_support')value=(manualFound.row.enabled===false||manualFound.row.deleted===true)?null:adminManualServicePublic(manualFound.row,manualFound.key);else if(!isAdmin(req)&&value&&typeof value==='object'&&hasExplicitSiteServiceDisable(value))value=null;}if(value&&typeof value==='object'&&value.unapprovedAutoImport===true&&!(isAdmin(req)&&urlObj.searchParams.get('includeUnapprovedAutoImports')==='1'))value=null;return json(res,200,{ok:true,value,source:seed.source,storageMode:DATA_IS_EXTERNAL?'persistent-volume':'release-local',warning:seed.warning||(!DATA_IS_EXTERNAL?'الكتالوج محفوظ في ملفات الخادم؛ لثبات التعديلات بعد إعادة نشر Railway يجب أن يكون مجلد البيانات مرتبطاً بوحدة تخزين دائمة.':'')});}
     if(spec.bucket==='categoryMeta'){
-      const localRoot=readJSON('category_meta.json',{});let remoteRoot={};let firebaseRead=true;try{const v=await firebaseGetJson('categoryMeta',10000);if(v&&typeof v==='object'&&!Array.isArray(v))remoteRoot=v;}catch(_){firebaseRead=false;}
-      const merged=mergeCategoryMetaRoots(localRoot,remoteRoot);let value=merged;for(const part of spec.parts){if(!value||typeof value!=='object'||!Object.prototype.hasOwnProperty.call(value,part)){value=null;break;}value=value[part];}
-      return json(res,200,{ok:true,value,source:firebaseRead?'hosting+firebase-category-images':'hosting-file',storageMode:DATA_IS_EXTERNAL?'persistent-volume':'release-local',warning:firebaseRead?'':'تعذر قراءة نسخة صور الأقسام من Firebase؛ تم عرض البيانات المحلية المتاحة.'});
+      // Hosting metadata is authoritative. Do not merge the entire legacy Firebase categoryMeta tree;
+      // old releases populated it with every provider category and caused phantom sections/large payloads.
+      const localRoot=readJSON('category_meta.json',{});let value=localRoot;for(const part of spec.parts){if(!value||typeof value!=='object'||!Object.prototype.hasOwnProperty.call(value,part)){value=null;break;}value=value[part];}
+      return json(res,200,{ok:true,value,source:'hosting-file',storageMode:DATA_IS_EXTERNAL?'persistent-volume':'release-local',warning:!DATA_IS_EXTERNAL?'صور/بيانات الأقسام محفوظة محلياً؛ استخدم Railway Volume لضمان بقائها بعد إعادة النشر.':''});
     }
     const got=catalogReadPath(raw);return json(res,200,{ok:true,value:got.value,source:'hosting-file',storageMode:DATA_IS_EXTERNAL?'persistent-volume':'release-local'});
   }
@@ -4684,29 +4705,31 @@ async function routeAPI(req,res,urlObj){
     if(!services.length||services.length>500)return json(res,422,{ok:false,error:'حدد من 1 إلى 500 خدمة صالحة للاستيراد.'});
     await ensureLocalServiceCatalogSeeded();
     const dest=String(b.destination||'__all__').trim().slice(0,100),at=nowISO();
-    const root=readJSON('services.json',{}),metaRoot=readJSON('category_meta.json',{});let added=0,updated=0,skipped=0;const serviceKeys=[];
+    const categoryKey=dest==='__all__'?'':String(b.categoryKey||dest.replace(/[^a-zA-Z0-9_\-\u0600-\u06ff]+/g,'_')).slice(0,150)||'category';
+    const root=readJSON('services.json',{}),metaRoot=readJSON('category_meta.json',{}),quarantineArchive=readJSON('quarantined_provider_services.json',{});let added=0,updated=0,skipped=0,restoredArchived=0;const serviceKeys=[];
     for(const item of services){
       const data=item&&item.data&&typeof item.data==='object'?item.data:null;if(!data){skipped++;continue;}
       const providerId=String(data.providerId||'').trim(),sourceId=String(data.providerServiceId||data.smmpartyId||data.sourceServiceId||data.serviceId||'').trim(),name=String(data.name||'').trim(),price=Number(data.sellingUsd??(Number(data.price||0)/FIXED_RATE));
       if(!providerId||!sourceId||!name||!Number.isFinite(price)||price<0){skipped++;continue;}
       let key=Object.keys(root).find(k=>String(root[k]?.providerId||'')===providerId&&String(root[k]?.providerServiceId||root[k]?.smmpartyId||root[k]?.serviceId||'')===sourceId);
-      const existing=key?root[key]:null;
+      let archivedKey='';if(!key)archivedKey=Object.keys(quarantineArchive).find(k=>String(quarantineArchive[k]?.providerId||'')===providerId&&String(quarantineArchive[k]?.providerServiceId||quarantineArchive[k]?.smmpartyId||quarantineArchive[k]?.serviceId||'')===sourceId)||'';
+      const fromArchive=!key&&!!archivedKey;if(fromArchive)key=archivedKey;
+      const existing=key?(fromArchive?quarantineArchive[key]:root[key]):null;
       const category=dest==='__all__'?(String(data.category||data.groups?.[0]||'عام')):dest;
       const groups=dest==='__all__'?(Array.isArray(data.groups)?data.groups:[category]):[dest];
-      const row={...(existing||{}),...data,providerId,providerServiceId:sourceId,smmpartyId:sourceId,serviceId:sourceId,name,category,groups:[...new Set(groups.map(x=>String(x||'').trim()).filter(Boolean))],categories:[...new Set(groups.map(x=>String(x||'').trim()).filter(Boolean))],sellingUsd:Number(price.toFixed(6)),price:Number((price*FIXED_RATE).toFixed(4)),basePrice:Number((price*FIXED_RATE).toFixed(4)),source:'smmparty',createdAt:existing?.createdAt||at,updatedAt:at};
-      if(!key)key='svc_'+crypto.randomBytes(12).toString('hex');root[key]=row;serviceKeys.push(key);if(existing)updated++;else added++;
+      const wasQuarantined=existing?.unapprovedAutoImport===true||fromArchive||!!(existing&&isLegacyAutoImportedProviderRow(key,existing));const row={...(existing||{}),...data,providerId,providerServiceId:sourceId,smmpartyId:sourceId,serviceId:sourceId,name,category,groups:[...new Set(groups.map(x=>String(x||'').trim()).filter(Boolean))],categories:[...new Set(groups.map(x=>String(x||'').trim()).filter(Boolean))],sellingUsd:Number(price.toFixed(6)),price:Number((price*FIXED_RATE).toFixed(4)),basePrice:Number((price*FIXED_RATE).toFixed(4)),source:'smmparty',createdAt:existing?.createdAt||at,updatedAt:at,...(wasQuarantined?{unapprovedAutoImport:false,active:true,providerAvailable:true,availabilityStatus:'available',providerAvailabilityReason:'',explicitlyApprovedAt:at,explicitlyApprovedBy:String(session(req)?.username||ADMIN_USER)}:{})};if(wasQuarantined)delete row.unapprovedAutoImport;
+      if(!key)key='svc_'+crypto.randomBytes(12).toString('hex');root[key]=row;if(fromArchive){delete quarantineArchive[key];restoredArchived++;}serviceKeys.push(key);if(existing&&!fromArchive)updated++;else if(fromArchive)updated++;else added++;
     }
     if(!serviceKeys.length)return json(res,422,{ok:false,error:'لم توجد خدمات صالحة؛ تأكد من اسم الخدمة وProvider ID وService ID والسعر.',skipped});
     if(dest!=='__all__'){
-      const categoryKey=String(b.categoryKey||dest.replace(/[^a-zA-Z0-9_\-\u0600-\u06ff]+/g,'_')).slice(0,150)||'category';
       const old=metaRoot[categoryKey]&&typeof metaRoot[categoryKey]==='object'?metaRoot[categoryKey]:{};
       metaRoot[categoryKey]={...old,...(b.categoryMeta&&typeof b.categoryMeta==='object'?b.categoryMeta:{}),name:dest,serviceKeys:[...new Set([...(Array.isArray(old.serviceKeys)?old.serviceKeys.map(String):[]),...serviceKeys])],updatedAt:at,updatedBy:String(session(req)?.username||ADMIN_USER)};
     }
-    try{writeJSON('services.json',root);ensureNumericSiteServiceIds();writeJSON('category_meta.json',metaRoot);const cfg=readJSON('catalog_settings.json',{});cfg.legacySeedAttempted=true;cfg.catalogUpdatedAt=at;cfg.lastImportCount=serviceKeys.length;writeJSON('catalog_settings.json',cfg);const verify=readJSON('services.json',{});const missing=serviceKeys.filter(k=>!verify[k]||String(verify[k].providerServiceId||verify[k].smmpartyId||'')==='');if(missing.length)throw new Error('فشل التحقق من '+missing.length+' خدمة بعد الحفظ.');
+    try{writeJSON('services.json',root);ensureNumericSiteServiceIds();if(restoredArchived)writeJSON('quarantined_provider_services.json',quarantineArchive);writeJSON('category_meta.json',metaRoot);const cfg=readJSON('catalog_settings.json',{});cfg.legacySeedAttempted=true;cfg.catalogUpdatedAt=at;cfg.lastImportCount=serviceKeys.length;writeJSON('catalog_settings.json',cfg);const verify=readJSON('services.json',{});const missing=serviceKeys.filter(k=>!verify[k]||String(verify[k].providerServiceId||verify[k].smmpartyId||'')==='');if(missing.length)throw new Error('فشل التحقق من '+missing.length+' خدمة بعد الحفظ.');
       let imageMirrored=false,imageMirrorWarning='';
       if(dest!=='__all__'&&metaRoot[categoryKey]&&isCustomCategoryImage(metaRoot[categoryKey])){try{await firebaseWriteJson('categoryMeta/'+categoryKey,metaRoot[categoryKey],12000);imageMirrored=true;}catch(e){imageMirrorWarning=String(e.message||e).slice(0,140);}}
       const warning=imageMirrorWarning?('حُفظت الصورة في ملفات الخادم لكن تعذرت مزامنتها إلى Firebase: '+imageMirrorWarning+(DATA_IS_EXTERNAL?'':' — اربط Railway Volume قبل إعادة النشر حتى لا تضيع النسخة المحلية.')):(!imageMirrored&&!DATA_IS_EXTERNAL?'تم الحفظ في ملفات الخادم دون نسخة Firebase للصورة؛ اربط Railway Volume دائماً.':'');
-      return json(res,200,{ok:true,added,updated,skipped,total:serviceKeys.length,serviceKeys,verified:true,destination:dest,storage:'hosting-json'+(imageMirrored?'+firebase-category-image':''),imageMirrored,storageMode:DATA_IS_EXTERNAL?'persistent-volume':'release-local',checkedAt:nowISO(),warning});}
+      return json(res,200,{ok:true,added,updated,restoredArchived,skipped,total:serviceKeys.length,serviceKeys,verified:true,destination:dest,storage:'hosting-json'+(imageMirrored?'+firebase-category-image':''),imageMirrored,storageMode:DATA_IS_EXTERNAL?'persistent-volume':'release-local',checkedAt:nowISO(),warning});}
     catch(e){return json(res,500,{ok:false,error:'تعذر حفظ الخدمات في ملفات الاستضافة: '+String(e.message||e).slice(0,160)});}
   }
   // Support chat is served through the privileged server SDK, never by granting clients write access to chats.
@@ -5037,9 +5060,12 @@ async function routeAPI(req,res,urlObj){
     if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
     const b=await bodyJSON(req,10*1024*1024);const list=Array.isArray(b.services)?b.services:[];if(list.length>25000)return json(res,413,{ok:false,error:'عدد الخدمات كبير جداً'});
     const safe=list.map(s=>{const providerServiceId=String(s?.smmpartyId||s?.providerServiceId||s?.serviceId||'').trim();const fbId=String(s?.fbKey||s?.id||'').trim();return {id:providerServiceId,fbId,name:String(s?.name||'خدمة'),category:String(s?.category||((Array.isArray(s?.groups)&&s.groups[0])||'عام')),sellingUsd:Number(s?.sellingUsd ?? (Number(s?.price||0)/FIXED_RATE)),rateUsd:Number(s?.sellingUsd||s?.smmRateUsd||s?.rateUsd||0),min:Number(s?.min||100),max:Number(s?.max||10000),refill:!!s?.refill,cancel:!!s?.cancel,providerId:String(s?.providerId||''),providerServiceId,smmRateUsd:Number(s?.smmRateUsd||s?.rate||0),updatedAt:nowISO()};}).filter(x=>x.id&&x.providerId);
-    const root=readJSON('services.json',{});let merged=0;
-    for(const x of safe){let key=x.fbId&&root[x.fbId]?x.fbId:Object.keys(root).find(k=>String(root[k]?.providerId||'')===x.providerId&&String(root[k]?.providerServiceId||root[k]?.smmpartyId||root[k]?.serviceId||'')===x.id);if(!key)key='svc_'+crypto.randomBytes(12).toString('hex');const old=root[key]||{};root[key]={...old,...x,fbKey:key,smmpartyId:x.id,serviceId:x.id,source:'smmparty',name:old.name||x.name,groups:Array.isArray(old.groups)?old.groups:[x.category],categories:Array.isArray(old.categories)?old.categories:[x.category],price:Number(old.price??(x.sellingUsd*FIXED_RATE)),basePrice:Number(old.basePrice??(x.sellingUsd*FIXED_RATE)),createdAt:old.createdAt||nowISO()};merged++;}
-    try{writeJSON('services.json',root);ensureNumericSiteServiceIds();writeJSON('api_services.json',safe);const cfg=readJSON('catalog_settings.json',{});cfg.legacySeedAttempted=true;cfg.catalogUpdatedAt=nowISO();cfg.lastSyncCount=merged;writeJSON('catalog_settings.json',cfg);return json(res,200,{ok:true,count:safe.length,catalogCount:Object.keys(root).length,syncedAt:nowISO(),persistedRemotely:false,storage:'hosting-json',storageMode:DATA_IS_EXTERNAL?'persistent-volume':'release-local',warning:!DATA_IS_EXTERNAL?'الخدمات حُفظت كملفات على الخادم؛ اربط Volume دائم في Railway حتى تبقى بعد إعادة النشر.':''});}
+    const root=readJSON('services.json',{});let merged=0,skippedUnapprovedNew=0;const accepted=[];
+    for(const x of safe){let key=x.fbId&&root[x.fbId]?x.fbId:Object.keys(root).find(k=>!root[k]?.unapprovedAutoImport&&String(root[k]?.providerId||'')===x.providerId&&String(root[k]?.providerServiceId||root[k]?.smmpartyId||root[k]?.serviceId||'')===x.id);
+      // This compatibility endpoint may refresh existing rows only. Adding new rows requires /api/admin/services/import.
+      if(!key){skippedUnapprovedNew++;continue;}const old=root[key]||{};if(old.unapprovedAutoImport===true){skippedUnapprovedNew++;continue;}
+      root[key]={...old,...x,fbKey:key,smmpartyId:x.id,serviceId:x.id,source:old.source||'smmparty',name:old.name||x.name,groups:Array.isArray(old.groups)?old.groups:[x.category],categories:Array.isArray(old.categories)?old.categories:[x.category],price:Number(old.price??(x.sellingUsd*FIXED_RATE)),basePrice:Number(old.basePrice??(x.sellingUsd*FIXED_RATE)),createdAt:old.createdAt||nowISO()};merged++;accepted.push(x);}
+    try{if(merged)writeJSON('services.json',root);if(accepted.length)writeJSON('api_services.json',accepted);const cfg=readJSON('catalog_settings.json',{});cfg.legacySeedAttempted=true;cfg.catalogUpdatedAt=nowISO();cfg.lastSyncCount=merged;cfg.lastUnapprovedSyncRows=skippedUnapprovedNew;writeJSON('catalog_settings.json',cfg);return json(res,200,{ok:true,count:merged,received:safe.length,skippedUnapprovedNew,catalogCount:Object.keys(root).length,syncedAt:nowISO(),persistedRemotely:false,storage:'hosting-json',importPolicy:'manual-approval-required',storageMode:DATA_IS_EXTERNAL?'persistent-volume':'release-local',warning:!DATA_IS_EXTERNAL?'الخدمات حُفظت كملفات على الخادم؛ اربط Volume دائم في Railway حتى تبقى بعد إعادة النشر.':''});}
     catch(e){return json(res,500,{ok:false,error:'تعذر حفظ كتالوج الخدمات على الاستضافة: '+String(e.message||e).slice(0,160)});}
   }
   if(p==='/api/admin/sync-users' && req.method==='POST'){
@@ -6188,8 +6214,8 @@ async function runBundledLegacySeedBootstrap(){
 
 ensureData();
 ensureTelegramDefaults();
+// Startup must never move, hide, or delete service rows/categories. Imports require an explicit admin action.
 startGlobalPriceSyncScheduler();
-startPriceWatcher();
 const server=http.createServer(async (req,res)=>{
   try{
     res._forwardedProto=String(req.headers['x-forwarded-proto']||'').split(',')[0].trim();
