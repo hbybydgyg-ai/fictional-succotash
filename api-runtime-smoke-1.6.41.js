@@ -208,7 +208,7 @@ async function main(){
     const addFreeService=await req('/api/admin/free-services',{method:'POST',headers:{...adminCookie,'Content-Type':'application/json'},body:JSON.stringify({action:'save',providerId:'mock-provider',providerServiceId:'77',name:'Admin funded free mock',category:'Test',platform:'Instagram',min:10,max:20,perAccountLimit:2,description:'Free to users; supplier cost paid by site.'})});
     assert.equal(addFreeService.status,200,`admin should be able to save an admin-funded free service: ${JSON.stringify(addFreeService.data)}`);
     assert.equal(addFreeService.data.service.adminFreeService,true);assert.equal(addFreeService.data.service.sellingUsd,0);assert.equal(addFreeService.data.service.providerRateUsd,5);assert.equal(addFreeService.data.service.perAccountLimit,2);
-    const customFree=addFreeService.data.service,customFreeKey=String(customFree.key),customSiteId=String(customFree.siteServiceId);
+    const customFree=addFreeService.data.service,customFreeKey=String(customFree.key),customSiteId=String(customFree.siteServiceId);assert.match(customSiteId,/^\d{4}$/,'admin-funded free service uses a four-digit internal Sada Iraq ID');assert.equal(String(customFree.providerServiceId),'77','original provider service ID remains unchanged');
     const publicCatalog=await req('/api/catalog?path=services',{headers:{Cookie:cookie}});assert.equal(publicCatalog.status,200);
     const publicFree=publicCatalog.data.value[customFreeKey];assert(publicFree,'admin-funded free offer should appear in the website catalog');assert.equal(publicFree.adminFreeService,true);assert.equal(publicFree.sellingUsd,0);assert.equal(publicFree.providerRateUsd,undefined,'supplier USD rate must not leak to public catalog');assert.equal(publicFree.basePrice,undefined,'supplier converted cost must not leak to public catalog');
     const callsBeforeInvalidFree=providerAddCalls;
@@ -239,7 +239,7 @@ async function main(){
     const addManual=await req('/api/admin/manual-services',{method:'POST',headers:{...adminCookie,'Content-Type':'application/json'},body:JSON.stringify({action:'save',name:'Manual TikTok support mock',description:'Send the request message to support.',platform:'Tiktok',category:'خدمات خاصة',sellingUsd:10,min:1,max:100,perAccountLimit:1,enabled:true})});
     assert.equal(addManual.status,200,`manual-support service should save: ${JSON.stringify(addManual.data)}`);
     const manual=addManual.data.service,manualKey=String(manual.key),manualSiteId=String(manual.siteServiceId);
-    assert.match(manualKey,/^manual_[a-f0-9]{24}$/);assert.match(manualSiteId,/^\d{4,}$/);assert.equal(manual.serviceKind,'manual_support');assert.equal(manual.providerId,'manual-support');assert.equal(manual.sellingUsd,10);
+    assert.match(manualKey,/^manual_[a-f0-9]{24}$/);assert.match(manualSiteId,/^\d{4}$/,'manual service uses a four-digit internal ID');assert.equal(manual.serviceKind,'manual_support');assert.equal(manual.providerId,'manual-support');assert.equal(manual.sellingUsd,10);
     const manualCatalog=await req('/api/catalog?path=services',{headers:{Cookie:cookie}});
     assert.equal(manualCatalog.status,200);const catalogManual=manualCatalog.data.value[manualKey];assert(catalogManual,'manual-support service must appear in the selected site section');assert.equal(catalogManual.adminManualService,true);assert.equal(catalogManual.category,'خدمات خاصة');assert.equal(catalogManual.providerRateUsd,undefined,'manual service must not leak a supplier cost');
     const manualDetail=await req('/api/catalog?path=services/'+encodeURIComponent(manualKey),{headers:{Cookie:cookie}});assert.equal(manualDetail.status,200);assert.equal(manualDetail.data.value.siteServiceId,manualSiteId);
@@ -313,11 +313,33 @@ async function main(){
     const apiRevoke=await req('/api/admin/api-users/revoke',{method:'POST',headers:{Cookie:`sadairaq_sid=${adminPayload}.${adminSig}`,'Content-Type':'application/json'},body:JSON.stringify({keyHash:apiAdminHash})});
     assert.equal(apiRevoke.status,200,`admin revoke should verify in Firebase: ${JSON.stringify(apiRevoke.data)}`);assert.equal(rootDb.apiKeys[apiAdminHash].status,'revoked');assert(rootDb.apiKeys[apiAdminHash].revokedAt);
     console.log('PASS runtime: admin API developer section lists safe key metadata and verifies revocation in Firebase');
+
+    // Simulate a pre-2.4 catalog row carrying a Date.now()-style internal ID.
+    // Migration must reassign a 4-digit Sada ID, preserve the provider ID, and still resolve a stale order form.
+    const legacySiteId='1791935390347';
+    const legacySeed=await req('/api/admin/catalog',{method:'POST',headers:{...adminCookie,'Content-Type':'application/json'},body:JSON.stringify({path:'services/legacy-long-id-test',mode:'set',value:{id:legacySiteId,siteServiceId:legacySiteId,internalServiceId:legacySiteId,providerId:'mock-provider',providerServiceId:'77',smmpartyId:'77',serviceId:'77',name:'Legacy four-digit migration test',category:'Test',groups:['Test'],sellingUsd:10,rateUsd:10,providerRateUsd:5,min:1,max:100,active:true,enabled:true,providerAvailable:true}})});
+    assert.equal(legacySeed.status,200,`legacy catalog fixture should save: ${JSON.stringify(legacySeed.data)}`);
+    const migratedCatalog=await req('/api/catalog?path=services/legacy-long-id-test',{headers:{Cookie:cookie}});
+    assert.equal(migratedCatalog.status,200);const migratedRow=migratedCatalog.data.value;assert(migratedRow);
+    const migratedSiteId=String(migratedRow.siteServiceId||'');assert.match(migratedSiteId,/^\d{4}$/,'legacy long ID must be rewritten to a four-digit internal ID');
+    assert.equal(String(migratedRow.providerServiceId),'77','provider service ID must remain the original provider ID');
+    assert(Array.isArray(migratedRow.legacySiteServiceIds)&&migratedRow.legacySiteServiceIds.includes(legacySiteId),'unambiguous old ID must remain as a compatibility alias');
+    const oldFormOrder=await req('/api/order/create',{method:'POST',headers:{Cookie:cookie,'Content-Type':'application/json'},body:JSON.stringify({providerId:'mock-provider',siteServiceId:legacySiteId,providerServiceId:'77',firebaseServiceKey:legacySiteId,link:'https://example.com/legacy-long-id-compat',quantity:10,localId:'legacy-four-digit-compat-order'})});
+    assert.equal(oldFormOrder.status,200,`stale form using old internal ID should resolve through the safe alias: ${JSON.stringify(oldFormOrder.data)}`);
+    assert.equal(String(oldFormOrder.data.order?.siteServiceId||oldFormOrder.data.siteServiceId||''),migratedSiteId,'new order must persist the canonical 4-digit site ID');
+    assert.equal(String(oldFormOrder.data.order?.providerServiceId||oldFormOrder.data.providerServiceId||''),'77','legacy form must still route to the original provider service');
+    console.log('PASS runtime: legacy long IDs migrate to four-digit site IDs while stale order forms still resolve the same provider service');
+    const beforeLegacyApiCalls=providerAddCalls;
+    const legacyApiOrder=await req('/api/v1',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({action:'add',key:freshKey,service:legacySiteId,link:'https://example.com/legacy-api-four-digit-compat',quantity:'10',idempotency_key:'LEGACY_FOUR_DIGIT_API_TEST'}).toString()});
+    assert.equal(legacyApiOrder.status,200,`legacy API ID should resolve through compatibility alias: ${JSON.stringify(legacyApiOrder.data)}`);
+    const apiLegacyRow=JSON.parse(fs.readFileSync(path.join(dataDir,'orders.json'),'utf8')).find(o=>String(o.id)===String(legacyApiOrder.data.internal_order_id));
+    assert(apiLegacyRow,'legacy API order must be persisted');assert.equal(String(apiLegacyRow.siteServiceId),migratedSiteId,'API order must store canonical four-digit site ID');assert.equal(String(apiLegacyRow.providerServiceId),'77','API order must preserve original provider ID');assert.equal(providerAddCalls,beforeLegacyApiCalls+1,'legacy API ID must dispatch one mock provider order');
+    console.log('PASS runtime: legacy API clients can use an old site ID but all new orders persist the canonical four-digit ID');
   } finally {
     app.kill('SIGTERM');await Promise.race([new Promise(resolve=>app.once('exit',resolve)),wait(3000)]);if(app.exitCode===null)app.kill('SIGKILL');
     await close(provider);await close(db);fs.rmSync(tempDir,{recursive:true,force:true});
   }
-  if(providerAddCalls!==5)throw new Error('Mock provider should receive five add actions total: API order, two admin-funded free requests, and two ordinary paid website orders');
+  if(providerAddCalls!==7)throw new Error('Mock provider should receive seven add actions total, including safe website/API orders using a legacy site ID');
   console.log(`PASS end-to-end API runtime checks including summary, Telegram URL, admin API listing/revocation; mock provider actions: ${providerSeen.join(', ')}`);
 }
 main().catch(error=>{console.error('FAIL API runtime smoke:',error&&error.stack||error);process.exitCode=1;});

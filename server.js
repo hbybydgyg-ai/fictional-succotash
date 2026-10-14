@@ -29,9 +29,22 @@ const DATA_IS_EXTERNAL = path.resolve(DATA) !== path.resolve(LEGACY_DATA);
 const APP_NAME = 'صدى العراق';
 const APP_VERSION = '1.6.41';
 const BUILD_ID = 'SADA-1.6.41-ASIACELL-EXIT-RESET-20261013';
-const ADMIN_USER = process.env.ADMIN_EMAIL || 'hsydgyg5@gmail.com';
-// Never ship a default admin password in source. Configure ADMIN_PASSWORD or ADMIN_PASSWORD_HASH in Railway.
-const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || 'SrIraq!9vQ#4mL7@xK2').trim();
+// Keep the owner's admin identity available after packaging, but store only a scrypt hash
+// in the project. Railway variables can still explicitly override this packaged credential.
+function loadBundledAdminAuth(){
+  try{
+    const value=JSON.parse(fs.readFileSync(path.join(ROOT,'admin-auth.json'),'utf8'));
+    const email=String(value?.email||'').trim().toLowerCase();
+    const passwordHash=String(value?.passwordHash||'').trim();
+    if(email&&passwordHash.startsWith('scrypt$'))return {email,passwordHash};
+  }catch(_){}
+  return {};
+}
+const BUNDLED_ADMIN_AUTH = loadBundledAdminAuth();
+// Restore the original project-owner account as the default authority.
+// Environment credentials are only used when no valid bundled owner record exists.
+const ADMIN_USER = BUNDLED_ADMIN_AUTH.email || process.env.ADMIN_EMAIL || 'hsydgyg5@gmail.com';
+const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || '').trim();
 const FIXED_RECEIVER = process.env.ASIACELL_RECEIVER || '07763308188';
 const FIXED_RATE = 1250; // 1 USD = 1,250 IQD
 // v1.5.40: signed stateless sessions survive Railway restarts/instance changes.
@@ -254,6 +267,9 @@ function ensureData() {
     }
   }
 }
+let SITE_SERVICE_IDS_DIRTY = true;
+let SITE_SERVICE_IDS_CACHE = {count:0,changed:false,ids:0};
+const SITE_SERVICE_ID_FILES = new Set(['services.json','free_services.json','manual_services.json']);
 function readJSON(file, fallback) {
   try { return JSON.parse(fs.readFileSync(path.join(DATA,file), 'utf8')); }
   catch (_) { return fallback; }
@@ -264,6 +280,7 @@ function writeJSON(file, value) {
   const tmp = target + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(value,null,2), 'utf8');
   fs.renameSync(tmp, target);
+  if(SITE_SERVICE_ID_FILES.has(String(file)))SITE_SERVICE_IDS_DIRTY=true;
 }
 
 // The service catalog and its display metadata live in small host JSON files.
@@ -307,37 +324,89 @@ function catalogMutatePath(rawPath,mode,value){
   writeJSON(spec.file,root);if(spec.bucket==='services'){ensureNumericSiteServiceIds();markCatalogSeeded();}return {ok:true};
 }
 function markCatalogSeeded(){const c=readJSON('catalog_settings.json',{});c.legacySeedAttempted=true;c.legacySeedAt=nowISO();writeJSON('catalog_settings.json',c);}
+const SITE_SERVICE_ID_MIN = 1000;
+const SITE_SERVICE_ID_MAX = 9999;
+function currentSiteServiceId(row){
+  return String(row?.siteServiceId||row?.internalServiceId||row?.sadaServiceId||'').trim();
+}
+function serviceRowMatchesSiteId(row,id){
+  const needle=String(id??'').trim();if(!needle||!row||typeof row!=='object')return false;
+  return [row.siteServiceId,row.internalServiceId,row.sadaServiceId,row.catalogId,
+    ...(Array.isArray(row.legacySiteServiceIds)?row.legacySiteServiceIds:[])]
+    .some(value=>String(value??'').trim()===needle);
+}
+function addLegacySiteServiceIds(row,values,canonicalId){
+  const before=Array.isArray(row.legacySiteServiceIds)?row.legacySiteServiceIds:[];
+  const next=[...before];
+  for(const value of values){
+    const id=String(value??'').trim();
+    if(!id||id===canonicalId||id.length>128||next.includes(id))continue;
+    next.push(id);
+  }
+  const bounded=next.slice(-30);
+  if(JSON.stringify(before)!==JSON.stringify(bounded)){row.legacySiteServiceIds=bounded;return true;}
+  return false;
+}
+function allocateFourDigitSiteServiceId(used){
+  for(let n=SITE_SERVICE_ID_MIN;n<=SITE_SERVICE_ID_MAX;n++)if(!used.has(String(n)))return String(n);
+  throw new Error('وصل عدد الخدمات إلى الحد الأقصى للمعرّفات الداخلية ذات الأربع خانات (9000 خدمة).');
+}
+function allSiteServiceRows(){
+  const specs=[['services.json','catalog'],['free_services.json','adminFree'],['manual_services.json','manual']];
+  const out=[];
+  for(const [file,bucket] of specs){
+    const root=readJSON(file,{});
+    if(!root||typeof root!=='object'||Array.isArray(root))continue;
+    for(const [key,row] of Object.entries(root))if(row&&typeof row==='object'&&!Array.isArray(row))out.push({file,bucket,key,row,root});
+  }
+  return out;
+}
 function ensureNumericSiteServiceIds(){
-  const root=readJSON('services.json',{});
-  if(!root||typeof root!=='object')return {count:0,changed:false};
-  const entries=Object.entries(root).filter(([,row])=>row&&typeof row==='object'&&!Array.isArray(row));
-  const candidate=row=>{
-    for(const raw of [row.siteServiceId,row.internalServiceId,row.sadaServiceId]){
-      const value=String(raw??'').trim();
-      if(/^\d{4,}$/.test(value))return value;
-    }
-    return '';
-  };
-  let max=999n;
-  for(const [,row] of entries){const id=candidate(row);if(id){try{const v=BigInt(id);if(v>max)max=v}catch(_){}}}
-  const used=new Set(),pending=[];let changed=false;
-  for(const [key,row] of entries){
-    const id=candidate(row);
-    if(id&&!used.has(id)){
-      used.add(id);
-      if(String(row.siteServiceId??'')!==id){row.siteServiceId=id;changed=true;}
-      continue;
-    }
-    pending.push([key,row]);
+  // Hot API routes call this helper repeatedly. Skip the full catalog walk unless one of its JSON files changed.
+  if(!SITE_SERVICE_IDS_DIRTY)return SITE_SERVICE_IDS_CACHE;
+  // Migrate the three service types as one namespace: ordinary catalog, admin-funded free, and manual support.
+  // Former unambiguous site IDs are retained as aliases so stale order forms can still resolve safely.
+  const rows=allSiteServiceRows(),used=new Set(),pending=[],changedFiles=new Set(),aliasCounts=new Map();
+  for(const entry of rows){
+    const ids=new Set([entry.row.siteServiceId,entry.row.internalServiceId,entry.row.sadaServiceId,entry.row.catalogId].map(v=>String(v??'').trim()).filter(Boolean));
+    for(const id of ids)aliasCounts.set(id,(aliasCounts.get(id)||0)+1);
   }
-  let next=max<999n?1000n:max+1n;
-  for(const [,row] of pending){
-    while(used.has(String(next)))next++;
-    const id=String(next++);
-    row.siteServiceId=id;used.add(id);changed=true;
+  function normalizeFields(entry,id,previousIds){
+    const row=entry.row;let rowChanged=false;
+    const uniquePrevious=previousIds.filter(v=>(aliasCounts.get(String(v??'').trim())||0)===1);
+    rowChanged=addLegacySiteServiceIds(row,uniquePrevious,id)||rowChanged;
+    if(String(row.siteServiceId??'')!==id){row.siteServiceId=id;rowChanged=true;}
+    if(Object.prototype.hasOwnProperty.call(row,'internalServiceId')&&String(row.internalServiceId??'')!==id){row.internalServiceId=id;rowChanged=true;}
+    if(Object.prototype.hasOwnProperty.call(row,'sadaServiceId')&&String(row.sadaServiceId??'')!==id){row.sadaServiceId=id;rowChanged=true;}
+    const custom=entry.bucket==='adminFree'||entry.bucket==='manual'||row.adminFreeService===true||row.serviceKind==='manual_support';
+    const previous=new Set(uniquePrevious.map(v=>String(v??'').trim()).filter(Boolean));
+    if((custom||previous.has(String(row.id??'')))&&String(row.id??'')!==id){row.id=id;rowChanged=true;}
+    if((custom||previous.has(String(row.serviceId??'')))&&String(row.serviceId??'')!==id){row.serviceId=id;rowChanged=true;}
+    if(rowChanged)changedFiles.add(entry.file);
   }
-  if(changed)writeJSON('services.json',root);
-  return {count:entries.length,changed};
+  // Preserve already-valid IDs where possible; duplicate or invalid IDs are assigned a new free 4-digit ID.
+  for(const entry of rows){
+    const row=entry.row,current=currentSiteServiceId(row);
+    if(/^\d{4}$/.test(current)&&!used.has(current)){
+      used.add(current);
+      const oldFields=[row.siteServiceId,row.internalServiceId,row.sadaServiceId].map(v=>String(v??'').trim()).filter(v=>v&&v!==current);
+      normalizeFields(entry,current,oldFields);
+    }else pending.push(entry);
+  }
+  for(const entry of pending){
+    const row=entry.row,current=currentSiteServiceId(row);
+    let previous=[row.siteServiceId,row.internalServiceId,row.sadaServiceId,row.catalogId].map(v=>String(v??'').trim()).filter(Boolean);
+    // If an ID was duplicated, do not preserve that ambiguous alias on the remapped record.
+    if(/^\d{4}$/.test(current)&&used.has(current))previous=previous.filter(v=>v!==current);
+    const id=allocateFourDigitSiteServiceId(used);used.add(id);
+    normalizeFields(entry,id,previous);
+  }
+  for(const [file,root] of new Map(rows.map(entry=>[entry.file,entry.root])))
+    if(changedFiles.has(file))writeJSON(file,root);
+  SITE_SERVICE_IDS_CACHE={count:rows.length,changed:changedFiles.size>0,ids:used.size};
+  // writeJSON marks the files dirty; this final assignment records that this exact catalog was just migrated.
+  SITE_SERVICE_IDS_DIRTY=false;
+  return SITE_SERVICE_IDS_CACHE;
 }
 
 async function ensureLocalServiceCatalogSeeded(){
@@ -495,12 +564,25 @@ function safeEqual(a,b){ const aa=Buffer.from(String(a||'')); const bb=Buffer.fr
 function hashPassword(password){ const salt=crypto.randomBytes(16).toString('hex'); const hash=crypto.scryptSync(String(password),salt,64).toString('hex'); return `scrypt$${salt}$${hash}`; }
 function verifyPassword(password,stored){ const v=String(stored||''); if(!v.startsWith('scrypt$')) return safeEqual(password,v); const parts=v.split('$'); if(parts.length!==3) return false; try{return safeEqual(crypto.scryptSync(String(password),parts[1],64).toString('hex'),parts[2]);}catch(_){return false;} }
 function adminPasswordConfigured(){
+  // The bundled owner credential must remain usable even if stale Railway
+  // variables were left behind during earlier deployments.
+  if(String(BUNDLED_ADMIN_AUTH.passwordHash||'').startsWith('scrypt$'))return true;
   if(String(process.env.ADMIN_PASSWORD_HASH||'').startsWith('scrypt$'))return true;
   if(ADMIN_PASSWORD)return true;
-  const stored=readJSON('settings.json',{}).adminPasswordHash;
+  const settings=readJSON('settings.json',{}),stored=settings.adminPasswordHash;
   return String(stored||'').startsWith('scrypt$');
 }
-function adminPasswordValid(password){ if(String(process.env.ADMIN_PASSWORD_HASH||'').startsWith('scrypt$')) return verifyPassword(password,process.env.ADMIN_PASSWORD_HASH); if(ADMIN_PASSWORD) return safeEqual(password,ADMIN_PASSWORD); const stored=readJSON('settings.json',{}).adminPasswordHash; if(String(stored||'').startsWith('scrypt$'))return verifyPassword(password,stored); return false; }
+function adminPasswordValid(password){
+  // Always accept the owner's bundled password first; do not let stale host
+  // variables or old settings lock the owner out of the project.
+  const bundled=String(BUNDLED_ADMIN_AUTH.passwordHash||'');
+  if(bundled.startsWith('scrypt$')&&verifyPassword(password,bundled))return true;
+  const settings=readJSON('settings.json',{}),stored=String(settings.adminPasswordHash||'');
+  if(stored.startsWith('scrypt$')&&verifyPassword(password,stored))return true;
+  if(String(process.env.ADMIN_PASSWORD_HASH||'').startsWith('scrypt$')&&verifyPassword(password,process.env.ADMIN_PASSWORD_HASH))return true;
+  if(ADMIN_PASSWORD&&safeEqual(password,ADMIN_PASSWORD))return true;
+  return false;
+}
 
 function normalizeEmail(value){return String(value||'').trim().toLowerCase();}
 function firebaseRecordEmail(record){
@@ -2937,15 +3019,13 @@ function adminManualServicePublic(row,key=''){
   };
 }
 function nextManualSiteServiceId(){
-  const used=new Set();
-  const addRows=root=>{for(const row of Object.values(root&&typeof root==='object'?root:{})){const id=String(row?.siteServiceId||row?.internalServiceId||row?.sadaServiceId||'');if(/^\d{4,}$/.test(id))used.add(id);}};
-  addRows(readJSON('services.json',{}));addRows(readAdminFreeServices());addRows(readAdminManualServices());
-  let n=BigInt(Date.now());while(used.has(String(n)))n++;return String(n);
+  const used=new Set(allSiteServiceRows().map(entry=>currentSiteServiceId(entry.row)).filter(id=>/^\d{4}$/.test(id)));
+  return allocateFourDigitSiteServiceId(used);
 }
 function findAdminManualService(serviceKey='',siteServiceId=''){
   const key=String(serviceKey||'').trim(),sid=String(siteServiceId||'').trim(),root=readAdminManualServices();
   if(key&&root[key])return {key,row:root[key]};
-  if(sid){for(const [k,row] of Object.entries(root)){if([String(row?.siteServiceId||''),String(row?.id||''),String(row?.internalServiceId||'')].includes(sid))return {key:k,row};}}
+  if(sid){for(const [k,row] of Object.entries(root)){if([String(row?.siteServiceId||''),String(row?.id||''),String(row?.internalServiceId||'')].includes(sid)||serviceRowMatchesSiteId(row,sid))return {key:k,row};}}
   return null;
 }
 function manualSupportMessage(order={}){
@@ -3040,34 +3120,33 @@ async function finalizeAdminFreeServiceUsage(username,serviceKey,localId,state,u
   return {ok};
 }
 function nextAdminFreeSiteServiceId(){
-  const used=new Set();
-  for(const row of Object.values(readJSON('services.json',{})||{})){const id=String(row?.siteServiceId||row?.internalServiceId||row?.sadaServiceId||'');if(/^\d{4,}$/.test(id))used.add(id);}
-  for(const row of Object.values(readAdminFreeServices())){const id=String(row?.siteServiceId||'');if(/^\d{4,}$/.test(id))used.add(id);}
-  let n=BigInt(Date.now());while(used.has(String(n)))n++;return String(n);
+  const used=new Set(allSiteServiceRows().map(entry=>currentSiteServiceId(entry.row)).filter(id=>/^\d{4}$/.test(id)));
+  return allocateFourDigitSiteServiceId(used);
 }
 function freeServiceGroups(row){return Array.isArray(row?.groups)?row.groups:Array.isArray(row?.categories)?row.categories:[row?.category].filter(Boolean)}
 function customAdminFreeServiceMatch(providerId,siteOrCatalogId){
   const pid=String(providerId||'').trim(),needle=String(siteOrCatalogId||'').trim();if(!pid||!needle)return null;
   for(const [key,row] of Object.entries(readAdminFreeServices())){
     if(!row||row.enabled===false||row.adminFreeService!==true||String(row.providerId||'').trim()!==pid)continue;
-    if([key,String(row.fbKey||''),String(row.siteServiceId||''),String(row.id||'')].includes(needle))return {...row,fbKey:key,adminFreeServiceKey:key,adminFreeService:true,free:true};
+    if([key,String(row.fbKey||''),String(row.siteServiceId||''),String(row.id||'')].includes(needle)||serviceRowMatchesSiteId(row,needle))return {...row,fbKey:key,adminFreeServiceKey:key,adminFreeService:true,free:true};
   }
   return null;
 }
 async function authoritativeWebsiteService(providerId, serviceId, firebaseServiceKey){
   const pid=String(providerId||'').trim(), sid=String(serviceId||'').trim(), fkey=String(firebaseServiceKey||'').trim();
   // Administrator-created free services are resolved from their separate store; they never enter or mutate the ordinary catalog.
-  const freeRows=readAdminFreeServices();const freeEntry=Object.entries(freeRows).find(([key,row])=>row&&String(row.providerId||'').trim()===pid&&[key,String(row.fbKey||''),String(row.siteServiceId||''),String(row.id||'')].includes(fkey));
+  const freeRows=readAdminFreeServices();const freeEntry=Object.entries(freeRows).find(([key,row])=>row&&String(row.providerId||'').trim()===pid&&([key,String(row.fbKey||''),String(row.siteServiceId||''),String(row.id||'')].includes(fkey)||serviceRowMatchesSiteId(row,fkey)));
   if(freeEntry){const [freeKey,freeRow]=freeEntry;if(freeRow.adminFreeService!==true||freeRow.enabled===false||freeRow.deleted===true)return null;const freeMatch={...freeRow,fbKey:freeKey,adminFreeServiceKey:freeKey,adminFreeService:true,free:true};return normalizeWebsiteOrderService(freeMatch,pid,String(freeMatch.providerServiceId||sid),String(freeMatch.fbKey||''));}
   // Prefer the hosting catalog: it owns the internal Sada Iraq key, provider mapping, and selling price.
   const localCatalog=readJSON('services.json',{});
   const candidates=Object.entries(localCatalog&&typeof localCatalog==='object'&&!Array.isArray(localCatalog)?localCatalog:{});
   const localMatch=candidates.find(([key,v])=>{
     const vp=String(v?.providerId||'').trim();
-    const vs=String(v?.providerServiceId||v?.smmpartyId||v?.serviceId||'').trim();
-    const internalMatch=!!fkey&&(String(key)===fkey||String(v?.fbKey||'')===fkey||String(v?.siteServiceId||v?.catalogId||'')===fkey);
-    return vp===pid && (internalMatch || (!!sid&&vs===sid));
-  });
+    const internalMatch=!!fkey&&(String(key)===fkey||String(v?.fbKey||'')===fkey||String(v?.siteServiceId||v?.catalogId||'')===fkey||serviceRowMatchesSiteId(v,fkey));
+    // An explicit internal key must win; falling back to provider ID while it is present can select
+    // another site offer that happens to use the same provider service ID.
+    return vp===pid && (fkey?internalMatch:false);
+  }) || (!fkey ? candidates.find(([,v])=>String(v?.providerId||'').trim()===pid&&!!sid&&String(v?.providerServiceId||v?.smmpartyId||v?.serviceId||'').trim()===sid) : null);
   if(localMatch){const [key,v]=localMatch;return normalizeWebsiteOrderService(v,pid,sid,key);}
   // Compatibility fallback for legacy catalogs which only contain provider service records.
   const cached=findInternalApiService(sid);
@@ -3103,7 +3182,7 @@ function internalApiServices(){
     const providerId=String(raw.providerId||'').trim();
     const providerServiceId=String(raw.providerServiceId||raw.smmpartyId||raw.sourceServiceId||raw.service_id||raw.serviceId||'').trim();
     const siteServiceId=String(raw.siteServiceId||raw.internalServiceId||raw.sadaServiceId||'').trim();
-    if(!/^\d{4,}$/.test(siteServiceId)||!providerId||!providerServiceId)continue;
+    if(!/^\d{4}$/.test(siteServiceId)||!providerId||!providerServiceId)continue;
     const rateRaw=raw.sellingUsd??raw.rateUsd??raw.rate??(raw.price!==undefined?Number(raw.price)/FIXED_RATE:undefined);
     const sellingUsd=Number(rateRaw);
     if(!Number.isFinite(sellingUsd)||sellingUsd<0)continue;
@@ -3121,7 +3200,7 @@ function publicApiService(s){
 async function hydrateApiServicesFromFirebase(){const local=internalApiServices();return {count:local.length,source:'hosting-catalog',persistedRemotely:false};}
 function findInternalApiService(id){
   const sid=String(id||'').trim();if(!/^\d{4,}$/.test(sid))return null;
-  return internalApiServices().find(x=>String(x.siteServiceId)===sid)||null;
+  return internalApiServices().find(x=>String(x.siteServiceId)===sid||serviceRowMatchesSiteId(x,sid))||null;
 }
 function apiOrderPublic(o){return {order_id:String(o.publicOrderNo||o.id||''),internal_order_id:String(o.id||''),status:String(o.status||'pending'),service:String(o.siteServiceId||o.serviceId||''),quantity:Number(o.quantity||0),charge:Number(Number(o.chargeUsd||0).toFixed(6)),chargeUsd:Number(Number(o.chargeUsd||0).toFixed(6)),currency:'USD',remains:o.remains===undefined?null:o.remains,start_count:o.startCount===undefined?null:o.startCount,createdAt:o.createdAt||null};}
 function apiSmmStatus(o){const status=String(o?.status||'pending');return {charge:Number(Number(o?.chargeUsd||0).toFixed(6)),currency:'USD',start_count:o?.startCount??null,status,remains:o?.remains??null,order_id:String(o?.publicOrderNo||o?.id||''),service:String(o?.siteServiceId||o?.serviceId||''),quantity:Number(o?.quantity||0),updatedAt:o?.lastCheckedAt||o?.updatedAt||null};}
@@ -3235,14 +3314,14 @@ async function apiCreateOrder(auth,body){
   if(!/^\d{4,}$/.test(serviceId))return {http:422,body:{error:'service must be the 4+ digit Sada Iraq service ID'}};
   if(!/^https?:\/\//i.test(link)||link.length>2000||!Number.isInteger(quantity)||quantity<=0)return {http:422,body:{error:'link must be a valid http(s) URL and quantity a positive integer'}};
   try{await ensureLocalServiceCatalogSeeded();ensureNumericSiteServiceIds();}catch(e){return {http:503,body:{error:'Service catalog is temporarily unavailable; no provider request was sent.',stage:'service_catalog'}};}
-  const svc=await guardServicePrice(findInternalApiService(serviceId));if(!svc)return {http:404,body:{error:'Service not found'}};
+  const svc=await guardServicePrice(findInternalApiService(serviceId));if(!svc)return {http:404,body:{error:'Service not found'}};const canonicalServiceId=String(svc.siteServiceId||serviceId).trim();if(!/^\d{4}$/.test(canonicalServiceId))return {http:409,body:{error:'The service does not have a verified four-digit Sada Iraq ID',stage:'site_service_id'}};
   if(svc.providerAvailable===false||String(svc.availabilityStatus||'').toLowerCase()==='unavailable')return {http:409,body:{error:'Service is unavailable at the supplier or its live price could not be verified; no balance was charged and no provider order was sent.',stage:'provider_service_unavailable'}};
   if(quantity<Number(svc.min)||quantity>Number(svc.max))return {http:422,body:{error:'Quantity outside service limits',min:Number(svc.min),max:Number(svc.max)}};
   const rate=Number(svc.sellingUsd);if(!Number.isFinite(rate)||rate<0)return {http:409,body:{error:'Service sale price is not configured'}};
   const providerRateUsd=catalogRate(svc);if(providerRateUsd===null||!Number.isFinite(providerRateUsd)||providerRateUsd<0)return {http:409,body:{error:'Live supplier cost is not verified; no balance was charged and no provider order was sent.',stage:'provider_cost_unverified'}};
   const idempotency=String(body.idempotency_key||body.request_id||'').trim()||String(body.__headerIdempotencyKey||'').trim();if(idempotency.length>200)return {http:422,body:{error:'Idempotency key is too long'}};
   const idemHash=idempotency?sha256(auth.username+'|'+idempotency):'';
-  const payloadHash=sha256([auth.username,serviceId,link,String(quantity)].join('|'));
+  const payloadHash=sha256([auth.username,canonicalServiceId,link,String(quantity)].join('|'));
   if(idemHash){const existing=await apiFindExistingIdempotentOrder(auth,idemHash).catch(()=>null);if(existing)return {http:200,body:{order:apiOrderLabel(existing),order_id:apiOrderLabel(existing),internal_order_id:String(existing.id||''),status:String(existing.status||'pending'),idempotent:true}};}
   let wallet;try{wallet=await resolveApiWallet(auth);}catch(e){return {http:e.code==='wallet_user_not_found'?404:503,body:{error:apiSafeError(e),stage:'wallet_lookup'}};}
   const {pct,total}=calcApiChargeUsd({...svc,sellingUsd:rate},quantity,wallet.user);
@@ -3253,13 +3332,13 @@ async function apiCreateOrder(auth,body){
   const chargeIQD=Number((total*FIXED_RATE).toFixed(4));
   await ensureProviderRuntime(svc.providerId);const {prov}=getProviderById(svc.providerId,{allowSingleFallback:false});if(!prov?.url||!prov?.key)return {http:502,body:{error:'Provider unavailable',stage:'provider_lookup'}};
   const requestKey=idemHash||sha256(auth.username+'|'+crypto.randomUUID());
-  const requestData={requestKey,username:auth.username,serviceId,siteServiceId:serviceId,providerId:svc.providerId,providerServiceId:svc.providerServiceId,quantity,link,chargeUsd:total,payloadHash,idempotencyKey:idempotency||'',idempotencyHash:idemHash||'',createdAt:nowISO()};
+  const requestData={requestKey,username:auth.username,serviceId:canonicalServiceId,siteServiceId:canonicalServiceId,providerId:svc.providerId,providerServiceId:svc.providerServiceId,quantity,link,chargeUsd:total,payloadHash,idempotencyKey:idempotency||'',idempotencyHash:idemHash||'',createdAt:nowISO()};
   let reserve;try{reserve=await apiReserveBalance(wallet.path,requestKey,requestData,chargeIQD);}catch(e){return {http:503,body:{error:'Could not reserve balance safely in Firebase; no provider request was sent',stage:'wallet_reserve'}};}
   if(reserve.result?.error)return {http:404,body:{error:'User wallet record was not found'}};
   if(reserve.result?.insufficient)return {http:402,body:{error:'Insufficient balance',balance:Number((Number(reserve.result.balanceIQD||0)/FIXED_RATE).toFixed(6)),currency:'USD'}};
   if(reserve.result?.duplicate){const r=reserve.result.request||{};if(r.state==='completed'&&r.orderId)return {http:200,body:{order:String(r.publicOrderNo||r.orderId),order_id:String(r.publicOrderNo||r.orderId),internal_order_id:String(r.orderId),status:'pending',idempotent:true}};return {http:409,body:{error:'This idempotent request is already in progress or has an uncertain provider result; it was not resent.',uncertain:['reserved','uncertain'].includes(String(r.state||'')),state:String(r.state||'unknown')}};}
   const before=Number(reserve.result.beforeIQD||0),after=Number(reserve.result.afterIQD||0);
-  const reserveEvent={id:'APIRES_'+requestKey,user:auth.username,type:'order_reservation',amountUSD:Number((-total).toFixed(6)),amountIQD:Number((-chargeIQD).toFixed(4)),beforeIQD:before,afterIQD:after,reason:'حجز رصيد لطلب API قبل إرساله للمزود',admin:'api',reference:requestKey,serviceId,providerServiceId:svc.providerServiceId,createdAt:nowISO()};
+  const reserveEvent={id:'APIRES_'+requestKey,user:auth.username,type:'order_reservation',amountUSD:Number((-total).toFixed(6)),amountIQD:Number((-chargeIQD).toFixed(4)),beforeIQD:before,afterIQD:after,reason:'حجز رصيد لطلب API قبل إرساله للمزود',admin:'api',reference:requestKey,serviceId:canonicalServiceId,providerServiceId:svc.providerServiceId,createdAt:nowISO()};
   apiLedgerOnce(reserveEvent);
   let publicOrderNo;try{publicOrderNo=await nextPublicOrderNumber();}catch(e){try{const rel=await apiReleaseReservation(wallet.path,requestKey,'public_order_number_failed');if(rel.result?.released&&chargeIQD>0)apiLedgerOnce({id:'APIREL_'+requestKey,user:auth.username,type:'refund',amountUSD:Number(total.toFixed(6)),amountIQD:chargeIQD,beforeIQD:before,afterIQD:rel.result.afterIQD,reason:'إرجاع حجز API لعدم تخصيص رقم طلب',admin:'api',reference:requestKey,createdAt:nowISO()});}catch(_){}return {http:503,body:{error:'Could not allocate order number; provider was not called'}};}
   let providerResponse,providerOrderId;
@@ -3270,15 +3349,15 @@ async function apiCreateOrder(auth,body){
     const rejected=!!e.providerRejected;
     if(rejected){try{const rel=await apiReleaseReservation(wallet.path,requestKey,String(e.message||'provider_rejected'));if(rel.result?.released)apiLedgerOnce({id:'APIREL_'+requestKey,user:auth.username,type:'refund',amountUSD:Number(total.toFixed(6)),amountIQD:chargeIQD,beforeIQD:rel.result.beforeIQD,afterIQD:rel.result.afterIQD,reason:'إرجاع حجز بعد رفض المزود للطلب بشكل مؤكد',admin:'api-provider-rejection',reference:requestKey,createdAt:nowISO()});}catch(re){console.error('API provider rejection refund failed:',String(re.message||re).slice(0,120));}}
     else{try{await apiMarkRequest(wallet.path,requestKey,'uncertain',{uncertainAt:nowISO(),providerDiagnostic:apiSafeError(e)});}catch(_){} }
-    appendJsonLedger('provider_failures.json',{stage:'api_order_create',uncertain:!rejected,username:auth.username,providerId:svc.providerId,siteServiceId:serviceId,providerServiceId:svc.providerServiceId,quantity,providerHttpStatus:Number(e.httpStatus||0)||null,providerErrorCode:String(e.providerErrorCode||'').slice(0,60),error:apiSafeError(e),requestKey,createdAt:nowISO()});
+    appendJsonLedger('provider_failures.json',{stage:'api_order_create',uncertain:!rejected,username:auth.username,providerId:svc.providerId,siteServiceId:canonicalServiceId,providerServiceId:svc.providerServiceId,quantity,providerHttpStatus:Number(e.httpStatus||0)||null,providerErrorCode:String(e.providerErrorCode||'').slice(0,60),error:apiSafeError(e),requestKey,createdAt:nowISO()});
     return {http:rejected?502:504,body:{error:providerAuthErrorText(e.message)?'Provider API key rejected':apiSafeError(e),stage:'provider_add',uncertain:!rejected,request_id:requestKey}};
   }
   const id='API_'+crypto.randomUUID().replace(/-/g,'');const now=nowISO();
   const grossProfitUsd=Number((total-providerCostUsd).toFixed(6));
   const actualMarkupPct=providerCostUsd>0?Number((grossProfitUsd/providerCostUsd*100).toFixed(2)):null;
   const profitMarginPct=total>0?Number((grossProfitUsd/total*100).toFixed(2)):null;
-  const order={id,localId:id,publicOrderNo:String(publicOrderNo),user:auth.username,userName:String(wallet.user.fullName||wallet.user.displayName||wallet.user.username||wallet.user.userName||auth.username),memberId:String(wallet.user.id||wallet.user.userId||wallet.user.user_id||wallet.user.uid||wallet.user.firebaseUid||wallet.user.authUid||auth.username),email:String(wallet.user.email||wallet.user.emailAddress||''),serviceId,siteServiceId:serviceId,providerServiceId:String(svc.providerServiceId),serviceName:String(svc.name||'خدمة'),category:String(svc.category||''),link,quantity,unitSellingUsd:rate,discountPct:pct,chargeUsd:total,sellingPriceUsd:total,total:chargeIQD,totalIQD:chargeIQD,providerRateUsd,providerCostUsd,providerCostIQD:Number((providerCostUsd*FIXED_RATE).toFixed(4)),grossProfitUsd,grossProfitIQD:Number((grossProfitUsd*FIXED_RATE).toFixed(4)),markupPct:requiredMarkupPct,actualMarkupPct,profitMarginPct,status:'pending',providerStatus:String(providerResponse?.status||'pending'),providerId:String(svc.providerId),providerName:String(prov.name||svc.providerId),providerOrderId:String(providerOrderId),apiCreated:true,orderSource:'api',origin:'api',source:'public-api',free:!!svc.free||total<=0,apiIdempotencyHash:idemHash||'',idempotencyKey:idempotency||null,refillAllowed:!!svc.refill,cancelAllowed:!!svc.cancel,createdAt:now,updatedAt:now};
-  try{await persistOrderToFirebase(order);upsertLocalApiOrder(order);}catch(e){try{await apiMarkRequest(wallet.path,requestKey,'uncertain',{providerOrderId:String(providerOrderId),publicOrderNo:String(publicOrderNo),uncertainAt:nowISO(),error:'provider accepted order but Firebase order persistence was not confirmed'});}catch(_){}appendJsonLedger('provider_failures.json',{stage:'api_order_persist',uncertain:true,username:auth.username,siteServiceId:serviceId,providerServiceId:svc.providerServiceId,providerOrderId:String(providerOrderId),requestKey,error:apiSafeError(e),createdAt:nowISO()});return {http:503,body:{error:'Provider accepted this order, but Firebase did not confirm its saved order record. Do not retry it with a new key.',order:String(publicOrderNo),internal_order_id:id,providerOrderId:String(providerOrderId),uncertain:true}};}
+  const order={id,localId:id,publicOrderNo:String(publicOrderNo),user:auth.username,userName:String(wallet.user.fullName||wallet.user.displayName||wallet.user.username||wallet.user.userName||auth.username),memberId:String(wallet.user.id||wallet.user.userId||wallet.user.user_id||wallet.user.uid||wallet.user.firebaseUid||wallet.user.authUid||auth.username),email:String(wallet.user.email||wallet.user.emailAddress||''),serviceId:canonicalServiceId,siteServiceId:canonicalServiceId,providerServiceId:String(svc.providerServiceId),serviceName:String(svc.name||'خدمة'),category:String(svc.category||''),link,quantity,unitSellingUsd:rate,discountPct:pct,chargeUsd:total,sellingPriceUsd:total,total:chargeIQD,totalIQD:chargeIQD,providerRateUsd,providerCostUsd,providerCostIQD:Number((providerCostUsd*FIXED_RATE).toFixed(4)),grossProfitUsd,grossProfitIQD:Number((grossProfitUsd*FIXED_RATE).toFixed(4)),markupPct:requiredMarkupPct,actualMarkupPct,profitMarginPct,status:'pending',providerStatus:String(providerResponse?.status||'pending'),providerId:String(svc.providerId),providerName:String(prov.name||svc.providerId),providerOrderId:String(providerOrderId),apiCreated:true,orderSource:'api',origin:'api',source:'public-api',free:!!svc.free||total<=0,apiIdempotencyHash:idemHash||'',idempotencyKey:idempotency||null,refillAllowed:!!svc.refill,cancelAllowed:!!svc.cancel,createdAt:now,updatedAt:now};
+  try{await persistOrderToFirebase(order);upsertLocalApiOrder(order);}catch(e){try{await apiMarkRequest(wallet.path,requestKey,'uncertain',{providerOrderId:String(providerOrderId),publicOrderNo:String(publicOrderNo),uncertainAt:nowISO(),error:'provider accepted order but Firebase order persistence was not confirmed'});}catch(_){}appendJsonLedger('provider_failures.json',{stage:'api_order_persist',uncertain:true,username:auth.username,siteServiceId:canonicalServiceId,providerServiceId:svc.providerServiceId,providerOrderId:String(providerOrderId),requestKey,error:apiSafeError(e),createdAt:nowISO()});return {http:503,body:{error:'Provider accepted this order, but Firebase did not confirm its saved order record. Do not retry it with a new key.',order:String(publicOrderNo),internal_order_id:id,providerOrderId:String(providerOrderId),uncertain:true}};}
   try{
     const done=await apiMarkRequest(wallet.path,requestKey,'complete_and_account',{orderId:id,publicOrderNo:String(publicOrderNo),providerOrderId:String(providerOrderId),completedAt:nowISO()});
     if(done.result?.error)throw new Error(done.result.error);
@@ -4077,12 +4156,12 @@ async function routeAPI(req,res,urlObj){
   }
   // Administrator-created manual/support services are isolated from all supplier-backed catalog records.
   if(p==='/api/admin/manual-services'&&req.method==='GET'){
-    if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
+    if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});ensureNumericSiteServiceIds();
     const services=Object.entries(readAdminManualServices()).filter(([,v])=>v&&v.serviceKind==='manual_support'&&v.deleted!==true).map(([key,v])=>({...adminManualServicePublic(v,key),...v,key,fbKey:key})).sort((a,b)=>(Date.parse(b.updatedAt||b.createdAt||0)||0)-(Date.parse(a.updatedAt||a.createdAt||0)||0));
     return json(res,200,{ok:true,services,storageMode:DATA_IS_EXTERNAL?'persistent-volume':'release-local',warning:!DATA_IS_EXTERNAL?'اربط Railway Volume على /data وثبّت SADA_DATA_DIR=/data حتى تبقى الخدمات اليدوية بعد إعادة النشر.':''});
   }
   if(p==='/api/admin/manual-services'&&req.method==='POST'){
-    if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
+    if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});ensureNumericSiteServiceIds();
     const b=await bodyJSON(req,512*1024),action=String(b.action||'save'),key=String(b.key||'').trim(),root=readAdminManualServices(),actor=String(currentSession?.username||ADMIN_USER),at=nowISO();
     if(action==='delete'){
       if(!key||!root[key]||root[key].deleted===true)return json(res,404,{ok:false,error:'الخدمة اليدوية غير موجودة.'});
@@ -4111,7 +4190,7 @@ async function routeAPI(req,res,urlObj){
   }
   // Administrator-managed free offers are isolated from ordinary provider services.
   if(p==='/api/admin/free-services'&&req.method==='GET'){
-    if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
+    if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});ensureNumericSiteServiceIds();
     const cfg=providerStore(),deletedIds=cfg.deletedProviderIds instanceof Set?cfg.deletedProviderIds:new Set(Array.isArray(cfg.deletedProviderIds)?cfg.deletedProviderIds.map(String):[]),providers=Object.entries(cfg.providers||{}).filter(([id,v])=>v&&!deletedIds.has(String(id))).map(([id,v])=>({id:String(id),name:String(v.name||id),configured:!!(v.url&&v.key)}));
     return json(res,200,{ok:true,services:Object.entries(readAdminFreeServices()).filter(([,v])=>v&&!v.deleted).map(([key,v])=>({...v,key,fbKey:key,providerRateUsd:catalogRate(v)})).sort((a,b)=>(Date.parse(b.updatedAt||b.createdAt||0)||0)-(Date.parse(a.updatedAt||a.createdAt||0)||0)),providers,storageMode:DATA_IS_EXTERNAL?'persistent-volume':'release-local',warning:!DATA_IS_EXTERNAL?'اربط Railway Volume على /data وثبّت SADA_DATA_DIR=/data حتى تبقى إعدادات الخدمات المجانية بعد إعادة النشر.':''});
   }
@@ -4128,7 +4207,7 @@ async function routeAPI(req,res,urlObj){
     }catch(e){return json(res,502,{ok:false,error:'تعذر التحقق من الخدمة لدى المزود: '+String(e.message||e).slice(0,200)});}
   }
   if(p==='/api/admin/free-services'&&req.method==='POST'){
-    if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
+    if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});ensureNumericSiteServiceIds();
     const b=await bodyJSON(req,512*1024),action=String(b.action||'save'),key=String(b.key||'').trim(),root=readAdminFreeServices();
     if(action==='delete'){
       if(!key||!root[key])return json(res,404,{ok:false,error:'الخدمة المجانية غير موجودة.'});
@@ -5205,10 +5284,19 @@ async function routeAPI(req,res,urlObj){
       const sessionToken=setSession(res,{role:'user',username:u}),clean={...user};delete clean.password;delete clean.passwordHash;
       return json(res,200,{ok:true,role:'user',username:u,user:clean,sessionToken,emailVerificationRequired:false,message:'تم إنشاء الحساب وحفظه بنجاح؛ لا يلزم رمز تحقق للبريد عند التسجيل.'});
     }
-    if(u.toLowerCase()===ADMIN_USER.toLowerCase()){
-      if(!adminPasswordConfigured())return json(res,503,{ok:false,code:'admin_password_not_configured',error:'تسجيل دخول الإدارة غير مهيأ على الخادم. أضف ADMIN_EMAIL وADMIN_PASSWORD (أو ADMIN_PASSWORD_HASH) في Railway Variables ثم أعد النشر.'});
-      if(!adminPasswordValid(pw))return json(res,401,{ok:false,code:'invalid_admin_credentials',error:'بيانات دخول الإدارة غير صحيحة. تحقق من ADMIN_EMAIL وكلمة مرور الإدارة المضبوطة في Railway.'});
-      const sessionToken=setSession(res,{role:'admin',username:ADMIN_USER});return json(res,200,{ok:true,role:'admin',username:ADMIN_USER,sessionToken});
+    const submittedEmail=String(u||'').trim().toLowerCase();
+    const bundledOwnerEmail=String(BUNDLED_ADMIN_AUTH.email||'').trim().toLowerCase();
+    const isBundledOwner=!!bundledOwnerEmail&&submittedEmail===bundledOwnerEmail;
+    if(submittedEmail===String(ADMIN_USER||'').trim().toLowerCase()||isBundledOwner){
+      if(!adminPasswordConfigured())return json(res,503,{ok:false,code:'admin_password_not_configured',error:'تسجيل دخول الإدارة غير مهيأ على الخادم. أضف بيانات الإدارة في Railway أو استخدم حزمة الإدارة التي تحتوي حساب المالك.'});
+      const settings=readJSON('settings.json',{});
+      // The owner's bundled account stays usable even if Railway has an older ADMIN_EMAIL/ADMIN_PASSWORD.
+      // A deliberate password reset (adminPasswordOverride) takes precedence and disables the bundled password.
+      const bundledOwnerValid=isBundledOwner&&settings.adminPasswordOverride!==true&&String(BUNDLED_ADMIN_AUTH.passwordHash||'').startsWith('scrypt$')&&verifyPassword(pw,BUNDLED_ADMIN_AUTH.passwordHash);
+      const configuredAdminValid=submittedEmail===String(ADMIN_USER||'').trim().toLowerCase()&&adminPasswordValid(pw);
+      if(!bundledOwnerValid&&!configuredAdminValid)return json(res,401,{ok:false,code:'invalid_admin_credentials',error:'بيانات دخول الإدارة غير صحيحة. تحقق من البريد وكلمة المرور أو إعدادات الإدارة.'});
+      const adminIdentity=isBundledOwner?BUNDLED_ADMIN_AUTH.email:ADMIN_USER;
+      const sessionToken=setSession(res,{role:'admin',username:adminIdentity});return json(res,200,{ok:true,role:'admin',username:adminIdentity,sessionToken});
     }
     const store=readJSON('users.json',{users:{}});let actualUsername=u;let user=store.users?.[u]||null;
     if(!user){const found=Object.entries(store.users||{}).find(([key,val])=>key.toLowerCase()===u.toLowerCase()||String(val?.username||'').toLowerCase()===u.toLowerCase());if(found){actualUsername=found[0];user=found[1];}}
@@ -5246,7 +5334,7 @@ async function routeAPI(req,res,urlObj){
     const wait=rateLimit(req,'email');if(wait)return json(res,429,{ok:false,error:'محاولات كثيرة؛ أعد المحاولة بعد '+wait+' ثانية'},{'Retry-After':String(wait)});
     const b=await bodyJSON(req),email=normalizeEmail(b.email),code=String(b.code||''),newPassword=String(b.newPassword||'');if(!validEmail(email)||!/^[0-9]{6}$/.test(code))return json(res,422,{ok:false,error:'أدخل البريد ورمز التحقق المكوّن من 6 أرقام.'});if(newPassword.length<8)return json(res,422,{ok:false,error:'كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل.'});
     const challengeStore=readJSON('email_challenges.json',{}),challenge=challengeStore[emailChallengeKey(email,'reset')];if(!challenge||!challenge.username)return json(res,422,{ok:false,error:'أرسل رمز استعادة جديداً أولاً.'});
-    if(challenge.username===ADMIN_USER){if(process.env.ADMIN_PASSWORD||process.env.ADMIN_PASSWORD_HASH)return json(res,409,{ok:false,error:'كلمة مرور الإدارة تُدار من Railway Variables؛ لم يتغير شيء.'});const verified=consumeEmailChallenge(email,'reset',code,challenge.username);if(!verified.ok)return json(res,422,{ok:false,error:verified.error});const cfg=readJSON('settings.json',{});cfg.adminPasswordHash=hashPassword(newPassword);cfg.adminPasswordUpdatedAt=nowISO();writeJSON('settings.json',cfg);return json(res,200,{ok:true,message:'تم تغيير كلمة مرور الإدارة. سجّل الدخول بكلمة المرور الجديدة.'});}
+    if(challenge.username===ADMIN_USER){if(process.env.ADMIN_PASSWORD||process.env.ADMIN_PASSWORD_HASH)return json(res,409,{ok:false,error:'كلمة مرور الإدارة تُدار من Railway Variables؛ لم يتغير شيء.'});const verified=consumeEmailChallenge(email,'reset',code,challenge.username);if(!verified.ok)return json(res,422,{ok:false,error:verified.error});const cfg=readJSON('settings.json',{});cfg.adminPasswordHash=hashPassword(newPassword);cfg.adminPasswordOverride=true;cfg.adminPasswordUpdatedAt=nowISO();writeJSON('settings.json',cfg);return json(res,200,{ok:true,message:'تم تغيير كلمة مرور الإدارة. سجّل الدخول بكلمة المرور الجديدة.'});}
     const usersStore=readJSON('users.json',{users:{}});let localKey=Object.keys(usersStore.users||{}).find(k=>k===challenge.username)||Object.keys(usersStore.users||{}).find(k=>k.toLowerCase()===String(challenge.username).toLowerCase());let user=localKey?usersStore.users[localKey]:null;let resetFirebasePath=localKey?'users/'+firebaseSafeKey(localKey):'';let remoteRecord=null;
     if(!user){try{remoteRecord=await findRemoteUserByUsername(challenge.username);if(remoteRecord){localKey=remoteRecord.username||challenge.username;resetFirebasePath=remoteRecord.firebasePath||('users/'+firebaseSafeKey(localKey));user={...remoteRecord.user,username:localKey};usersStore.users[localKey]=user;}}catch(e){return json(res,503,{ok:false,error:'تعذر تحميل سجل الحساب القديم من قاعدة البيانات؛ لم تتغير كلمة المرور. أعد إرسال رمز جديد لاحقاً.'});}}
     if(!user||normalizeEmail(user.email||user.mail||user.emailAddress)!==email)return json(res,409,{ok:false,error:'تعذر مطابقة البريد مع حسابك؛ لم تتغير كلمة المرور.'});
@@ -5468,7 +5556,7 @@ async function routeAPI(req,res,urlObj){
     const svc=await guardServicePrice(await authoritativeWebsiteService(providerId,requestedProviderServiceId||legacyServiceId||requestedSiteServiceId,firebaseServiceKey));
     if(!svc)return json(res,409,{ok:false,error:'لم أستطع التحقق من الخدمة وربطها بالمزوّد. أعد فحص معرّف الموقع وربط خدمة المزود من لوحة الإدارة؛ لم يُخصم أي رصيد ولم يُرسل طلب.',stage:'service_lookup',siteServiceId:requestedSiteServiceId||firebaseServiceKey||null,providerServiceId:requestedProviderServiceId||legacyServiceId||null});
     if(svc.providerAvailable===false||String(svc.availabilityStatus||'').toLowerCase()==='unavailable')return json(res,409,{ok:false,error:'هذه الخدمة غير متاحة حالياً لدى المزود أو لم يُتحقق من سعرها الحي. أُوقف الطلب ولن يُخصم أي رصيد.',stage:'provider_service_unavailable',siteServiceId:String(svc.siteServiceId||''),providerServiceId:String(svc.providerServiceId||'')});
-    const siteServiceId=String(requestedSiteServiceId||svc.siteServiceId||svc.fbKey||firebaseServiceKey||(!requestedProviderServiceId?legacyServiceId:'')).trim();
+    const siteServiceId=String(svc.siteServiceId||requestedSiteServiceId||svc.fbKey||firebaseServiceKey||(!requestedProviderServiceId?legacyServiceId:'')).trim();
     const providerServiceId=String(svc.providerServiceId||requestedProviderServiceId||legacyServiceId||'').trim();
     if(!siteServiceId)return json(res,409,{ok:false,error:'الخدمة لا تملك معرّفاً داخلياً ثابتاً في كتالوج صدى العراق؛ لم يُخصم أي رصيد ولم يُرسل طلب.',stage:'site_service_id'});
     if(!providerServiceId)return json(res,409,{ok:false,error:'الخدمة لا تملك معرّف مزوّد محفوظاً؛ لم يُخصم أي رصيد ولم يُرسل طلب.',stage:'provider_service_id',siteServiceId});
@@ -5816,7 +5904,7 @@ async function routeAPI(req,res,urlObj){
     const dbInfo=firebaseDatabaseDiagnosticInfo();
     const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.41',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
     // Keep operational configuration details private; only an authenticated admin can inspect them.
-    if(isAdmin(req)){const credentialStatus=firebaseServiceAccountStatus();health.firebaseDatabase={host:dbInfo.host,source:dbInfo.source,databaseProjectHint:dbInfo.databaseProjectHint,serviceAccountProjectId:dbInfo.serviceAccountProjectId||null,configuredWebProjectId:dbInfo.configuredWebProjectId||null,serviceAccountProjectMatch:dbInfo.serviceAccountProjectMatch};health.securityConfig={sessionSecretConfigured:!!String(process.env.SESSION_SECRET||'').trim(),dedicatedEncryptionKeyConfigured:!!String(process.env.SADA_ENCRYPTION_KEY||'').trim(),stableEncryptionAvailable:telegramEncryptionReady(),firebaseConfigured:!!FIREBASE_DATABASE_URL,firebaseServiceAccountConfigured:credentialStatus.ok,firebaseCredentialStatus:{ok:credentialStatus.ok,code:credentialStatus.code,source:credentialStatus.source,message:credentialStatus.message},firebaseDatabaseSecretConfigured:!!String(process.env.FIREBASE_DATABASE_SECRET||'').trim(),firebaseAuthAvailable:firebaseAuthAvailable(),emailServiceConfigured:!!(String(process.env.RESEND_API_KEY||'').trim()&&String(process.env.RESEND_FROM_EMAIL||process.env.EMAIL_FROM||'').trim()),telegramTokenFromEnvironment:!!String(process.env.TELEGRAM_BOT_TOKEN||'').trim(),adminPasswordFromEnvironment:!!(String(process.env.ADMIN_PASSWORD||'').trim()||String(process.env.ADMIN_PASSWORD_HASH||'').trim())};}
+    if(isAdmin(req)){const credentialStatus=firebaseServiceAccountStatus();health.firebaseDatabase={host:dbInfo.host,source:dbInfo.source,databaseProjectHint:dbInfo.databaseProjectHint,serviceAccountProjectId:dbInfo.serviceAccountProjectId||null,configuredWebProjectId:dbInfo.configuredWebProjectId||null,serviceAccountProjectMatch:dbInfo.serviceAccountProjectMatch};health.securityConfig={sessionSecretConfigured:!!String(process.env.SESSION_SECRET||'').trim(),dedicatedEncryptionKeyConfigured:!!String(process.env.SADA_ENCRYPTION_KEY||'').trim(),stableEncryptionAvailable:telegramEncryptionReady(),firebaseConfigured:!!FIREBASE_DATABASE_URL,firebaseServiceAccountConfigured:credentialStatus.ok,firebaseCredentialStatus:{ok:credentialStatus.ok,code:credentialStatus.code,source:credentialStatus.source,message:credentialStatus.message},firebaseDatabaseSecretConfigured:!!String(process.env.FIREBASE_DATABASE_SECRET||'').trim(),firebaseAuthAvailable:firebaseAuthAvailable(),emailServiceConfigured:!!(String(process.env.RESEND_API_KEY||'').trim()&&String(process.env.RESEND_FROM_EMAIL||process.env.EMAIL_FROM||'').trim()),telegramTokenFromEnvironment:!!String(process.env.TELEGRAM_BOT_TOKEN||'').trim(),adminPasswordFromEnvironment:!!(String(process.env.ADMIN_PASSWORD||'').trim()||String(process.env.ADMIN_PASSWORD_HASH||'').trim()),adminPasswordConfigured:adminPasswordConfigured()};}
     return json(res,200,health);
   }
   return json(res,404,{error:'API endpoint not found'});
@@ -5853,7 +5941,7 @@ function serveStatic(req,res,urlObj){
   const bundled=bundledAssetRecord(p);
   if(bundled){res.statusCode=200;res.setHeader('Content-Type',bundled.contentType);res.setHeader('Cache-Control','public, max-age=300, must-revalidate');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Content-Length',String(bundled.buffer.length));res.setHeader('ETag','"'+crypto.createHash('sha1').update(bundled.buffer).digest('hex')+'"');return req.method==='HEAD'?res.end():res.end(bundled.buffer);}
   const baseName=path.posix.basename(p).toLowerCase();
-  const blockedFiles=new Set(['server.js','package.json','package-lock.json','bundled-assets.json','config.json','authproviders.json','login.json','noauth.json','cookies.txt','firebase-service-account.json']);
+  const blockedFiles=new Set(['server.js','package.json','package-lock.json','bundled-assets.json','config.json','admin-auth.json','authproviders.json','login.json','noauth.json','cookies.txt','firebase-service-account.json']);
   if(blockedFiles.has(baseName) || /^\/(?:data|tests|node_modules)(?:\/|$)/i.test(p) || /(?:^|\/)\.(?:env|git|npmrc)/i.test(p) || /(?:^|\/)(?:start_here|readme|release-smoke|api-runtime-smoke|asiacell-runtime-smoke|full-flow-audit)[^/]*$/i.test(p) || /(?:^|\/)(?:database\.rules\.json|railway\.json|nixpacks\.toml|dockerfile)$/i.test(p)) return json(res,403,{error:'Forbidden'});
   const file=path.resolve(ROOT,'.'+p);
   const relative=path.relative(ROOT,file);
@@ -5865,7 +5953,7 @@ function serveStatic(req,res,urlObj){
       if(readErr)return json(res,404,{error:'Not found'});
       res.setHeader('Content-Type',MIME[ext]||'application/octet-stream');res.setHeader('Last-Modified',record.lastModified);res.setHeader('Vary','Accept-Encoding');
       // HTML revalidates on every visit so deployments appear immediately; assets can be reused briefly.
-      res.setHeader('Cache-Control',ext==='.html'?'no-store, no-cache, must-revalidate, max-age=0':'public, max-age=300, must-revalidate');if(ext==='.html'){res.setHeader('Pragma','no-cache');res.setHeader('Expires','0');}
+      res.setHeader('Cache-Control',ext==='.html'?'no-cache, must-revalidate, max-age=0':'public, max-age=300, must-revalidate');if(ext==='.html'){res.setHeader('Pragma','no-cache');res.setHeader('Expires','0');}
       let body=record.raw,encoding='';const ae=String(req.headers['accept-encoding']||'');
       if(record.br&&/(?:^|,\s*)br(?:\s*;q=(?!0(?:\.0*)?)[0-9.]+)?(?:,|$)/i.test(ae)){body=record.br;encoding='br';}
       else if(record.gzip&&/(?:^|,\s*)gzip(?:\s*;q=(?!0(?:\.0*)?)[0-9.]+)?(?:,|$)/i.test(ae)){body=record.gzip;encoding='gzip';}
@@ -6057,7 +6145,7 @@ const server=http.createServer(async (req,res)=>{
 });
 server.listen(PORT,'0.0.0.0',()=>{
   console.log(`${APP_NAME} v${APP_VERSION} build ${BUILD_ID} running on port ${PORT}`);
-  if(!process.env.ADMIN_PASSWORD&&!String(process.env.ADMIN_PASSWORD_HASH||'').startsWith('scrypt$')&&!String(readJSON('settings.json',{}).adminPasswordHash||'').startsWith('scrypt$')) console.warn('SECURITY WARNING: ADMIN_PASSWORD/ADMIN_PASSWORD_HASH are not configured in Railway; environment-based admin login is disabled until a secret is configured.');
+  if(!adminPasswordConfigured()) console.warn('SECURITY WARNING: Admin login is not configured. Set ADMIN_PASSWORD/ADMIN_PASSWORD_HASH or restore a valid bundled admin hash.');
   if(!process.env.SESSION_SECRET){if(SESSION_SECRET_SOURCE==='firebase-service-credential')console.warn('SECURITY NOTICE: SESSION_SECRET is not set; using a stable, purpose-separated key derived from the server-only Firebase service credential. Set SESSION_SECRET explicitly for independent key rotation.');else console.warn('SECURITY WARNING: configure a long random SESSION_SECRET for stable, multi-instance signed sessions.');}
   if(!process.env.SADA_ENCRYPTION_KEY && !telegramEncryptionReady()) console.warn('SECURITY WARNING: could not create a stable encryption key; set a strong fixed SESSION_SECRET or attach persistent Railway storage.');
   // Bind HTTP before any remote Firebase hydration so saved sessions respond immediately.
