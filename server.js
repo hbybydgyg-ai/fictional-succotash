@@ -27,8 +27,8 @@ function readStaticAssetBuffer(assetPath){
 const DATA = path.resolve(process.env.SADA_DATA_DIR || process.env.DATA_DIR || (process.env.RAILWAY_VOLUME_MOUNT_PATH ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, 'sada-data') : LEGACY_DATA));
 const DATA_IS_EXTERNAL = path.resolve(DATA) !== path.resolve(LEGACY_DATA);
 const APP_NAME = 'صدى العراق';
-const APP_VERSION = '1.6.44';
-const BUILD_ID = 'SADA-1.6.44-RESTORE-DELETE-ALL-PROVIDER-CATEGORY-20261014';
+const APP_VERSION = '1.6.45';
+const BUILD_ID = 'SADA-1.6.45-GLOBAL-CATALOG-DELETE-CACHE-20261014';
 // Keep the owner's admin identity available after packaging, but store only a scrypt hash
 // in the project. Railway variables can still explicitly override this packaged credential.
 function loadBundledAdminAuth(){
@@ -4549,6 +4549,55 @@ async function routeAPI(req,res,urlObj){
     return json(res,200,{ok:true,value,source:'firebase',storage:'firebase+verified-server-cache',storageMode:'firebase',warning:''});
   }
 
+  // Dedicated global catalog deletion: remove live service rows, section metadata, section order,
+  // and any old backups from this same operation. This destructive action intentionally retains no backup.
+  if(p==='/api/admin/catalog/delete-all'&&(req.method==='GET'||req.method==='POST')){
+    if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
+    let servicesBefore,metaBefore,remoteOrder;
+    try{
+      await ensureLocalServiceCatalogSeeded();
+      const loaded=await Promise.all([
+        firebaseGetJson('services',15000),
+        firebaseGetJson('categoryMeta',12000),
+        firebaseGetJson('settings/catalogOrder',10000)
+      ]);
+      servicesBefore=catalogObject(loaded[0]);metaBefore=catalogObject(loaded[1]);remoteOrder=loaded[2];
+    }catch(e){return json(res,503,{ok:false,error:'تعذر قراءة كتالوج Firebase؛ لم تُحذف أي بيانات. '+String(e.message||e).slice(0,160)});}
+    const settingsBefore=readJSON('catalog_settings.json',{});
+    const orderBefore=remoteOrder&&typeof remoteOrder==='object'&&!Array.isArray(remoteOrder)?remoteOrder:(settingsBefore.catalogOrder||{categories:[],services:{}});
+    const sectionNames=new Map();
+    const addSection=name=>{const label=String(name??'').trim(),key=normalizeCatalogLabel(label);if(label&&key&&!sectionNames.has(key))sectionNames.set(key,label);};
+    for(const row of Object.values(servicesBefore))for(const name of catalogRowGroups(row))addSection(name);
+    for(const [key,meta] of Object.entries(metaBefore))addSection(meta?.name||key);
+    for(const name of (Array.isArray(orderBefore.categories)?orderBefore.categories:[]))addSection(name);
+    if(req.method==='GET')return json(res,200,{ok:true,source:'firebase',verified:true,total:Object.keys(servicesBefore).length,sections:sectionNames.size});
+    const b=await bodyJSON(req,1024*1024);
+    if(b.confirmation!=='DELETE_ALL_SERVICES')return json(res,422,{ok:false,error:'يلزم تأكيد حذف جميع الخدمات والأقسام.'});
+    const at=nowISO(),version=String(Date.now()),emptyOrder={categories:[],services:{}};
+    const settingsNext={...settingsBefore,catalogOrder:emptyOrder,catalogUpdatedAt:at,lastDeleteAllServicesAt:at,firebaseSvcsVersion:version,firebaseCatalogLastVerifiedCounts:{services:0,sections:0}};
+    // Clear the persistent host mirror before the remote mutation. If Firebase cannot confirm the
+    // deletion, reloadLocalCatalogFromFirebase() restores the mirror from the still-authoritative DB.
+    try{
+      writeJSON('services.json',{});writeJSON('category_meta.json',{});writeJSON('catalog_settings.json',settingsNext);
+      ensureNumericSiteServiceIds();
+      const patch={services:null,categoryMeta:null,'settings/catalogOrder':emptyOrder,'settings/svcsVersion':version};
+      await persistFirebaseCatalogPatch(patch,{verify:true,atomic:true,timeoutMs:60000});
+      CATALOG_FIREBASE_READY=true;
+      const localServices=readJSON('services.json',{}),localMeta=readJSON('category_meta.json',{}),localSettings=readJSON('catalog_settings.json',{});
+      if(Object.keys(localServices).length||Object.keys(localMeta).length||!Array.isArray(localSettings.catalogOrder?.categories)||localSettings.catalogOrder.categories.length||Object.keys(localSettings.catalogOrder?.services||{}).length)throw new Error('لم يتم تنظيف نسخة كتالوج الاستضافة والتحقق منها.');
+    }catch(e){
+      try{await reloadLocalCatalogFromFirebase();}catch(reloadError){console.error('Global catalog delete recovery reload failed:',String(reloadError.message||reloadError));}
+      return json(res,503,{ok:false,persisted:false,error:'لم يتم تأكيد حذف الكتالوج في Firebase؛ راجع القائمة قبل إعادة المحاولة. '+String(e.message||e).slice(0,160)});
+    }
+    // Remove old snapshots made by earlier versions of this exact global-delete operation.
+    // Scoped per-service/section recovery files from other operations are intentionally untouched.
+    try{
+      const backupDir=path.join(DATA,'catalog-backups');
+      if(fs.existsSync(backupDir))for(const name of fs.readdirSync(backupDir))if(/^catalog-delete-all-.*\.json$/i.test(name))fs.rmSync(path.join(backupDir,name),{force:true});
+    }catch(e){console.error('Could not purge old global-delete snapshots:',String(e.message||e));}
+    return json(res,200,{ok:true,deleted:Object.keys(servicesBefore).length,deletedSections:sectionNames.size,remainingServices:0,remainingSections:0,storage:'firebase+verified-server-cache',verified:true,backupCreated:false,message:'تم حذف الخدمات وبيانات الأقسام وترتيبها من Firebase ونسخة الاستضافة. لم تُنشأ نسخة احتياطية، وتم تنظيف النسخ القديمة الخاصة بحذف الكل.'});
+  }
+
   // Admin service maintenance: filter, reclassify or delete provider-backed catalog services.
   // Every mutation is Firebase-first, verified, backed up and admin-only.
   if(p==='/api/admin/catalog/delete-services'&&(req.method==='GET'||req.method==='POST')){
@@ -6443,7 +6492,7 @@ async function routeAPI(req,res,urlObj){
     try { buildFile=fs.readFileSync(path.join(ROOT,'BUILD_ID.txt'),'utf8').trim(); } catch(_) {}
     const deploymentConsistent=uiVersion===APP_VERSION && uiBuildId===BUILD_ID && versionFile===APP_VERSION && buildFile===BUILD_ID;
     const dbInfo=firebaseDatabaseDiagnosticInfo();
-    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.44',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
+    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.45',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
     // Keep operational configuration details private; only an authenticated admin can inspect them.
     if(isAdmin(req)){const credentialStatus=firebaseServiceAccountStatus();health.firebaseDatabase={host:dbInfo.host,source:dbInfo.source,databaseProjectHint:dbInfo.databaseProjectHint,serviceAccountProjectId:dbInfo.serviceAccountProjectId||null,configuredWebProjectId:dbInfo.configuredWebProjectId||null,serviceAccountProjectMatch:dbInfo.serviceAccountProjectMatch};health.securityConfig={sessionSecretConfigured:!!String(process.env.SESSION_SECRET||'').trim(),dedicatedEncryptionKeyConfigured:!!String(process.env.SADA_ENCRYPTION_KEY||'').trim(),stableEncryptionAvailable:telegramEncryptionReady(),firebaseConfigured:!!FIREBASE_DATABASE_URL,firebaseServiceAccountConfigured:credentialStatus.ok,firebaseCredentialStatus:{ok:credentialStatus.ok,code:credentialStatus.code,source:credentialStatus.source,message:credentialStatus.message},firebaseDatabaseSecretConfigured:!!String(process.env.FIREBASE_DATABASE_SECRET||'').trim(),firebaseAuthAvailable:firebaseAuthAvailable(),emailServiceConfigured:!!(String(process.env.RESEND_API_KEY||'').trim()&&String(process.env.RESEND_FROM_EMAIL||process.env.EMAIL_FROM||'').trim()),telegramTokenFromEnvironment:!!String(process.env.TELEGRAM_BOT_TOKEN||'').trim(),adminPasswordFromEnvironment:!!(String(process.env.ADMIN_PASSWORD||'').trim()||String(process.env.ADMIN_PASSWORD_HASH||'').trim()),adminPasswordConfigured:adminPasswordConfigured()};}
     return json(res,200,health);
