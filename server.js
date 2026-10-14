@@ -2665,6 +2665,8 @@ async function apiKeyUser(req){
     return null;
   }
   if(!rec||rec.revokedAt||['revoked','disabled','inactive'].includes(String(rec.status||'active').toLowerCase())||String(rec.username||'').trim()==='')return null;
+  // API access can be blocked centrally per owner without disabling their normal website account.
+  try{const apiBlock=await firebaseGetJson('apiKeyBlocks/'+sha256(String(rec.username||'').trim().toLowerCase()),4500);if(apiBlock&&apiBlock.blocked===true){req._apiAuthError='api_user_blocked';return null;}}catch(e){req._apiAuthError='storage_unavailable';console.warn('API owner block status lookup failed:',String(e.message||e).slice(0,100));return null;}
   if(rec.keyHash&&String(rec.keyHash).toLowerCase()!==hash.toLowerCase())return null;
   if(Number(rec.version||0)>=3&&(!Array.isArray(rec.scopes)||!rec.scopes.length))return null;
   let users=readJSON('users.json',{users:{}}).users||{}; let u=users[rec.username];
@@ -4827,8 +4829,8 @@ async function routeAPI(req,res,urlObj){
   if(p==='/api/admin/api-users' && req.method==='GET'){
     if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
     try{
-      const [remoteKeys,remoteUsers,remoteOrders]=await Promise.all([
-        firebaseGetJson('apiKeys',10000),firebaseGetJson('users',10000),firebaseGetJson('orders',12000)
+      const [remoteKeys,remoteUsers,remoteOrders,remoteBlocks]=await Promise.all([
+        firebaseGetJson('apiKeys',10000),firebaseGetJson('users',10000),firebaseGetJson('orders',12000),firebaseGetJson('apiKeyBlocks',9000)
       ]);
       if(!remoteKeys||typeof remoteKeys!=='object'||Array.isArray(remoteKeys))return json(res,503,{ok:false,error:'عقدة مفاتيح API غير متاحة أو ليست كائناً صالحاً في Firebase؛ لم نعرض قائمة فارغة مضللة.'});
       const users=normalizeCurrentUsers(remoteUsers||{});
@@ -4848,12 +4850,51 @@ async function routeAPI(req,res,urlObj){
         if(apiKeyUnusedExpired(rec)){await deleteExpiredApiKey(hash,rec,local);merged.delete(hash);continue;}
         const username=String(rec.username||'').trim();if(!username)continue;
         const user=users.nameMap.get(username.toLowerCase())?.[0]?.user||{};
-        const status=String(rec.status||'active').trim().toLowerCase();const revoked=!!rec.revokedAt||['revoked','disabled','inactive'].includes(status);const pending=!revoked&&apiKeyIsPending(rec)&&!apiKeyUnusedExpired(rec);
-        rows.push({keyHash:hash,username,masked:String(rec.masked||'مفتاح مخفي'),createdAt:String(rec.createdAt||''),expiresAt:pending?new Date(apiKeyUnusedExpiresAt(rec)).toISOString():'',activatedAt:String(rec.activatedAt||''),lastUsedAt:String(rec.lastUsedAt||''),revokedAt:String(rec.revokedAt||''),status:revoked?'revoked':pending?'pending':'active',scopes:Array.isArray(rec.scopes)?rec.scopes.map(x=>String(x)).slice(0,30):[],balanceIQD:Number(user.balance??0),orderCount:orderCount.get(username.toLowerCase())?.size||0});
+        const status=String(rec.status||'active').trim().toLowerCase();const revoked=!!rec.revokedAt||['revoked','disabled','inactive'].includes(status);const pending=!revoked&&apiKeyIsPending(rec)&&!apiKeyUnusedExpired(rec);const apiBlocked=remoteBlocks?.[sha256(username.toLowerCase())]?.blocked===true;
+        rows.push({keyHash:hash,username,masked:String(rec.masked||'مفتاح مخفي'),createdAt:String(rec.createdAt||''),expiresAt:pending?new Date(apiKeyUnusedExpiresAt(rec)).toISOString():'',activatedAt:String(rec.activatedAt||''),lastUsedAt:String(rec.lastUsedAt||''),revokedAt:String(rec.revokedAt||''),apiBlocked,status:revoked?'revoked':apiBlocked?'blocked':pending?'pending':'active',scopes:Array.isArray(rec.scopes)?rec.scopes.map(x=>String(x)).slice(0,30):[],balanceIQD:Number(user.balance??0),orderCount:orderCount.get(username.toLowerCase())?.size||0});
       }
       rows.sort((a,b)=>Number(a.status==='active')-Number(b.status==='active')||String(b.createdAt).localeCompare(String(a.createdAt))||a.username.localeCompare(b.username,'ar'));
-      return json(res,200,{ok:true,keys:rows,summary:{total:rows.length,active:rows.filter(x=>x.status==='active').length,pending:rows.filter(x=>x.status==='pending').length,revoked:rows.filter(x=>x.status==='revoked').length,users:[...new Set(rows.map(x=>x.username.toLowerCase()))].length},source:'firebase-apiKeys+firebase-users+firebase-orders',checkedAt:nowISO()});
+      return json(res,200,{ok:true,keys:rows,summary:{total:rows.length,active:rows.filter(x=>x.status==='active').length,pending:rows.filter(x=>x.status==='pending').length,blocked:rows.filter(x=>x.status==='blocked').length,revoked:rows.filter(x=>x.status==='revoked').length,users:[...new Set(rows.map(x=>x.username.toLowerCase()))].length},source:'firebase-apiKeys+firebase-users+firebase-orders',checkedAt:nowISO()});
     }catch(e){return json(res,503,{ok:false,error:'تعذر تحميل بيانات إدارة API من Firebase. لم نعرض أرقاماً افتراضية ولم نغيّر أي مفتاح.',details:String(e.message||e).slice(0,160)});}
+  }
+  if(p==='/api/admin/api-users/activity' && req.method==='GET'){
+    if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
+    const username=String(urlObj.searchParams.get('username')||'').trim();
+    if(!username||username.length>120)return json(res,422,{ok:false,error:'اسم المستخدم غير صالح.'});
+    try{
+      const [remoteUsers,remoteOrders,remoteKeys]=await Promise.all([firebaseGetJson('users',10000),firebaseGetJson('orders',12000),firebaseGetJson('apiKeys',10000)]);
+      const normalized=normalizeCurrentUsers(remoteUsers||{});const matched=normalized.nameMap.get(username.toLowerCase())||[];const userRow=matched[0]||null;const user=userRow?.user||{};
+      const ownerUsername=o=>String(o?.user||o?.username||o?.userName||o?.customerUsername||o?.customer_username||o?.user_name||'').trim().toLowerCase();
+      const idSet=new Set([user.id,user.uid,user.user_id,user.userId,userRow?.key].filter(Boolean).map(String));
+      const matches=[];const seenOrders=new Set();let totalSpent=0;let currency='USD';
+      for(const [key,o] of collectionEntries(remoteOrders)){
+        if(!o||typeof o!=='object'||o.event)continue;
+        const owner=ownerUsername(o),orderUid=String(o.user_id||o.userId||o.uid||'');
+        if(owner!==username.toLowerCase()&&(!orderUid||!idSet.has(orderUid)))continue;
+        const id=String(o.id||o.siteOrderId||o.orderId||o.order_id||key);if(seenOrders.has(id))continue;seenOrders.add(id);
+        const price=Number(o.total_price??o.totalPrice??o.charge??o.price??o.total??o.amount??0);if(Number.isFinite(price))totalSpent+=price;
+        const item={id,orderNumber:String(o.order_number||o.orderNumber||o.siteOrderId||o.id||key),service:String(o.service_name||o.serviceName||o.service||o.name||'خدمة'),platform:String(o.platform_name||o.platform||''),provider:String(o.provider_name||o.providerName||o.provider||''),providerOrderId:String(o.provider_order_id||o.providerOrderId||o.externalOrderId||''),quantity:Number(o.quantity||o.qty||0)||0,link:String(o.link||o.url||''),price:Number.isFinite(price)?price:0,status:String(o.status||o.order_status||'غير معروف'),createdAt:String(o.created_date||o.createdAt||o.created_at||o.timestamp||''),updatedAt:String(o.updated_date||o.updatedAt||o.updated_at||'')};
+        matches.push(item);
+      }
+      matches.sort((a,b)=>(Date.parse(b.createdAt)||0)-(Date.parse(a.createdAt)||0));
+      const balanceRaw=user.balance??user.balanceUSD??user.balance_usd??user.wallet??0;
+      const balanceCurrency=String(user.currency||user.balanceCurrency||user.balance_currency||(user.balanceUSD!==undefined||user.balance_usd!==undefined?'USD':'IQD'));
+      const account={username:String(user.username||userRow?.username||username),arabicName:String(user.arabic_name||user.arabicName||''),fullName:String(user.full_name||user.fullName||''),name:String(user.name||user.displayName||''),email:firebaseRecordEmail(user)||String(user.email||''),phone:String(user.phone||user.phone_number||user.mobile||''),balance:Number(balanceRaw)||0,balanceDisplay:(Number(balanceRaw)||0).toLocaleString('en-US',{maximumFractionDigits:4})+(balanceCurrency.toUpperCase()==='IQD'?' د.ع':' '+balanceCurrency),balanceCurrency,role:String(user.role||'user'),status:String(user.status||user.accountStatus||'غير محدد'),createdAt:String(user.created_at||user.createdAt||user.created_date||user.registeredAt||''),lastLogin:String(user.lastLogin||user.last_login||user.lastSeen||''),userId:String(user.id||user.uid||user.user_id||user.userId||userRow?.key||''),freePoints:Number(user.free_points??user.freePoints??0)||0,userCode:String(user.user_code||user.userCode||''),referralCode:String(user.referral_code||user.referralCode||''),customDiscount:Number(user.custom_discount??user.customDiscount??0)||0};
+      const keys=collectionEntries(remoteKeys).filter(([hash,k])=>k&&String(k.username||'').toLowerCase()===username.toLowerCase()&&/^[a-f0-9]{64}$/i.test(hash)).map(([hash,k])=>({keyHash:hash,masked:String(k.masked||'مفتاح مخفي'),status:k.revokedAt?'revoked':String(k.status||'active'),createdAt:String(k.createdAt||''),lastUsedAt:String(k.lastUsedAt||''),activatedAt:String(k.activatedAt||''),expiresAt:String(k.unusedExpiresAt||k.expiresAt||'')}));
+      return json(res,200,{ok:true,username,account,keys,orders:matches.slice(0,100),summary:{orderCount:matches.length,totalSpent:Number(totalSpent.toFixed(4)),currency},source:'firebase-users+firebase-orders+firebase-apiKeys',checkedAt:nowISO()});
+    }catch(e){return json(res,503,{ok:false,error:'تعذر تحميل نشاط حساب API من Firebase؛ لم يتم عرض بيانات افتراضية.',details:String(e.message||e).slice(0,150)});}
+  }
+  if(p==='/api/admin/api-users/block' && req.method==='POST'){
+    if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
+    const b=await bodyJSON(req);const username=String(b.username||'').trim();const blocked=b.blocked===true;
+    if(!username||username.length>120)return json(res,422,{ok:false,error:'اسم المستخدم غير صالح.'});
+    try{
+      const hash=sha256(username.toLowerCase());const record={username,blocked,updatedAt:nowISO(),updatedBy:String(session(req)?.username||'admin'),scope:'api-only'};
+      await firebaseWriteJson('apiKeyBlocks/'+hash,record,8000);
+      const verify=await firebaseGetJson('apiKeyBlocks/'+hash,8000);
+      if(!verify||verify.blocked!==blocked||String(verify.username||'').toLowerCase()!==username.toLowerCase())throw new Error('لم يطابق سجل الحظر نتيجة التحقق بعد الكتابة.');
+      return json(res,200,{ok:true,username,blocked:verify.blocked,updatedAt:verify.updatedAt,message:blocked?'تم حظر جميع مفاتيح API لهذا المستخدم دون تعطيل حساب الموقع.':'تم رفع حظر API عن المستخدم.'});
+    }catch(e){return json(res,503,{ok:false,error:'تعذر حفظ حالة حظر API والتحقق منها في Firebase.',details:String(e.message||e).slice(0,140)});}
   }
   if(p==='/api/admin/api-users/revoke' && req.method==='POST'){
     if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});

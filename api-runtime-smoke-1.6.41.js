@@ -92,7 +92,7 @@ async function main(){
       assert.equal(challenge.status,200,`admin login captcha should issue: ${JSON.stringify(challenge.data)}`);
       const match=String(challenge.data.question||'').match(/(\d+)\s*\+\s*(\d+)/);
       assert(match,'math captcha should contain two operands');
-      return req('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'admin@example.test',password,captchaId:challenge.data.captchaId,captchaAnswer:String(Number(match[1])+Number(match[2]))})});
+      return req('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:JSON.parse(fs.readFileSync(path.join(__dirname,'admin-auth.json'),'utf8')).email,password,captchaId:challenge.data.captchaId,captchaAnswer:String(Number(match[1])+Number(match[2]))})});
     }
     const badAdminLogin=await loginAsAdmin('wrong-test-password');
     assert.equal(badAdminLogin.status,401,`wrong admin password should be rejected explicitly: ${JSON.stringify(badAdminLogin.data)}`);
@@ -335,6 +335,21 @@ async function main(){
     const apiLegacyRow=JSON.parse(fs.readFileSync(path.join(dataDir,'orders.json'),'utf8')).find(o=>String(o.id)===String(legacyApiOrder.data.internal_order_id));
     assert(apiLegacyRow,'legacy API order must be persisted');assert.equal(String(apiLegacyRow.siteServiceId),migratedSiteId,'API order must store canonical four-digit site ID');assert.equal(String(apiLegacyRow.providerServiceId),'77','API order must preserve original provider ID');assert.equal(providerAddCalls,beforeLegacyApiCalls+1,'legacy API ID must dispatch one mock provider order');
     console.log('PASS runtime: legacy API clients can use an old site ID but all new orders persist the canonical four-digit ID');
+    const activity=await req('/api/admin/api-users/activity?username=tester',{headers:adminCookie});
+    assert.equal(activity.status,200,`API user activity should load account and orders: ${JSON.stringify(activity.data)}`);
+    assert.equal(activity.data.account.username,'tester');assert(activity.data.account.balanceDisplay);assert(Array.isArray(activity.data.orders));assert(activity.data.summary.orderCount>=1,'activity should list real mock orders for the API user');
+    assert(!JSON.stringify(activity.data).includes('secret-must-never-be-returned'),'activity response must not expose encrypted API material');
+    console.log('PASS runtime: API activity view returns safe account profile, balance, order list and summary');
+    const blockTester=await req('/api/admin/api-users/block',{method:'POST',headers:{...adminCookie,'Content-Type':'application/json'},body:JSON.stringify({username:'tester',blocked:true})});
+    assert.equal(blockTester.status,200,`admin API-only block should persist: ${JSON.stringify(blockTester.data)}`);assert.equal(blockTester.data.blocked,true);assert.equal(rootDb.apiKeyBlocks[crypto.createHash('sha256').update('tester').digest('hex')].blocked,true);
+    const blockedApiCall=await req('/api/v1',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({action:'balance',key:freshKey}).toString()});
+    assert.equal(blockedApiCall.status,401,'central API block must stop every API key for the selected username');
+    const websiteStillWorks=await req('/api/user/summary',{headers:{Cookie:cookie}});assert.equal(websiteStillWorks.status,200,'API block must not block normal website login/session');
+    const unblockTester=await req('/api/admin/api-users/block',{method:'POST',headers:{...adminCookie,'Content-Type':'application/json'},body:JSON.stringify({username:'tester',blocked:false})});
+    assert.equal(unblockTester.status,200);assert.equal(unblockTester.data.blocked,false);
+    const apiAfterUnblock=await req('/api/v1',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({action:'balance',key:freshKey}).toString()});
+    assert.equal(apiAfterUnblock.status,200,`lifting API-only block should restore a still-valid key: ${JSON.stringify(apiAfterUnblock.data)}`);
+    console.log('PASS runtime: API-only block/unblock is persisted and enforced without affecting the user website session');
   } finally {
     app.kill('SIGTERM');await Promise.race([new Promise(resolve=>app.once('exit',resolve)),wait(3000)]);if(app.exitCode===null)app.kill('SIGKILL');
     await close(provider);await close(db);fs.rmSync(tempDir,{recursive:true,force:true});
