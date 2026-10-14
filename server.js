@@ -27,8 +27,8 @@ function readStaticAssetBuffer(assetPath){
 const DATA = path.resolve(process.env.SADA_DATA_DIR || process.env.DATA_DIR || (process.env.RAILWAY_VOLUME_MOUNT_PATH ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, 'sada-data') : LEGACY_DATA));
 const DATA_IS_EXTERNAL = path.resolve(DATA) !== path.resolve(LEGACY_DATA);
 const APP_NAME = 'صدى العراق';
-const APP_VERSION = '1.6.43';
-const BUILD_ID = 'SADA-1.6.43-PLATFORM-DELETE-RECLASSIFY-20261014';
+const APP_VERSION = '1.6.44';
+const BUILD_ID = 'SADA-1.6.44-RESTORE-DELETE-ALL-PROVIDER-CATEGORY-20261014';
 // Keep the owner's admin identity available after packaging, but store only a scrypt hash
 // in the project. Railway variables can still explicitly override this packaged credential.
 function loadBundledAdminAuth(){
@@ -4595,6 +4595,7 @@ async function routeAPI(req,res,urlObj){
         providerName:String(provs[providerOf(row)]?.name||provs[providerOf(row)]?.title||providerOf(row)||'بدون مزود'),
         providerServiceId:String(row?.providerServiceId||row?.smmpartyId||row?.sourceServiceId||row?.serviceId||''),
         category:String(row?.category||row?.groups?.[0]||row?.categories?.[0]||'عام'),
+        categories:[...new Set([row?.category,...(Array.isArray(row?.groups)?row.groups:[]),...(Array.isArray(row?.categories)?row.categories:[])].map(x=>String(x||'').trim()).filter(Boolean))],
         price:Number(row?.sellingUsd??row?.rateUsd??row?.price??0),
         active:row?.active!==false&&row?.enabled!==false&&row?.hidden!==true&&row?.deleted!==true
       }));
@@ -4632,8 +4633,10 @@ async function routeAPI(req,res,urlObj){
       catch(e){return json(res,503,{ok:false,error:'لم يتم تأكيد تصحيح المنصة داخل Firebase. '+String(e.message||e).slice(0,150)});}
       return json(res,200,{ok:true,action,changed,platform:newPlatform,storage:'firebase',verified:true});
     }
-    if(action!=='selected'&&action!=='all')return json(res,422,{ok:false,error:'اختر حذف المحدد أو حذف كل خدمات المنصة والمزود.'});
-    if(!platform)return json(res,422,{ok:false,error:'اختر منصة محددة قبل الحذف.'});
+    if(action!=='selected'&&action!=='all')return json(res,422,{ok:false,error:'اختر حذف المحدد أو حذف كل الخدمات المطابقة للتصفية.'});
+    const categoryFilter=normalizeCatalogLabel(String(b.category??''));
+    const categoryNamesOf=row=>[row?.category,...(Array.isArray(row?.groups)?row.groups:[]),...(Array.isArray(row?.categories)?row.categories:[])].map(x=>normalizeCatalogLabel(String(x??''))).filter(Boolean);
+    if(action==='all'&&!platform&&providerId==='all'&&!categoryFilter)return json(res,422,{ok:false,error:'اختر منصة أو مزوداً أو قسماً محدداً قبل حذف مجموعة خدمات.'});
     if(b.confirmation!=='DELETE_PLATFORM_SERVICES')return json(res,422,{ok:false,error:'تأكيد الحذف غير صحيح.'});
     let servicesBefore,metaBefore,remoteOrder;
     try{
@@ -4643,7 +4646,7 @@ async function routeAPI(req,res,urlObj){
     }catch(e){return json(res,503,{ok:false,error:'تعذر قراءة كتالوج Firebase؛ لم يتم حذف أي خدمة. '+String(e.message||e).slice(0,150)});}
     const localServicesBefore=readJSON('services.json',{}),settingsBefore=readJSON('catalog_settings.json',{});
     if(remoteOrder&&typeof remoteOrder==='object'&&!Array.isArray(remoteOrder))settingsBefore.catalogOrder=canonicalCatalogOrder(remoteOrder,metaBefore);
-    const matchesFilter=(row)=>platformOf(row)===platform&&(providerId==='all'||(providerId==='__none__'?!providerOf(row):providerOf(row)===providerId));
+    const matchesFilter=(row)=>(!platform||platformOf(row)===platform)&&(providerId==='all'||(providerId==='__none__'?!providerOf(row):providerOf(row)===providerId))&&(!categoryFilter||categoryNamesOf(row).includes(categoryFilter));
     let keys=[];
     if(action==='all'){
       keys=Object.entries(servicesBefore).filter(([,row])=>matchesFilter(row)).map(([key])=>key);
@@ -4671,7 +4674,7 @@ async function routeAPI(req,res,urlObj){
     for(const [bucket,ids] of Object.entries(orderServices))if(Array.isArray(ids))orderServices[bucket]=ids.map(String).filter(key=>!selected.has(key));
     settingsNext.catalogOrder=canonicalCatalogOrder({...order,services:orderServices},metaNext);settingsNext.catalogUpdatedAt=nowISO();settingsNext.lastServiceDeleteAt=nowISO();
     const backupDir=path.join(DATA,'catalog-backups');fs.mkdirSync(backupDir,{recursive:true});
-    const stamp=new Date().toISOString().replace(/[:.]/g,'-');const backupName='platform-service-delete-'+stamp+'.json';
+    const stamp=new Date().toISOString().replace(/[:.]/g,'-');const backupName='catalog-service-delete-'+stamp+'.json';
     fs.writeFileSync(path.join(backupDir,backupName),JSON.stringify({
       createdAt:nowISO(),action:'delete-services',platform,providerId,
       services:Object.fromEntries(keys.map(key=>[key,servicesBefore[key]])),
@@ -6440,7 +6443,7 @@ async function routeAPI(req,res,urlObj){
     try { buildFile=fs.readFileSync(path.join(ROOT,'BUILD_ID.txt'),'utf8').trim(); } catch(_) {}
     const deploymentConsistent=uiVersion===APP_VERSION && uiBuildId===BUILD_ID && versionFile===APP_VERSION && buildFile===BUILD_ID;
     const dbInfo=firebaseDatabaseDiagnosticInfo();
-    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.43',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
+    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.44',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
     // Keep operational configuration details private; only an authenticated admin can inspect them.
     if(isAdmin(req)){const credentialStatus=firebaseServiceAccountStatus();health.firebaseDatabase={host:dbInfo.host,source:dbInfo.source,databaseProjectHint:dbInfo.databaseProjectHint,serviceAccountProjectId:dbInfo.serviceAccountProjectId||null,configuredWebProjectId:dbInfo.configuredWebProjectId||null,serviceAccountProjectMatch:dbInfo.serviceAccountProjectMatch};health.securityConfig={sessionSecretConfigured:!!String(process.env.SESSION_SECRET||'').trim(),dedicatedEncryptionKeyConfigured:!!String(process.env.SADA_ENCRYPTION_KEY||'').trim(),stableEncryptionAvailable:telegramEncryptionReady(),firebaseConfigured:!!FIREBASE_DATABASE_URL,firebaseServiceAccountConfigured:credentialStatus.ok,firebaseCredentialStatus:{ok:credentialStatus.ok,code:credentialStatus.code,source:credentialStatus.source,message:credentialStatus.message},firebaseDatabaseSecretConfigured:!!String(process.env.FIREBASE_DATABASE_SECRET||'').trim(),firebaseAuthAvailable:firebaseAuthAvailable(),emailServiceConfigured:!!(String(process.env.RESEND_API_KEY||'').trim()&&String(process.env.RESEND_FROM_EMAIL||process.env.EMAIL_FROM||'').trim()),telegramTokenFromEnvironment:!!String(process.env.TELEGRAM_BOT_TOKEN||'').trim(),adminPasswordFromEnvironment:!!(String(process.env.ADMIN_PASSWORD||'').trim()||String(process.env.ADMIN_PASSWORD_HASH||'').trim()),adminPasswordConfigured:adminPasswordConfigured()};}
     return json(res,200,health);
