@@ -27,8 +27,8 @@ function readStaticAssetBuffer(assetPath){
 const DATA = path.resolve(process.env.SADA_DATA_DIR || process.env.DATA_DIR || (process.env.RAILWAY_VOLUME_MOUNT_PATH ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, 'sada-data') : LEGACY_DATA));
 const DATA_IS_EXTERNAL = path.resolve(DATA) !== path.resolve(LEGACY_DATA);
 const APP_NAME = 'صدى العراق';
-const APP_VERSION = '1.6.41';
-const BUILD_ID = 'SADA-1.6.41-FIREBASE-CATALOG-PRIMARY-2.15-PRICE-SORT-CLEAN-20261014';
+const APP_VERSION = '1.6.42';
+const BUILD_ID = 'SADA-1.6.42-PROFIT-PERCENTAGE-FIX-20261014';
 // Keep the owner's admin identity available after packaging, but store only a scrypt hash
 // in the project. Railway variables can still explicitly override this packaged credential.
 function loadBundledAdminAuth(){
@@ -2476,7 +2476,7 @@ const DEFAULT_GLOBAL_PRICING={markupPct:100,autoSync:true,intervalHours:1,interv
 function cleanGlobalPricing(v={}){
   const pct=Number(v.markupPct??v.markup??DEFAULT_GLOBAL_PRICING.markupPct);
   const interval=Number(v.intervalHours??DEFAULT_GLOBAL_PRICING.intervalHours);
-  const mins=Number(v.intervalMinutes);return {...DEFAULT_GLOBAL_PRICING,...v,markupPct:Number.isFinite(pct)?Math.max(100,Math.min(1000,pct)):100,autoSync:v.autoSync!==false,intervalHours:[1,3,6,12,24].includes(interval)?interval:1,intervalMinutes:[5,10,15,30,60].includes(mins)?mins:10};
+  const mins=Number(v.intervalMinutes);return {...DEFAULT_GLOBAL_PRICING,...v,markupPct:Number.isFinite(pct)?Math.max(0,Math.min(1000,pct)):100,autoSync:v.autoSync!==false,intervalHours:[1,3,6,12,24].includes(interval)?interval:1,intervalMinutes:[5,10,15,30,60].includes(mins)?mins:10};
 }
 function localGlobalPricing(){const settings=readJSON('settings.json',{});return cleanGlobalPricing(settings.pricing||{});}
 async function getGlobalPricing(){
@@ -3563,7 +3563,7 @@ async function apiCreateOrder(auth,body){
   let wallet;try{wallet=await resolveApiWallet(auth);}catch(e){return {http:e.code==='wallet_user_not_found'?404:503,body:{error:apiSafeError(e),stage:'wallet_lookup'}};}
   const {pct,total}=calcApiChargeUsd({...svc,sellingUsd:rate},quantity,wallet.user);
   const providerCostUsd=Number((providerRateUsd*quantity/1000).toFixed(6));
-  const requiredMarkupPct=Math.max(100,Number(svc.markupPct||100));
+  const requiredMarkupPct=Math.max(0,Math.min(1000,Number.isFinite(Number(svc.markupPct))?Number(svc.markupPct):100));
   const minimumChargeUsd=Number((providerCostUsd*(1+requiredMarkupPct/100)).toFixed(6));
   if(total+0.000001<minimumChargeUsd)return {http:422,body:{error:'Discount would reduce the real markup below '+requiredMarkupPct+'% over supplier cost. No balance was charged and no provider order was sent.',stage:'sale_below_required_markup',providerCostUsd,chargeUsd:total,minimumChargeUsd,requiredMarkupPct}};
   const chargeIQD=Number((total*FIXED_RATE).toFixed(4));
@@ -5329,7 +5329,7 @@ async function routeAPI(req,res,urlObj){
   }
   if(p==='/api/admin/pricing' && req.method==='POST'){
     if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
-    const b=await bodyJSON(req);const pct=Number(b.markupPct);if(!Number.isFinite(pct)||pct<100||pct>1000)return json(res,422,{ok:false,error:'نسبة الزيادة على تكلفة المزود يجب أن تكون بين 100 و1000% لتفادي البيع بهامش أقل من المطلوب.'});
+    const b=await bodyJSON(req);const pct=Number(b.markupPct);if(!Number.isFinite(pct)||pct<0||pct>1000)return json(res,422,{ok:false,error:'نسبة الزيادة على تكلفة المزود يجب أن تكون بين 0 و1000%.'});
     const minutes=Number(b.intervalMinutes??10);if(![5,10,15,30,60].includes(minutes))return json(res,422,{ok:false,error:'اختر فترة تحديث من 5 أو 10 أو 15 أو 30 أو 60 دقيقة'});
     const previous=await getGlobalPricing();const saved=await saveGlobalPricing({...previous,markupPct:pct,autoSync:b.autoSync!==false,intervalMinutes:minutes,lastAttemptAt:previous.lastAttemptAt,lastSuccessAt:previous.lastSuccessAt});
     let cached={updated:0,skipped:0,localUpdated:0},cachedError='';try{cached=await applyCachedGlobalMarkup(pct)}catch(e){cachedError=String(e.message||e).slice(0,180)}
@@ -5958,7 +5958,7 @@ async function routeAPI(req,res,urlObj){
     if((providerRateUsd===null||!Number.isFinite(providerRateUsd)||providerRateUsd<0)&&!isAdminFreeService)return json(res,409,{ok:false,error:'لا توجد تكلفة موثوقة حديثة للمزود؛ أوقفنا الطلب حتى لا يُباع بخسارة. حدّث كتالوج الأسعار من لوحة الإدارة.',stage:'provider_cost_unverified'});
     const effectiveProviderRateUsd=providerRateUsd===null?0:providerRateUsd;
     const providerCostUsd=Number((effectiveProviderRateUsd*quantity/1000).toFixed(6));
-    const requiredMarkupPct=Math.max(100,Number(svc.markupPct||100));const minimumChargeUsd=Number((providerCostUsd*(1+requiredMarkupPct/100)).toFixed(6));
+    const requiredMarkupPct=Math.max(0,Math.min(1000,Number.isFinite(Number(svc.markupPct))?Number(svc.markupPct):100));const minimumChargeUsd=Number((providerCostUsd*(1+requiredMarkupPct/100)).toFixed(6));
     if(!isAdminFreeService&&chargeUsd+0.000001<minimumChargeUsd)return json(res,422,{ok:false,error:'سعر البيع بعد الخصم لا يحقق زيادة '+requiredMarkupPct+'% على تكلفة المزود. أوقفنا الطلب لحماية هامش الربح المطلوب؛ خفّض الخصم أو ارفع سعر الخدمة.',stage:'sale_below_provider_cost',providerCostUsd,chargeUsd,minimumChargeUsd,requiredMarkupPct,markupPct:providerCostUsd>0?Number((((chargeUsd/providerCostUsd)-1)*100).toFixed(2)):null});
     const grossProfitUsd=Number((chargeUsd-providerCostUsd).toFixed(6));
     const actualMarkupPct=providerCostUsd>0?Number((grossProfitUsd/providerCostUsd*100).toFixed(2)):null;
@@ -6286,7 +6286,7 @@ async function routeAPI(req,res,urlObj){
     try { buildFile=fs.readFileSync(path.join(ROOT,'BUILD_ID.txt'),'utf8').trim(); } catch(_) {}
     const deploymentConsistent=uiVersion===APP_VERSION && uiBuildId===BUILD_ID && versionFile===APP_VERSION && buildFile===BUILD_ID;
     const dbInfo=firebaseDatabaseDiagnosticInfo();
-    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.41',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
+    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.42',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
     // Keep operational configuration details private; only an authenticated admin can inspect them.
     if(isAdmin(req)){const credentialStatus=firebaseServiceAccountStatus();health.firebaseDatabase={host:dbInfo.host,source:dbInfo.source,databaseProjectHint:dbInfo.databaseProjectHint,serviceAccountProjectId:dbInfo.serviceAccountProjectId||null,configuredWebProjectId:dbInfo.configuredWebProjectId||null,serviceAccountProjectMatch:dbInfo.serviceAccountProjectMatch};health.securityConfig={sessionSecretConfigured:!!String(process.env.SESSION_SECRET||'').trim(),dedicatedEncryptionKeyConfigured:!!String(process.env.SADA_ENCRYPTION_KEY||'').trim(),stableEncryptionAvailable:telegramEncryptionReady(),firebaseConfigured:!!FIREBASE_DATABASE_URL,firebaseServiceAccountConfigured:credentialStatus.ok,firebaseCredentialStatus:{ok:credentialStatus.ok,code:credentialStatus.code,source:credentialStatus.source,message:credentialStatus.message},firebaseDatabaseSecretConfigured:!!String(process.env.FIREBASE_DATABASE_SECRET||'').trim(),firebaseAuthAvailable:firebaseAuthAvailable(),emailServiceConfigured:!!(String(process.env.RESEND_API_KEY||'').trim()&&String(process.env.RESEND_FROM_EMAIL||process.env.EMAIL_FROM||'').trim()),telegramTokenFromEnvironment:!!String(process.env.TELEGRAM_BOT_TOKEN||'').trim(),adminPasswordFromEnvironment:!!(String(process.env.ADMIN_PASSWORD||'').trim()||String(process.env.ADMIN_PASSWORD_HASH||'').trim()),adminPasswordConfigured:adminPasswordConfigured()};}
     return json(res,200,health);
