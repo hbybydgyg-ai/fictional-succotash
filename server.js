@@ -28,7 +28,7 @@ const DATA = path.resolve(process.env.SADA_DATA_DIR || process.env.DATA_DIR || (
 const DATA_IS_EXTERNAL = path.resolve(DATA) !== path.resolve(LEGACY_DATA);
 const APP_NAME = 'صدى العراق';
 const APP_VERSION = '1.6.41';
-const BUILD_ID = 'SADA-1.6.41-ASIACELL-EXIT-RESET-20261013';
+const BUILD_ID = 'SADA-1.6.41-PROVIDER-SYNC-SAFE-20261014';
 // Keep the owner's admin identity available after packaging, but store only a scrypt hash
 // in the project. Railway variables can still explicitly override this packaged credential.
 function loadBundledAdminAuth(){
@@ -2279,11 +2279,11 @@ async function runRefundReconciliationMonitor(){
   }catch(e){console.warn('refund reconciliation monitor:',String(e.message||e).slice(0,160));}finally{runRefundReconciliationMonitor.running=false;}
 }
 
-const DEFAULT_GLOBAL_PRICING={markupPct:100,autoSync:true,intervalHours:1,lastAttemptAt:null,lastSuccessAt:null,lastUpdatedAt:null,lastResult:null,lastError:''};
+const DEFAULT_GLOBAL_PRICING={markupPct:100,autoSync:true,intervalHours:1,intervalMinutes:10,lastAttemptAt:null,lastSuccessAt:null,lastUpdatedAt:null,lastResult:null,lastError:''};
 function cleanGlobalPricing(v={}){
   const pct=Number(v.markupPct??v.markup??DEFAULT_GLOBAL_PRICING.markupPct);
   const interval=Number(v.intervalHours??DEFAULT_GLOBAL_PRICING.intervalHours);
-  return {...DEFAULT_GLOBAL_PRICING,...v,markupPct:Number.isFinite(pct)?Math.max(100,Math.min(1000,pct)):100,autoSync:v.autoSync!==false,intervalHours:[1,3,6,12,24].includes(interval)?interval:1};
+  const mins=Number(v.intervalMinutes);return {...DEFAULT_GLOBAL_PRICING,...v,markupPct:Number.isFinite(pct)?Math.max(100,Math.min(1000,pct)):100,autoSync:v.autoSync!==false,intervalHours:[1,3,6,12,24].includes(interval)?interval:1,intervalMinutes:[5,10,15,30,60].includes(mins)?mins:10};
 }
 function localGlobalPricing(){const settings=readJSON('settings.json',{});return cleanGlobalPricing(settings.pricing||{});}
 async function getGlobalPricing(){
@@ -2354,7 +2354,7 @@ async function priceGuardProviderRates(pid,opts={}){
       const byId=new Map();
       for(const r of raw){const id=String(r?.service??r?.service_id??r?.serviceId??r?.id??r?.serviceID??'').trim();if(id)byId.set(id,providerServiceRate(r));}
       if(!byId.size)throw new Error('provider returned an empty catalog');
-      c.byId=byId;c.at=Date.now();
+      byId.catalogComplete=providerCatalogLooksComplete(raw,byId);c.byId=byId;c.at=Date.now();
     })().finally(()=>{c.inflight=null;});
   }
   try{await c.inflight;}
@@ -2394,6 +2394,25 @@ function hasExplicitSiteServiceDisable(row={}){
 function isAutoHiddenProviderService(row={}){
   return row.providerAvailable===false && TRANSIENT_PROVIDER_UNAVAILABLE_REASONS.has(String(row.providerAvailabilityReason||'').trim());
 }
+function isProviderConfirmedRemoved(row={}){return row.providerAvailable===false&&String(row.providerAvailabilityReason||'').trim()==='provider_confirmed_removed';}
+function canRestoreProviderAvailability(row={}){return row.providerAvailable!==false||isAutoHiddenProviderService(row)||isProviderConfirmedRemoved(row);}
+function providerCatalogLooksComplete(raw,byId){
+  // Conservative guard: only infer removal from a non-empty, mostly well-formed catalog.
+  // Empty, partial, malformed, or duplicate-heavy responses must never hide site services.
+  return Array.isArray(raw)&&raw.length>0&&byId instanceof Map&&byId.size>0&&byId.size>=Math.ceil(raw.length*0.8);
+}
+function recordProviderMissingCheck(row,completeCatalog,now=nowISO()){
+  if(!row||typeof row!=='object'||hasExplicitSiteServiceDisable(row))return {changed:false,removed:false};
+  if(!completeCatalog)return {changed:false,removed:false};
+  const checks=Math.max(0,Number(row.providerMissingChecks)||0)+1;
+  row.providerMissingChecks=checks;row.providerMissingLastCheckedAt=now;row.providerLastCatalogVerifiedAt=now;
+  if(checks>=2){const changed=row.providerAvailable!==false||row.availabilityStatus!=='unavailable'||row.providerAvailabilityReason!=='provider_confirmed_removed';row.providerAvailable=false;row.availabilityStatus='unavailable';row.providerAvailabilityReason='provider_confirmed_removed';row.providerRemovedConfirmedAt=row.providerRemovedConfirmedAt||now;return {changed,removed:true};}
+  return {changed:true,removed:false};
+}
+function clearProviderMissingChecks(row,now=nowISO()){
+  if(!row||typeof row!=='object')return false;const changed=Number(row.providerMissingChecks||0)!==0||isProviderConfirmedRemoved(row);row.providerMissingChecks=0;row.providerMissingLastCheckedAt='';row.providerRemovedConfirmedAt='';
+  if(isProviderConfirmedRemoved(row)){row.providerAvailable=true;row.availabilityStatus='available';row.providerAvailabilityReason='';row.providerCheckedAt=now;}return changed;
+}
 function recoverTransientlyHiddenServices(root,source='provider-sync'){
   if(!root||typeof root!=='object'||Array.isArray(root))return 0;
   let recovered=0;
@@ -2430,7 +2449,7 @@ async function guardServicePrice(svc){
     const live=rates.get(sid);
     if(live===null||live===undefined||!Number.isFinite(Number(live)))return transientProviderCheckFailure(svc,'live_provider_price_unverified');
     if(Number(live)===0){const storedCost=catalogRate(svc);if(storedCost!==null&&storedCost>0)return transientProviderCheckFailure(svc,'suspicious_zero_provider_rate');}
-    const mayRestoreAvailability=svc.providerAvailable!==false||isAutoHiddenProviderService(svc);
+    const mayRestoreAvailability=canRestoreProviderAvailability(svc);
     const availability=mayRestoreAvailability?{providerAvailable:true,availabilityStatus:'available',providerCheckedAt:nowISO(),providerAvailabilityReason:''}:{};
     if(!priceGuardNeeds(svc,Number(live),cfg.pct)){
       if(Object.keys(availability).length&& (svc.providerAvailable!==true||String(svc.availabilityStatus||'')!=='available'))priceGuardPersist(pid,sid,svc.fbKey,availability);
@@ -2469,14 +2488,19 @@ async function runPriceWatch(){
         if(!row||typeof row!=='object'||String(row.providerId||'').trim()!==pid)continue;
         if(hasExplicitSiteServiceDisable(row))continue;
         const sid=providerServiceKey(row);if(!sid)continue;
-        // Missing IDs are unverified, not proof that a service was removed. Never disable or
-        // hide the service because a provider response was partial or uses an unexpected ID shape.
-        if(!rates.has(sid)){unverified++;continue;}
+        // Only two consecutive absences from a well-formed full catalog hide a service.
+        // Keep the row for historical orders; a later reappearance restores it automatically.
+        if(!rates.has(sid)){
+          unverified++;
+          if(rates.catalogComplete){const absent=recordProviderMissingCheck(row,true);if(absent.changed)availability++;}
+          continue;
+        }
+        clearProviderMissingChecks(row);
         const live=rates.get(sid),oldCost=catalogRate(row);
         if(live===null||live===undefined||!Number.isFinite(Number(live))||(Number(live)===0&&oldCost!==null&&oldCost>0)){
           unverified++;continue;
         }
-        const mayRestoreAvailability=row.providerAvailable!==false||isAutoHiddenProviderService(row);
+        const mayRestoreAvailability=canRestoreProviderAvailability(row);
         const availablePatch=mayRestoreAvailability?{providerAvailable:true,availabilityStatus:'available',providerAvailabilityReason:'',providerCheckedAt:nowISO()}:{};
         const availabilityWasChanged=Object.keys(availablePatch).length>0&&(row.providerAvailable!==true||String(row.availabilityStatus||'')!=='available');
         if(priceGuardNeeds(row,Number(live),cfg.pct)){
@@ -2523,6 +2547,8 @@ async function runProviderPriceSync(options={}){
         const raw=normalizeProviderServices(await providerRequest(found.prov,{action:'services'},22000));
         if(!raw.length)throw new Error('المزود لم يرجع قائمة خدمات');
         const byId=new Map();for(const r of raw){const id=String(r?.service??r?.service_id??r?.serviceId??r?.id??r?.serviceID??'').trim();if(id)byId.set(id,r)}
+        const catalogComplete=providerCatalogLooksComplete(raw,byId);
+        if(!catalogComplete)result.providerErrors.push(pid+': كتالوج المزود غير مكتمل؛ لن تُخفى أي خدمة غائبة');
         let pUpdated=0;
         const existingIds=new Set(rows.filter(([,v])=>String(v.providerId||'')===pid).map(([,v])=>providerServiceKey(v)).filter(Boolean));
         for(const [key,svc] of rows){
@@ -2530,10 +2556,13 @@ async function runProviderPriceSync(options={}){
           const sid=providerServiceKey(svc);if(!sid){result.skipped++;continue}
           const latest=byId.get(sid);
           if(!latest){
-            // Provider catalogs can be partial or omit IDs temporarily. Preserve the site's
-            // active state and cached price; only note that this row was not verifiable now.
-            result.unverified++;result.skipped++;continue;
+            // Only a second consecutive absence from a well-formed, non-empty catalog confirms removal.
+            // Never delete the record: order history and provider mapping must remain auditable.
+            result.unverified++;result.skipped++;
+            if(catalogComplete){const absent=recordProviderMissingCheck(svc,true);if(absent.changed){result.availabilityChanged=(result.availabilityChanged||0)+1;}if(absent.removed){result.unavailable++;result.removedConfirmed=(result.removedConfirmed||0)+1;}}
+            continue;
           }
+          clearProviderMissingChecks(svc);
           // Repair only generic/empty saved labels when the provider supplies a real name.
           // Never overwrite a meaningful custom name already saved by the site owner.
           const originalProviderName=providerOriginalServiceName(latest);
@@ -2579,7 +2608,7 @@ async function runProviderPriceSync(options={}){
       }catch(e){result.ok=false;result.providerErrors.push(pid+': '+String(e.message||e).slice(0,160))}
     }
     if(Object.keys(allPatches).length){for(const [composite,value] of Object.entries(allPatches)){const split=composite.indexOf('/');if(split<1)continue;const key=composite.slice(0,split),field=composite.slice(split+1);if(Object.prototype.hasOwnProperty.call(root,key)&&root[key]&&typeof root[key]==='object')root[key][field]=value;}}
-    if(Object.keys(allPatches).length||result.imported){writeJSON('services.json',root);ensureNumericSiteServiceIds();markCatalogSeeded();result.storage='hosting-json';}
+    if(Object.keys(allPatches).length||result.imported||result.availabilityChanged){writeJSON('services.json',root);ensureNumericSiteServiceIds();markCatalogSeeded();result.storage='hosting-json';}
     if(localUpdated)writeJSON('api_services.json',localServices);result.localUpdated=localUpdated;
     cfg=localGlobalPricing();cfg.lastAttemptAt=nowISO();cfg.lastResult={updated:result.updated,skipped:result.skipped,providers:result.providers,localUpdated:result.localUpdated,namesFixed:Number(result.namesFixed||0),imported:result.imported,unavailable:result.unavailable,unverified:result.unverified,recovered:result.recovered,priceVerified:result.priceVerified};cfg.lastError=result.providerErrors.join(' | ').slice(0,700);if(result.updated>0){cfg.lastSuccessAt=nowISO();}else if(!result.providerErrors.length){cfg.lastError='لم يتم العثور على خدمات مطابقة للتحديث'};
     const st=readJSON('settings.json',{});st.pricing=cfg;writeJSON('settings.json',st);try{await firebaseWriteJson('config/pricing',cfg,7000)}catch(_){}
@@ -2588,8 +2617,10 @@ async function runProviderPriceSync(options={}){
   }finally{GLOBAL_PRICE_SYNC_RUNNING=false}
 }
 function startGlobalPriceSyncScheduler(){
-  const runIfDue=async()=>{try{const p=await getGlobalPricing();if(!p.autoSync)return;const last=Date.parse(p.lastAttemptAt||p.lastSuccessAt||'')||0;const gap=Math.max(1,p.intervalHours)*3600000;if(Date.now()-last<gap)return;await runProviderPriceSync({automatic:true})}catch(e){console.error('Sada pricing scheduler:',String(e.message||e))}};
-  const t=setInterval(runIfDue,10*60*1000);t.unref();const first=setTimeout(runIfDue,120000);first.unref();
+  // Automatic provider catalog + price sync at the configured 5–60 minute interval. This is polling, not a webhook,
+  // so changes appear within the next successful cycle. The admin autoSync switch still controls it.
+  const runIfDue=async()=>{try{const p=await getGlobalPricing();if(!p.autoSync)return;const last=Date.parse(p.lastAttemptAt||p.lastSuccessAt||'')||0;const gap=Math.max(5,Number(p.intervalMinutes)||10)*60*1000;if(Date.now()-last<gap)return;await runProviderPriceSync({automatic:true})}catch(e){console.error('Sada pricing scheduler:',String(e.message||e))}};
+  const t=setInterval(runIfDue,60*1000);t.unref();const first=setTimeout(runIfDue,120000);first.unref();
 }
 
 async function firebaseServiceByKey(fbKey){ const k=firebaseSafeKey(fbKey); const v=await firebaseGetJson('services/'+k); return v&&typeof v==='object'?{...v,fbKey:String(fbKey)}:null; }
@@ -4993,8 +5024,8 @@ async function routeAPI(req,res,urlObj){
   if(p==='/api/admin/pricing' && req.method==='POST'){
     if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
     const b=await bodyJSON(req);const pct=Number(b.markupPct);if(!Number.isFinite(pct)||pct<100||pct>1000)return json(res,422,{ok:false,error:'نسبة الزيادة على تكلفة المزود يجب أن تكون بين 100 و1000% لتفادي البيع بهامش أقل من المطلوب.'});
-    const hours=Number(b.intervalHours??6);if(![1,3,6,12,24].includes(hours))return json(res,422,{ok:false,error:'اختر فترة تحديث من 1 أو 3 أو 6 أو 12 أو 24 ساعة'});
-    const previous=await getGlobalPricing();const saved=await saveGlobalPricing({...previous,markupPct:pct,autoSync:b.autoSync!==false,intervalHours:hours,lastAttemptAt:previous.lastAttemptAt,lastSuccessAt:previous.lastSuccessAt});
+    const minutes=Number(b.intervalMinutes??10);if(![5,10,15,30,60].includes(minutes))return json(res,422,{ok:false,error:'اختر فترة تحديث من 5 أو 10 أو 15 أو 30 أو 60 دقيقة'});
+    const previous=await getGlobalPricing();const saved=await saveGlobalPricing({...previous,markupPct:pct,autoSync:b.autoSync!==false,intervalMinutes:minutes,lastAttemptAt:previous.lastAttemptAt,lastSuccessAt:previous.lastSuccessAt});
     let cached={updated:0,skipped:0,localUpdated:0},cachedError='';try{cached=await applyCachedGlobalMarkup(pct)}catch(e){cachedError=String(e.message||e).slice(0,180)}
     let live={ok:false,updated:0,providerErrors:[]};if(b.syncNow===true){live=await runProviderPriceSync({manual:true})}
     return json(res,200,{ok:true,pricing:await getGlobalPricing(),persistedRemotely:saved.persistedRemotely,remoteError:saved.remoteError,cached,cachedError,live});

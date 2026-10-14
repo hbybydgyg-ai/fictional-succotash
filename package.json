@@ -10,7 +10,7 @@
   "engines": {
     "node": ">=22"
   },
-  "buildId": "SADA-1.6.41-ASIACELL-EXIT-RESET-20261013",
+  "buildId": "SADA-1.6.41-PROVIDER-SYNC-SAFE-20261014",
   "dependencies": {
     "google-auth-library": "^11.2.0",
     "firebase-admin": "^14.5.0"

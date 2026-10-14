@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
 <meta name="sada-version" content="1.6.41">
-<meta name="sada-build-id" content="SADA-1.6.41-ASIACELL-EXIT-RESET-20261013">
+<meta name="sada-build-id" content="SADA-1.6.41-PROVIDER-SYNC-SAFE-20261014">
 <script id="sada168-session-presence">try{window.__SADA_BOOT_HAD_SESSION=Boolean(localStorage.getItem('sadairaq_session_token')||localStorage.getItem('tz_u'));}catch(_){window.__SADA_BOOT_HAD_SESSION=false}</script>
 
 <style id="sada167-preboot-splash-style">
@@ -2836,7 +2836,7 @@ html.sada-lite-motion .ks-particle{display:none!important}
         </div>
         <i class="fas fa-ellipsis" style="color:var(--t2);font-size:12px;flex-shrink:0"></i>
       </div>
-      <div id="sada-sidebar-version" class="sada-sidebar-version" aria-label="إصدار التطبيق 2.7"><i class="fas fa-code-branch" aria-hidden="true"></i><span>إصدار التطبيق</span><b>2.7</b></div>
+      <div id="sada-sidebar-version" class="sada-sidebar-version" aria-label="إصدار التطبيق 2.8"><i class="fas fa-code-branch" aria-hidden="true"></i><span>إصدار التطبيق</span><b>2.8</b></div>
     </div>
   </div>
 
@@ -6716,7 +6716,7 @@ function tgSend(msg){fetch(`https://api.telegram.org/bot${CFG.tg.token}/sendMess
   };
   // Refresh the catalog index only; never rewrite every service's image on page load.
   setTimeout(()=>{hydrateAllCategoryMeta().then(()=>{repairServiceIndex();try{window.buildCatDD?.();window.buildSvcDD?.(SEL_CAT||'__all__')}catch(_){}})},900);
-  window.SadaIraqBuildId='SADA-1.6.41-ASIACELL-EXIT-RESET-20261013';
+  window.SadaIraqBuildId='SADA-1.6.41-PROVIDER-SYNC-SAFE-20261014';
 })();
 
 </script>
@@ -8392,7 +8392,7 @@ function admPays(){nav('admin');setTimeout(()=>admNavTo('payments',null),150);}
       b=document.createElement('div'); b.id='sadairaq-version-badge';
       document.body.appendChild(b);
     }
-    const EXPECTED_BUILD='SADA-1.6.41-ASIACELL-EXIT-RESET-20261013';
+    const EXPECTED_BUILD='SADA-1.6.41-PROVIDER-SYNC-SAFE-20261014';
     const applyClientVersion=()=>{
       b.dataset.deployState='checking';
       b.textContent='صدى العراق · الإصدار '+SADA_VERSION+' · جارٍ فحص الخادم…';
@@ -8719,7 +8719,7 @@ function admPays(){nav('admin');setTimeout(()=>admNavTo('payments',null),150);}
   const ensure=fn=>document.readyState==='loading'?document.addEventListener('DOMContentLoaded',fn,{once:true}):fn();
   window.SECTION_META=window.SECTION_META||{};
   window.SadaIraqVersion=V;
-window.SadaIraqBuildId='SADA-1.6.41-ASIACELL-EXIT-RESET-20261013';
+window.SadaIraqBuildId='SADA-1.6.41-PROVIDER-SYNC-SAFE-20261014';
 
   function safe(v){return txt(v).replace(/[&<>\"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[m]));}
   function appLabel(id){const p=(CFG.platforms||[]).find(x=>x.id===id);return p?.lbl||id||'عام';}
@@ -9057,7 +9057,7 @@ const safe=v=>String(v??'').replace(/[&<>\"']/g,m=>({'&':'&amp;','<':'&lt;','>':
 const api=window.apiJSON||((p,o)=>fetch(p,Object.assign({credentials:'include',cache:'no-store',headers:{'Content-Type':'application/json'}},o||{})).then(async r=>{const t=await r.text();let d={};try{d=t?JSON.parse(t):{}}catch(_){d={error:t}}if(!r.ok||d.error)throw new Error(d.error||('HTTP '+r.status));return d;}));
 const mk=window.mk||((tag,cls,txt)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(txt!==undefined)e.textContent=txt;return e;});
 window.SadaIraqVersion=V;
-window.SadaIraqBuildId='SADA-1.6.41-ASIACELL-EXIT-RESET-20261013';
+window.SadaIraqBuildId='SADA-1.6.41-PROVIDER-SYNC-SAFE-20261014';
 
 function setVersion(){
   const b=$('sadairaq-version-badge');
@@ -11893,7 +11893,7 @@ curl -X POST ${base}/order -H "Authorization: Bearer YOUR_API_KEY" -H "Content-T
   document.addEventListener('DOMContentLoaded',startFinal);window.addEventListener('load',()=>setTimeout(startFinal,100));setTimeout(startFinal,250);setTimeout(startFinal,1200);
   // Observe the whole document so both independent controls survive page/route re-renders.
   if(document.body){const mo=new MutationObserver(()=>{ensureOrderWhatsApp();});mo.observe(document.body,{childList:true,subtree:true});}
-  window.__SADA_V1562_DIAGNOSTIC__={version:'1.6.41',buildId:'SADA-1.6.41-ASIACELL-EXIT-RESET-20261013',hasFetchGuard:true,orderAudit:true};
+  window.__SADA_V1562_DIAGNOSTIC__={version:'1.6.41',buildId:'SADA-1.6.41-PROVIDER-SYNC-SAFE-20261014',hasFetchGuard:true,orderAudit:true};
 })();
 </script>
 
@@ -12176,12 +12176,12 @@ curl -X POST ${base}/order -H "Authorization: Bearer YOUR_API_KEY" -H "Content-T
  window.migrateLegacyOrderNumbers52=migrateLegacyOrderNumbers52;
  function localizeOrderNumbers(){document.querySelectorAll('.sada1525-order-id').forEach(el=>{el.querySelectorAll('b').forEach(b=>{const x=String(b.textContent||'').trim(),m=x.match(/^(#?)(\d+)$/);if(m)b.textContent=m[1]+arDigits(m[2]);});for(const n of el.childNodes){if(n.nodeType===3)n.textContent=n.textContent.replace(/#(\d+)/g,(_,d)=>'#'+arDigits(d));}});}
  // Margin panel in admin services/catalog section.
- async function loadPricingForm(card){const status=$('sada1552-price-status');try{const d=await req('/api/admin/pricing');const p=d.pricing||{};const pct=$('sada1552-markup'),auto=$('sada1552-auto'),hours=$('sada1552-interval');if(pct)pct.value=String(Math.max(100,Number(p.markupPct??100)));if(auto)auto.checked=p.autoSync!==false;if(hours)hours.value=String(p.intervalHours||1);window.SADA_GLOBAL_MARKUP=Number(Math.max(100,Number(p.markupPct??100)));if(window.CFG?.settings)window.CFG.settings.markup=window.SADA_GLOBAL_MARKUP;if(status){status.className='sada1552-price-status';status.textContent='آخر محاولة: '+(p.lastAttemptAt||'لم تبدأ بعد')+'\nآخر تحديث ناجح: '+(p.lastSuccessAt||'لا يوجد بعد')+(p.lastError?'\nآخر خطأ: '+p.lastError:'')+(d.persistedRemotely===false?'\nتنبيه: تعذّر تأكيد حفظ الإعداد على Firebase؛ تم حفظه في خادم Railway.':'');}}catch(e){if(status){status.className='sada1552-price-status err';status.textContent='تعذر قراءة إعدادات هامش الربح: '+e.message}}}
- function ensurePricingPanel(){const sec=$('adm-sub-catalog-manager');if(!sec||$('sada1552-pricing-panel'))return;const card=document.createElement('section');card.id='sada1552-pricing-panel';card.className='sada1552-price-panel';card.innerHTML='<h3><i class="fas fa-chart-line" style="color:#a99cff;margin-left:6px"></i> هامش الربح وتحديث الأسعار التلقائي</h3><p>الحد الأدنى 100% زيادة على تكلفة المزود (سعر الموقع = ضعفا التكلفة قبل الخصم). لا نعرض الخدمة المحذوفة من كتالوج المزود، ونوقف الطلب إذا كانت التكلفة غير موثوقة أو أصبح السعر بعد الخصم أقل من تكلفة المزود.</p><div class="sada1552-price-grid"><div class="sada1552-price-field"><label for="sada1552-markup">نسبة الزيادة على تكلفة المزود (%)</label><input id="sada1552-markup" class="inp" type="number" min="100" max="1000" step="1" value="100"></div><div class="sada1552-price-field"><label for="sada1552-interval">تحديث الأسعار تلقائياً كل</label><select id="sada1552-interval" class="inp"><option value="1" selected>ساعة واحدة</option><option value="3">3 ساعات</option><option value="6">6 ساعات</option><option value="12">12 ساعة</option><option value="24">24 ساعة</option></select></div></div><label class="sada1552-price-switch"><input id="sada1552-auto" type="checkbox" checked><span>تفعيل المزامنة التلقائية من أسعار المزود</span></label><div class="sada1552-price-actions"><button type="button" class="btn bp btn-sm" id="sada1552-save-pricing"><i class="fas fa-floppy-disk"></i> حفظ الهامش وتحديث الأسعار الآن</button><button type="button" class="btn bs2 btn-sm" id="sada1552-sync-pricing"><i class="fas fa-rotate"></i> مزامنة يدوية للأسعار</button></div><div id="sada1552-price-status" class="sada1552-price-status">جاري قراءة الإعدادات…</div>';
+ async function loadPricingForm(card){const status=$('sada1552-price-status');try{const d=await req('/api/admin/pricing');const p=d.pricing||{};const pct=$('sada1552-markup'),auto=$('sada1552-auto'),hours=$('sada1552-interval');if(pct)pct.value=String(Math.max(100,Number(p.markupPct??100)));if(auto)auto.checked=p.autoSync!==false;if(hours)hours.value=String(p.intervalMinutes||10);window.SADA_GLOBAL_MARKUP=Number(Math.max(100,Number(p.markupPct??100)));if(window.CFG?.settings)window.CFG.settings.markup=window.SADA_GLOBAL_MARKUP;if(status){status.className='sada1552-price-status';status.textContent='آخر محاولة: '+(p.lastAttemptAt||'لم تبدأ بعد')+'\nآخر تحديث ناجح: '+(p.lastSuccessAt||'لا يوجد بعد')+(p.lastError?'\nآخر خطأ: '+p.lastError:'')+(d.persistedRemotely===false?'\nتنبيه: تعذّر تأكيد حفظ الإعداد على Firebase؛ تم حفظه في خادم Railway.':'');}}catch(e){if(status){status.className='sada1552-price-status err';status.textContent='تعذر قراءة إعدادات هامش الربح: '+e.message}}}
+ function ensurePricingPanel(){const sec=$('adm-sub-catalog-manager');if(!sec||$('sada1552-pricing-panel'))return;const card=document.createElement('section');card.id='sada1552-pricing-panel';card.className='sada1552-price-panel';card.innerHTML='<h3><i class="fas fa-chart-line" style="color:#a99cff;margin-left:6px"></i> هامش الربح وتحديث الأسعار التلقائي</h3><p>الحد الأدنى 100% زيادة على تكلفة المزود (سعر الموقع = ضعفا التكلفة قبل الخصم). لا نعرض الخدمة المحذوفة من كتالوج المزود، ونوقف الطلب إذا كانت التكلفة غير موثوقة أو أصبح السعر بعد الخصم أقل من تكلفة المزود.</p><div class="sada1552-price-grid"><div class="sada1552-price-field"><label for="sada1552-markup">نسبة الزيادة على تكلفة المزود (%)</label><input id="sada1552-markup" class="inp" type="number" min="100" max="1000" step="1" value="100"></div><div class="sada1552-price-field"><label for="sada1552-interval">تحديث الخدمات والأسعار تلقائياً كل</label><select id="sada1552-interval" class="inp"><option value="5">5 دقائق</option><option value="10" selected>10 دقائق</option><option value="15">15 دقيقة</option><option value="30">30 دقيقة</option><option value="60">ساعة واحدة</option></select></div></div><label class="sada1552-price-switch"><input id="sada1552-auto" type="checkbox" checked><span>تفعيل المزامنة التلقائية من أسعار المزود</span></label><div class="sada1552-price-actions"><button type="button" class="btn bp btn-sm" id="sada1552-save-pricing"><i class="fas fa-floppy-disk"></i> حفظ الهامش وتحديث الأسعار الآن</button><button type="button" class="btn bs2 btn-sm" id="sada1552-sync-pricing"><i class="fas fa-rotate"></i> مزامنة يدوية للأسعار</button></div><div id="sada1552-price-status" class="sada1552-price-status">جاري قراءة الإعدادات…</div>';
  const header=sec.querySelector('.adm-sec-hd');if(header)header.insertAdjacentElement('afterend',card);else sec.prepend(card);
  const status=$('sada1552-price-status'),save=$('sada1552-save-pricing'),sync=$('sada1552-sync-pricing');
  const showResult=(d)=>{if(!status)return;const live=d.live||d;const lines=[];if(d.cached)lines.push('تطبيق الهامش على التكلفة المحفوظة: '+Number(d.cached.updated||0)+' خدمة.');lines.push('تحديث مباشر من المزود: '+Number(live.updated||0)+' خدمة.');lines.push('تم فحص '+Number(live.providers||0)+' مزود، وتجاوز '+Number(live.skipped||0)+' خدمة لعدم توفر سعر/معرّف موثوق.');if(live.imported!==undefined)lines.push('خدمات جديدة أُضيفت من المزود: '+Number(live.imported||0)+'.');if(live.unavailable!==undefined)lines.push('خدمات أُخفيت لأنها غير متاحة/غير مسعّرة لدى المزود: '+Number(live.unavailable||0)+'.');if(live.priceVerified!==undefined)lines.push('خدمات تحققنا من أسعارها الحية: '+Number(live.priceVerified||0)+'.');if(live.providerErrors?.length)lines.push('ملاحظات: '+live.providerErrors.join(' | '));if(d.persistedRemotely===false)lines.push('تحذير: إعداد النسبة لم يُؤكد حفظه على Firebase؛ تحقق من اتصال قاعدة البيانات قبل إعادة النشر.');if(d.cachedError)lines.push('تعذر تطبيق السعر المحفوظ: '+d.cachedError);status.className='sada1552-price-status '+(live.updated>0?'ok':live.providerErrors?.length?'warn':'');status.textContent=lines.join('\n')+'\nآخر تحديث: '+(live.pricing?.lastSuccessAt||new Date().toISOString());};
- save.onclick=async()=>{const pct=Number($('sada1552-markup')?.value),hours=Number($('sada1552-interval')?.value||1),auto=$('sada1552-auto')?.checked!==false;if(!Number.isFinite(pct)||pct<100||pct>1000){toast52('نسبة الزيادة على تكلفة المزود يجب أن تكون بين 100 و1000%','wrn');return}save.disabled=sync.disabled=true;save.innerHTML='<i class="fas fa-spinner fa-spin"></i> جاري الحفظ وتحديث الأسعار…';if(status){status.className='sada1552-price-status';status.textContent='يتم حفظ هامش الربح أولاً ثم تحديث الأسعار من التكلفة الأصلية…'}try{const d=await req('/api/admin/pricing',{method:'POST',body:JSON.stringify({markupPct:pct,autoSync:auto,intervalHours:hours,syncNow:true})});window.SADA_GLOBAL_MARKUP=pct;if(window.CFG?.settings)window.CFG.settings.markup=pct;showResult(d);if(d.cached?.updated&&window.DB?.ref){try{await window.DB.ref('settings/markup').set(pct)}catch(_){}}toast52(d.live?.updated?'تم حفظ الهامش وتحديث الأسعار من المزود':'تم حفظ الهامش، لكن المزامنة الحية لم تحدّث خدمات؛ راجع التفاصيل',''+(d.live?.updated?'ok':'wrn'));}catch(e){if(status){status.className='sada1552-price-status err';status.textContent='فشل حفظ أو تحديث الأسعار: '+e.message}toast52('فشل تحديث الأسعار: '+e.message,'err')}finally{save.disabled=sync.disabled=false;save.innerHTML='<i class="fas fa-floppy-disk"></i> حفظ الهامش وتحديث الأسعار الآن'}};
+ save.onclick=async()=>{const pct=Number($('sada1552-markup')?.value),minutes=Number($('sada1552-interval')?.value||10),auto=$('sada1552-auto')?.checked!==false;if(!Number.isFinite(pct)||pct<100||pct>1000){toast52('نسبة الزيادة على تكلفة المزود يجب أن تكون بين 100 و1000%','wrn');return}save.disabled=sync.disabled=true;save.innerHTML='<i class="fas fa-spinner fa-spin"></i> جاري الحفظ وتحديث الأسعار…';if(status){status.className='sada1552-price-status';status.textContent='يتم حفظ هامش الربح أولاً ثم تحديث الأسعار من التكلفة الأصلية…'}try{const d=await req('/api/admin/pricing',{method:'POST',body:JSON.stringify({markupPct:pct,autoSync:auto,intervalMinutes:minutes,syncNow:true})});window.SADA_GLOBAL_MARKUP=pct;if(window.CFG?.settings)window.CFG.settings.markup=pct;showResult(d);if(d.cached?.updated&&window.DB?.ref){try{await window.DB.ref('settings/markup').set(pct)}catch(_){}}toast52(d.live?.updated?'تم حفظ الهامش وتحديث الأسعار من المزود':'تم حفظ الهامش، لكن المزامنة الحية لم تحدّث خدمات؛ راجع التفاصيل',''+(d.live?.updated?'ok':'wrn'));}catch(e){if(status){status.className='sada1552-price-status err';status.textContent='فشل حفظ أو تحديث الأسعار: '+e.message}toast52('فشل تحديث الأسعار: '+e.message,'err')}finally{save.disabled=sync.disabled=false;save.innerHTML='<i class="fas fa-floppy-disk"></i> حفظ الهامش وتحديث الأسعار الآن'}};
  sync.onclick=async()=>{sync.disabled=save.disabled=true;sync.innerHTML='<i class="fas fa-spinner fa-spin"></i> جاري التحديث…';try{const d=await req('/api/admin/pricing/sync',{method:'POST',body:JSON.stringify({})});showResult(d);toast52(d.updated?'تم تحديث '+d.updated+' خدمة من المزود':'انتهت المزامنة دون تحديث خدمة؛ راجع التفاصيل',d.updated?'ok':'wrn')}catch(e){if(status){status.className='sada1552-price-status err';status.textContent='فشلت المزامنة: '+e.message}toast52('فشلت المزامنة: '+e.message,'err')}finally{sync.disabled=save.disabled=false;sync.innerHTML='<i class="fas fa-rotate"></i> مزامنة يدوية للأسعار'}};
  loadPricingForm(card);
  }
@@ -12583,7 +12583,7 @@ body:has(#modal-mask.on) #wa-float{display:none!important}
 <script id="sada1666-welcome-refunds-admin-splash">
 (function(){
  'use strict';
- const BUILD='SADA-1.6.41-ASIACELL-EXIT-RESET-20261013';
+ const BUILD='SADA-1.6.41-PROVIDER-SYNC-SAFE-20261014';
  const $=id=>document.getElementById(id);
  const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
  const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -12789,7 +12789,7 @@ body:has(#modal-mask.on) #wa-float{display:none!important}
 <script id="sada167-earn-notifications-dashboard">
 (function(){
 'use strict';
-const BUILD='SADA-1.6.41-ASIACELL-EXIT-RESET-20261013';
+const BUILD='SADA-1.6.41-PROVIDER-SYNC-SAFE-20261014';
 const $=id=>document.getElementById(id);
 const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const money=v=>'$'+Math.max(0,Number(v)||0).toFixed(2);
@@ -13446,7 +13446,7 @@ window.SADA_V1626_RELEASE={version:'1.6.41',features:['earn-page-premium-order',
 (function(){
   'use strict';
   const EXPECTED_VERSION='1.6.41';
-  const EXPECTED_BUILD='SADA-1.6.41-ASIACELL-EXIT-RESET-20261013';
+  const EXPECTED_BUILD='SADA-1.6.41-PROVIDER-SYNC-SAFE-20261014';
   const $=id=>document.getElementById(id);
   function ensureBadge(){
     let b=$('sadairaq-version-badge');
@@ -14225,7 +14225,7 @@ window.SADA1637_UI_FIXES={version:'1.6.41',openAsiaCell:openWizard,polishOrderFo
 .sada-sidebar-version{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:10px;padding:10px 8px;border-top:1px solid var(--bd);color:var(--t2);font-size:10px;font-weight:750;letter-spacing:.15px}.sada-sidebar-version i{color:var(--blue)}.sada-sidebar-version b{display:inline-flex;align-items:center;justify-content:center;min-width:34px;padding:4px 8px;border:1px solid rgba(91,164,255,.25);border-radius:999px;background:rgba(91,164,255,.08);color:var(--blue);font-size:11px;font-weight:950}.sb-foot{padding-bottom:max(10px,env(safe-area-inset-bottom))}
 </style>
 <script id="sada-v2-sidebar-only-version">
-(function(){'use strict';const shown='2.7';function apply(){const badge=document.getElementById('sadairaq-version-badge');if(badge){badge.style.setProperty('display','none','important');badge.setAttribute('aria-hidden','true')}const v=document.querySelector('#sada-sidebar-version b');if(v&&v.textContent.trim()!==shown)v.textContent=shown;document.title='صدى العراق';}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',apply,{once:true});else apply();window.addEventListener('pageshow',apply);})();
+(function(){'use strict';const shown='2.8';function apply(){const badge=document.getElementById('sadairaq-version-badge');if(badge){badge.style.setProperty('display','none','important');badge.setAttribute('aria-hidden','true')}const v=document.querySelector('#sada-sidebar-version b');if(v&&v.textContent.trim()!==shown)v.textContent=shown;document.title='صدى العراق';}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',apply,{once:true});else apply();window.addEventListener('pageshow',apply);})();
 </script>
 
 <script id="sada-free-services-21">

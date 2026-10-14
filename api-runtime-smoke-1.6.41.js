@@ -279,7 +279,15 @@ async function main(){
     assert.equal(Number(rootDb.users.tester.balance),balanceBeforeBlockedOrder,'unavailable-service rejection must not debit the wallet');
     assert.equal(providerAddCalls,providerCallsBeforeBlockedOrder,'unavailable-service rejection must not dispatch an order to provider');
     assert.equal(JSON.parse(fs.readFileSync(path.join(dataDir,'services.json'),'utf8'))['svc-removed'].providerAvailable,true,'website order failure must not turn the persistent service off');console.log('PASS runtime: a temporarily missing supplier ID fails closed per order without disabling the saved service');
-    console.log('PASS runtime: live mock sync refreshes prices, imports new services, and keeps unmatched services enabled while blocking unverified orders');
+    const secondSync=await req('/api/admin/pricing/sync',{method:'POST',headers:adminCookie});
+    assert.equal(secondSync.status,200,`second provider sync should run: ${JSON.stringify(secondSync.data)}`);assert.equal(secondSync.data.ok,true,`second provider sync should succeed: ${JSON.stringify(secondSync.data)}`);
+    const afterSecondSync=JSON.parse(fs.readFileSync(path.join(dataDir,'services.json'),'utf8'));
+    assert.equal(afterSecondSync['svc-removed'].providerAvailable,false,'a service absent from two consecutive complete mock catalogs must be removed from active listings');
+    assert.equal(afterSecondSync['svc-removed'].providerAvailabilityReason,'provider_confirmed_removed');
+    assert.equal(afterSecondSync['svc-removed'].providerMissingChecks,2,'absence confirmation must require two successful complete catalog checks');
+    assert(afterSecondSync['svc-removed'],'removed service record must remain for historic orders and audit');
+    console.log('PASS runtime: service missing from two complete provider catalogs is hidden safely while its historical record is retained');
+    console.log('PASS runtime: live mock sync refreshes prices, imports new services, and confirms removals only after two complete catalogs');
 
     const diag=await req('/api/admin/api-key-diagnostics',{headers:adminCookie});
     assert.equal(diag.status,200,`admin diagnostics should be readable in test: ${JSON.stringify(diag.data)}`);
