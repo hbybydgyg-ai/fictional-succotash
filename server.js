@@ -27,8 +27,8 @@ function readStaticAssetBuffer(assetPath){
 const DATA = path.resolve(process.env.SADA_DATA_DIR || process.env.DATA_DIR || (process.env.RAILWAY_VOLUME_MOUNT_PATH ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, 'sada-data') : LEGACY_DATA));
 const DATA_IS_EXTERNAL = path.resolve(DATA) !== path.resolve(LEGACY_DATA);
 const APP_NAME = 'صدى العراق';
-const APP_VERSION = '1.6.45';
-const BUILD_ID = 'SADA-1.6.45-GLOBAL-CATALOG-DELETE-CACHE-20261014';
+const APP_VERSION = '1.6.46';
+const BUILD_ID = 'SADA-1.6.46-FIREBASE-CATALOG-ORDER-VERIFY-20261014';
 // Keep the owner's admin identity available after packaging, but store only a scrypt hash
 // in the project. Railway variables can still explicitly override this packaged credential.
 function loadBundledAdminAuth(){
@@ -476,6 +476,21 @@ function catalogStable(value){
   return value;
 }
 function catalogValuesEqual(a,b){return JSON.stringify(catalogStable(a??null))===JSON.stringify(catalogStable(b??null));}
+function catalogOrderArrayValue(value){
+  if(Array.isArray(value))return value;
+  if(value&&typeof value==='object'&&!Array.isArray(value)){
+    const keys=Object.keys(value);
+    if(keys.length&&keys.every(k=>/^(0|[1-9]\d*)$/.test(k))){keys.sort((a,b)=>Number(a)-Number(b));return keys.map(k=>value[k]);}
+  }
+  return [];
+}
+function catalogOrderComparable(value){
+  const src=catalogObject(value),categories=catalogOrderArrayValue(src.categories).map(x=>String(x??'').trim()).filter(Boolean);
+  const rawServices=catalogObject(src.services),services={};
+  for(const [bucket,raw] of Object.entries(rawServices))services[bucket]=catalogOrderArrayValue(raw).map(x=>String(x??'').trim()).filter(Boolean);
+  return {categories,services};
+}
+function catalogOrderValuesEqual(a,b){return catalogValuesEqual(catalogOrderComparable(a),catalogOrderComparable(b));}
 function catalogMergeOrder(remoteValue,localValue,metaRoot,servicesRoot){
   const remote=catalogObject(remoteValue),local=catalogObject(localValue);
   const categories=[],seenCats=new Set();
@@ -498,6 +513,25 @@ function catalogMergeOrder(remoteValue,localValue,metaRoot,servicesRoot){
   for(const bucket of buckets){const arr=[],seen=new Set();for(const v of [...(Array.isArray(local.services?.[bucket])?local.services[bucket]:[]),...(Array.isArray(remote.services?.[bucket])?remote.services[bucket]:[])]){const key=String(v??'');if(key&&!seen.has(key)){seen.add(key);arr.push(key)}}serviceOrders[bucket]=arr;}
   return canonicalCatalogOrder({categories,services:serviceOrders},metaRoot);
 }
+async function repairAndVerifyFirebaseCatalogOrder(expectedOrder){
+  // Merge the requested order with the latest remote order before a targeted PUT. This
+  // repairs harmless REST multi-path/read-back mismatches without discarding concurrent sections.
+  const [latestOrderRaw,latestMetaRaw,latestServicesRaw]=await Promise.all([
+    firebaseGetJson('settings/catalogOrder',12000),firebaseGetJson('categoryMeta',12000),firebaseGetJson('services',15000)
+  ]);
+  const mergedMeta={...catalogObject(readJSON('category_meta.json',{})),...catalogObject(latestMetaRaw)};
+  const mergedServices={...catalogObject(readJSON('services.json',{})),...catalogObject(latestServicesRaw)};
+  const orderToWrite=catalogMergeOrder(latestOrderRaw,expectedOrder,mergedMeta,mergedServices);
+  await firebaseWriteJson('settings/catalogOrder',orderToWrite,18000);
+  let lastActual=null;
+  for(let attempt=0;attempt<3;attempt++){
+    if(attempt)await new Promise(resolve=>setTimeout(resolve,250*attempt));
+    lastActual=await firebaseGetJson('settings/catalogOrder',12000);
+    if(catalogOrderValuesEqual(lastActual,orderToWrite))return {verified:true,repaired:true};
+  }
+  const wanted=catalogOrderComparable(orderToWrite),actual=catalogOrderComparable(lastActual);
+  throw new Error('فشل التحقق من ترتيب الأقسام حتى بعد إعادة الحفظ المباشر. المتوقع '+wanted.categories.length+' قسمًا، والمقروء '+actual.categories.length+' قسمًا. تحقق من صلاحيات كتابة Firebase أو سجلات Railway.');
+}
 async function persistFirebaseCatalogPatch(patch,options={}){
   if(!patch||typeof patch!=='object'||Array.isArray(patch)||!Object.keys(patch).length)return {count:0};
   const entries=Object.entries(patch);if(entries.length>20000)throw new Error('تحديث الكتالوج يتجاوز الحد المسموح؛ قسّم العملية إلى دفعات.');
@@ -509,7 +543,16 @@ async function persistFirebaseCatalogPatch(patch,options={}){
     for(let i=0;i<nonNull.length;i+=12){
       const group=nonNull.slice(i,i+12);
       const vals=await Promise.all(group.map(([path])=>firebaseGetJson(path,9000)));
-      for(let j=0;j<group.length;j++)if(!catalogValuesEqual(vals[j],group[j][1]))throw new Error('لم نتأكد من حفظ المسار '+group[j][0]+' داخل Firebase.');
+      for(let j=0;j<group.length;j++){
+        const [path,expected]=group[j];
+        const equal=path==='settings/catalogOrder'?catalogOrderValuesEqual(vals[j],expected):catalogValuesEqual(vals[j],expected);
+        if(equal)continue;
+        if(path==='settings/catalogOrder'&&expected&&typeof expected==='object'&&!Array.isArray(expected)){
+          await repairAndVerifyFirebaseCatalogOrder(expected);
+          continue;
+        }
+        throw new Error('لم نتأكد من حفظ المسار '+path+' داخل Firebase.');
+      }
     }
     const deletes=entries.filter(([,v])=>v===null||v===undefined);
     for(let i=0;i<deletes.length;i+=12){const group=deletes.slice(i,i+12);const vals=await Promise.all(group.map(([path])=>firebaseGetJson(path,9000)));for(let j=0;j<group.length;j++)if(vals[j]!==null&&vals[j]!==undefined)throw new Error('لم نتأكد من حذف المسار '+group[j][0]+' من Firebase.');}
@@ -6492,7 +6535,7 @@ async function routeAPI(req,res,urlObj){
     try { buildFile=fs.readFileSync(path.join(ROOT,'BUILD_ID.txt'),'utf8').trim(); } catch(_) {}
     const deploymentConsistent=uiVersion===APP_VERSION && uiBuildId===BUILD_ID && versionFile===APP_VERSION && buildFile===BUILD_ID;
     const dbInfo=firebaseDatabaseDiagnosticInfo();
-    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.45',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
+    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.46',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
     // Keep operational configuration details private; only an authenticated admin can inspect them.
     if(isAdmin(req)){const credentialStatus=firebaseServiceAccountStatus();health.firebaseDatabase={host:dbInfo.host,source:dbInfo.source,databaseProjectHint:dbInfo.databaseProjectHint,serviceAccountProjectId:dbInfo.serviceAccountProjectId||null,configuredWebProjectId:dbInfo.configuredWebProjectId||null,serviceAccountProjectMatch:dbInfo.serviceAccountProjectMatch};health.securityConfig={sessionSecretConfigured:!!String(process.env.SESSION_SECRET||'').trim(),dedicatedEncryptionKeyConfigured:!!String(process.env.SADA_ENCRYPTION_KEY||'').trim(),stableEncryptionAvailable:telegramEncryptionReady(),firebaseConfigured:!!FIREBASE_DATABASE_URL,firebaseServiceAccountConfigured:credentialStatus.ok,firebaseCredentialStatus:{ok:credentialStatus.ok,code:credentialStatus.code,source:credentialStatus.source,message:credentialStatus.message},firebaseDatabaseSecretConfigured:!!String(process.env.FIREBASE_DATABASE_SECRET||'').trim(),firebaseAuthAvailable:firebaseAuthAvailable(),emailServiceConfigured:!!(String(process.env.RESEND_API_KEY||'').trim()&&String(process.env.RESEND_FROM_EMAIL||process.env.EMAIL_FROM||'').trim()),telegramTokenFromEnvironment:!!String(process.env.TELEGRAM_BOT_TOKEN||'').trim(),adminPasswordFromEnvironment:!!(String(process.env.ADMIN_PASSWORD||'').trim()||String(process.env.ADMIN_PASSWORD_HASH||'').trim()),adminPasswordConfigured:adminPasswordConfigured()};}
     return json(res,200,health);
