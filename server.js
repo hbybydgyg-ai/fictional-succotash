@@ -28,7 +28,7 @@ const DATA = path.resolve(process.env.SADA_DATA_DIR || process.env.DATA_DIR || (
 const DATA_IS_EXTERNAL = path.resolve(DATA) !== path.resolve(LEGACY_DATA);
 const APP_NAME = 'صدى العراق';
 const APP_VERSION = '1.6.41';
-const BUILD_ID = 'SADA-1.6.41-HOST-CATALOG-ONLY-2.13-20261014';
+const BUILD_ID = 'SADA-1.6.41-FIREBASE-CATALOG-PRIMARY-2.14-20261014';
 // Keep the owner's admin identity available after packaging, but store only a scrypt hash
 // in the project. Railway variables can still explicitly override this packaged credential.
 function loadBundledAdminAuth(){
@@ -297,6 +297,7 @@ function writeCatalogNonStructuralJSON(file, value) {
 const LOCAL_CATALOG_BUCKETS = Object.freeze({services:'services.json',categoryMeta:'category_meta.json',providerServices:'provider_services.json'});
 const CATALOG_FORBIDDEN_KEYS = new Set(['__proto__','prototype','constructor']);
 let CATALOG_SEED_IN_FLIGHT = null, CATALOG_SEED_LAST_AT = 0;
+let CATALOG_FIREBASE_READY = false, CATALOG_FIREBASE_READY_IN_FLIGHT = null;
 function catalogPathSpec(rawPath){
   const parts=String(rawPath||'').split('/').filter(Boolean).map(x=>String(x));
   if(!parts.length) return null;
@@ -468,19 +469,137 @@ function ensureNumericSiteServiceIds(){
   return SITE_SERVICE_IDS_CACHE;
 }
 
-async function ensureLocalServiceCatalogSeeded(){
-  const root=readJSON('services.json',{}),keys=root&&typeof root==='object'?Object.keys(root):[];if(keys.length)return {count:keys.length,source:'hosting-file'};
-  const marker=readJSON('catalog_settings.json',{});if(marker.legacySeedAttempted)return {count:0,source:'hosting-file'};
-  if(CATALOG_SEED_IN_FLIGHT)return CATALOG_SEED_IN_FLIGHT;
-  if(Date.now()-CATALOG_SEED_LAST_AT<30000)return {count:0,source:'hosting-file',migrationPending:true};
-  CATALOG_SEED_LAST_AT=Date.now();
-  CATALOG_SEED_IN_FLIGHT=(async()=>{
-    try{const remote=await firebaseGetJson('services',9000);if(remote&&typeof remote==='object'&&!Array.isArray(remote)&&Object.keys(remote).length){writeJSON('services.json',remote);const c=readJSON('catalog_settings.json',{});c.legacySeedAttempted=true;c.legacySeedCount=Object.keys(remote).length;c.legacySeedAt=nowISO();writeJSON('catalog_settings.json',c);return {count:Object.keys(remote).length,source:'one-time-migrated-to-hosting-file'};}
-      const c=readJSON('catalog_settings.json',{});c.legacySeedAttempted=true;c.legacySeedCount=0;c.legacySeedAt=nowISO();writeJSON('catalog_settings.json',c);return {count:0,source:'hosting-file'};
-    }catch(e){return {count:0,source:'hosting-file',migrationPending:true,warning:'تعذر ترحيل الكتالوج القديم من Firebase. يمكن استيراد الخدمات من لوحة الإدارة، وسيتم حفظ الجديد في ملف الاستضافة.'};}
-  })();
-  try{return await CATALOG_SEED_IN_FLIGHT}finally{CATALOG_SEED_IN_FLIGHT=null;}
+function catalogObject(value){return value&&typeof value==='object'&&!Array.isArray(value)?value:{};}
+function catalogStable(value){
+  if(Array.isArray(value))return value.map(catalogStable);
+  if(value&&typeof value==='object')return Object.fromEntries(Object.keys(value).sort().map(k=>[k,catalogStable(value[k])]));
+  return value;
 }
+function catalogValuesEqual(a,b){return JSON.stringify(catalogStable(a??null))===JSON.stringify(catalogStable(b??null));}
+function catalogMergeOrder(remoteValue,localValue,metaRoot,servicesRoot){
+  const remote=catalogObject(remoteValue),local=catalogObject(localValue);
+  const categories=[],seenCats=new Set();
+  const addCat=v=>{const name=String(v??'').trim(),key=normalizeCatalogLabel(name);if(name&&key&&!seenCats.has(key)){seenCats.add(key);categories.push(name)}};
+  // Keep the latest local order first for rows that existed only in an older release;
+  // all remote-only names are preserved after it.
+  for(const v of (Array.isArray(local.categories)?local.categories:[]))addCat(v);
+  for(const v of (Array.isArray(remote.categories)?remote.categories:[]))addCat(v);
+  const serviceKeys=new Set(Object.keys(servicesRoot)),serviceGroupLabels=new Set();
+  for(const row of Object.values(servicesRoot))for(const g of catalogRowGroups(row)){const norm=normalizeCatalogLabel(g);if(norm)serviceGroupLabels.add(norm);addCat(g);}
+  // Metadata by itself is not enough to create a live section: old provider probes may leave orphan
+  // categoryMeta rows. Keep explicitly ordered empty categories, and include legacy rows only when
+  // a saved service actually references them. Never delete the orphan metadata from Firebase.
+  for(const [metaKey,m] of Object.entries(metaRoot))if(m&&typeof m==='object'){
+    const name=String(m.name||metaKey),norm=normalizeCatalogLabel(name),linked=Array.isArray(m.serviceKeys)&&m.serviceKeys.some(k=>serviceKeys.has(String(k)));
+    if(linked||(norm&&serviceGroupLabels.has(norm)))addCat(name);
+  }
+  const serviceOrders={};
+  const buckets=new Set([...Object.keys(catalogObject(remote.services)),...Object.keys(catalogObject(local.services))]);
+  for(const bucket of buckets){const arr=[],seen=new Set();for(const v of [...(Array.isArray(local.services?.[bucket])?local.services[bucket]:[]),...(Array.isArray(remote.services?.[bucket])?remote.services[bucket]:[])]){const key=String(v??'');if(key&&!seen.has(key)){seen.add(key);arr.push(key)}}serviceOrders[bucket]=arr;}
+  return canonicalCatalogOrder({categories,services:serviceOrders},metaRoot);
+}
+async function persistFirebaseCatalogPatch(patch,options={}){
+  if(!patch||typeof patch!=='object'||Array.isArray(patch)||!Object.keys(patch).length)return {count:0};
+  const entries=Object.entries(patch);if(entries.length>20000)throw new Error('تحديث الكتالوج يتجاوز الحد المسموح؛ قسّم العملية إلى دفعات.');
+  const bodyBytes=Buffer.byteLength(JSON.stringify(patch),'utf8');
+  if(options.atomic===true||bodyBytes<=7*1024*1024){await firebasePatchJson('',patch,Math.max(20000,Number(options.timeoutMs)||30000));}
+  else {const batchSize=Math.max(1,Math.min(250,Number(options.batchSize)||180));for(let i=0;i<entries.length;i+=batchSize){const part=Object.fromEntries(entries.slice(i,i+batchSize));await firebasePatchJson('',part,20000);}}
+  if(options.verify!==false){
+    const nonNull=entries.filter(([,v])=>v!==null&&v!==undefined);
+    for(let i=0;i<nonNull.length;i+=12){
+      const group=nonNull.slice(i,i+12);
+      const vals=await Promise.all(group.map(([path])=>firebaseGetJson(path,9000)));
+      for(let j=0;j<group.length;j++)if(!catalogValuesEqual(vals[j],group[j][1]))throw new Error('لم نتأكد من حفظ المسار '+group[j][0]+' داخل Firebase.');
+    }
+    const deletes=entries.filter(([,v])=>v===null||v===undefined);
+    for(let i=0;i<deletes.length;i+=12){const group=deletes.slice(i,i+12);const vals=await Promise.all(group.map(([path])=>firebaseGetJson(path,9000)));for(let j=0;j<group.length;j++)if(vals[j]!==null&&vals[j]!==undefined)throw new Error('لم نتأكد من حذف المسار '+group[j][0]+' من Firebase.');}
+  }
+  return {count:entries.length};
+}
+async function reloadLocalCatalogFromFirebase(){
+  const [services,categoryMeta,providerServices,catalogOrder,svcsVersion]=await Promise.all([
+    firebaseGetJson('services',12000),firebaseGetJson('categoryMeta',12000),firebaseGetJson('providerServices',12000),firebaseGetJson('settings/catalogOrder',9000),firebaseGetJson('settings/svcsVersion',9000)
+  ]);
+  writeJSON('services.json',catalogObject(services));
+  writeJSON('category_meta.json',catalogObject(categoryMeta));
+  writeJSON('provider_services.json',catalogObject(providerServices));
+  const cfg=readJSON('catalog_settings.json',{});cfg.catalogOrder=catalogMergeOrder(catalogOrder,{},catalogObject(categoryMeta),catalogObject(services));if(svcsVersion!==null&&svcsVersion!==undefined)cfg.firebaseSvcsVersion=svcsVersion;writeJSON('catalog_settings.json',cfg);
+  SITE_SERVICE_IDS_DIRTY=true;ensureNumericSiteServiceIds();
+  return {services:Object.keys(catalogObject(services)).length,sections:Object.keys(catalogObject(categoryMeta)).length};
+}
+async function ensureLocalServiceCatalogSeeded(){
+  if(CATALOG_FIREBASE_READY)return {count:Object.keys(readJSON('services.json',{})).length,source:'firebase',storage:'firebase'};
+  if(CATALOG_FIREBASE_READY_IN_FLIGHT)return CATALOG_FIREBASE_READY_IN_FLIGHT;
+  CATALOG_FIREBASE_READY_IN_FLIGHT=(async()=>{
+    // Firebase is the source of truth. During the one-time bridge, preserve local-only rows
+    // by adding them to Firebase without replacing current Firebase rows with stale local copies.
+    const localServices=catalogObject(readJSON('services.json',{})),localMeta=catalogObject(readJSON('category_meta.json',{})),localProviders=catalogObject(readJSON('provider_services.json',{})),localCfg=catalogObject(readJSON('catalog_settings.json',{}));
+    const [remoteServicesRaw,remoteMetaRaw,remoteProvidersRaw,remoteOrderRaw,remoteVersion]=await Promise.all([
+      firebaseGetJson('services',15000),firebaseGetJson('categoryMeta',12000),firebaseGetJson('providerServices',12000),firebaseGetJson('settings/catalogOrder',10000),firebaseGetJson('settings/svcsVersion',8000)
+    ]);
+    const remoteServices=catalogObject(remoteServicesRaw),remoteMeta=catalogObject(remoteMetaRaw),remoteProviders=catalogObject(remoteProvidersRaw);
+    const mergedServices={...localServices,...remoteServices};
+    const mergedMeta={};for(const key of new Set([...Object.keys(localMeta),...Object.keys(remoteMeta)]))mergedMeta[key]={...(localMeta[key]&&typeof localMeta[key]==='object'?localMeta[key]:{}),...(remoteMeta[key]&&typeof remoteMeta[key]==='object'?remoteMeta[key]:{})};
+    const mergedProviders={...localProviders,...remoteProviders};
+    const mergedOrder=catalogMergeOrder(remoteOrderRaw,localCfg.catalogOrder,mergedMeta,mergedServices);
+    const patch={};
+    for(const [key,row] of Object.entries(mergedServices))if(!Object.prototype.hasOwnProperty.call(remoteServices,key))patch['services/'+key]=row;
+    for(const [key,row] of Object.entries(mergedMeta))if(!catalogValuesEqual(remoteMeta[key]??null,row))patch['categoryMeta/'+key]=row;
+    for(const [key,row] of Object.entries(mergedProviders))if(!Object.prototype.hasOwnProperty.call(remoteProviders,key))patch['providerServices/'+key]=row;
+    if(!catalogValuesEqual(remoteOrderRaw??null,mergedOrder))patch['settings/catalogOrder']=mergedOrder;
+    const freshVersion=String(Date.now());if(Object.keys(patch).length||remoteVersion===null||remoteVersion===undefined)patch['settings/svcsVersion']=freshVersion;
+    if(Object.keys(patch).length)await persistFirebaseCatalogPatch(patch,{verify:true,batchSize:150});
+    // Re-read Firebase after migration; never treat the local copy as authoritative.
+    const [finalServicesRaw,finalMetaRaw,finalProvidersRaw,finalOrderRaw,finalVersion]=await Promise.all([
+      firebaseGetJson('services',15000),firebaseGetJson('categoryMeta',12000),firebaseGetJson('providerServices',12000),firebaseGetJson('settings/catalogOrder',10000),firebaseGetJson('settings/svcsVersion',8000)
+    ]);
+    const finalServices=catalogObject(finalServicesRaw),finalMeta=catalogObject(finalMetaRaw),finalProviders=catalogObject(finalProvidersRaw);
+    for(const key of Object.keys(mergedServices))if(!Object.prototype.hasOwnProperty.call(finalServices,key))throw new Error('فشل التحقق من ترحيل الخدمة '+key+' إلى Firebase.');
+    writeJSON('services.json',finalServices);writeJSON('category_meta.json',finalMeta);writeJSON('provider_services.json',finalProviders);
+    const cfg=readJSON('catalog_settings.json',{});cfg.catalogOrder=catalogMergeOrder(finalOrderRaw,mergedOrder,finalMeta,finalServices);cfg.firebaseSvcsVersion=finalVersion??freshVersion;cfg.firebaseCatalogLastVerifiedAt=nowISO();cfg.firebaseCatalogLastVerifiedCounts={services:Object.keys(finalServices).length,sections:Object.keys(finalMeta).length};writeJSON('catalog_settings.json',cfg);
+    SITE_SERVICE_IDS_DIRTY=true;ensureNumericSiteServiceIds();
+    // Persist ID normalization as well, so order APIs and the UI see identical service records.
+    const normalized=readJSON('services.json',{}),normalizedPatch={};for(const [key,row] of Object.entries(normalized))if(!catalogValuesEqual(finalServices[key]??null,row))normalizedPatch['services/'+key]=row;
+    if(Object.keys(normalizedPatch).length){await persistFirebaseCatalogPatch(normalizedPatch,{verify:true,batchSize:150});}
+    CATALOG_FIREBASE_READY=true;
+    return {count:Object.keys(normalized).length,source:'firebase',storage:'firebase'};
+  })();
+  try{return await CATALOG_FIREBASE_READY_IN_FLIGHT;}finally{CATALOG_FIREBASE_READY_IN_FLIGHT=null;}
+}
+function catalogPathToFirebase(rawPath){
+  const spec=catalogPathSpec(rawPath);if(!spec)return null;
+  const p=String(rawPath||'').split('/').filter(Boolean);
+  if(spec.bucket==='services'||spec.bucket==='categoryMeta'||spec.bucket==='providerServices')return p.join('/');
+  if(spec.bucket==='settings'&&['catalogOrder','svcsVersion'].includes(p[1]))return 'settings/'+p[1];
+  return null;
+}
+async function persistCatalogPathMutation(rawPath,mode,value){
+  const spec=catalogPathSpec(rawPath),remotePath=catalogPathToFirebase(rawPath);if(!spec||!remotePath)throw new Error('مسار الكتالوج غير قابل للحفظ في Firebase.');
+  const localRoot=()=>readJSON(spec.file,{});
+  let expected=null;
+  if(spec.bucket==='services'||spec.bucket==='categoryMeta'||spec.bucket==='providerServices'){
+    if(!spec.parts.length){if(mode==='remove'){expected=null;await firebaseDeleteJson(remotePath,20000);}else{expected=localRoot();await firebaseWriteJson(remotePath,expected,20000);}}
+    else {let cursor=localRoot();for(const part of spec.parts)cursor=cursor&&typeof cursor==='object'?cursor[part]:null;expected=cursor===undefined?null:cursor;if(mode==='remove'||expected===null)await firebaseDeleteJson(remotePath,12000);else await firebaseWriteJson(remotePath,expected,15000);}
+  }else if(spec.bucket==='settings'){
+    const cfg=localRoot();expected=spec.parts[0]==='catalogOrder'?cfg.catalogOrder:spec.parts[0]==='svcsVersion'?(value??cfg.svcsVersion):value;
+    if(expected===null||expected===undefined)await firebaseDeleteJson(remotePath,9000);else await firebaseWriteJson(remotePath,expected,12000);
+  }
+  const actual=await firebaseGetJson(remotePath,10000);if(!catalogValuesEqual(actual,expected))throw new Error('لم يؤكد Firebase حفظ '+remotePath+'.');
+  return {path:remotePath,verified:true};
+}
+async function persistCatalogBatchToFirebase(updates){
+  const patch={};for(const [rawPath,value] of Object.entries(updates||{})){
+    const remotePath=catalogPathToFirebase(rawPath),spec=catalogPathSpec(rawPath);if(!remotePath||!spec)throw new Error('مسار غير مسموح في دفعة الكتالوج: '+rawPath);
+    if(value===null||value===undefined){patch[remotePath]=null;continue;}
+    if(!spec.parts.length){patch[remotePath]=readJSON(spec.file,{});continue;}
+    let cursor=readJSON(spec.file,{});for(const part of spec.parts)cursor=cursor&&typeof cursor==='object'?cursor[part]:null;
+    patch[remotePath]=cursor===undefined?null:cursor;
+  }
+  const affectsCatalog=Object.keys(updates||{}).some(raw=>{const spec=catalogPathSpec(raw);return spec&&(spec.bucket==='services'||spec.bucket==='categoryMeta');});
+  if(affectsCatalog){const cfg=readJSON('catalog_settings.json',{});if(cfg.catalogOrder)patch['settings/catalogOrder']=cfg.catalogOrder;patch['settings/svcsVersion']=String(Date.now());}
+  await persistFirebaseCatalogPatch(patch,{verify:true,batchSize:150});return {count:Object.keys(patch).length,verified:true};
+}
+
 function catalogApplyBatch(updates){
   if(!updates||typeof updates!=='object'||Array.isArray(updates))return {ok:false,error:'قائمة تحديثات الكتالوج غير صالحة'};
   const entries=Object.entries(updates);if(!entries.length||entries.length>10000)return {ok:false,error:'عدد تحديثات الكتالوج غير صالح'};
@@ -489,7 +608,7 @@ function catalogApplyBatch(updates){
   for(const item of validated){const {spec,path:rawPath,value}=item;if(!roots.has(spec.file))roots.set(spec.file,readJSON(spec.file,{}));let root=roots.get(spec.file);
     if(!spec.parts.length){roots.set(spec.file,{...value});continue;}
     let parent=root;for(let i=0;i<spec.parts.length-1;i++){const part=spec.parts[i];if(!parent[part]||typeof parent[part]!=='object'||Array.isArray(parent[part]))parent[part]={};parent=parent[part];}
-    parent[spec.parts[spec.parts.length-1]]=value;
+    if(value===null||value===undefined)delete parent[spec.parts[spec.parts.length-1]];else parent[spec.parts[spec.parts.length-1]]=value;
     if(spec.bucket==='services'&&spec.parts.length===1)serviceKeys.add(spec.parts[0]);
   }
   // Keep pinned category precedence even when a batch includes an explicit sort update.
@@ -4408,17 +4527,21 @@ async function routeAPI(req,res,urlObj){
   if(p==='/api/catalog'&&req.method==='GET'){
     const raw=String(urlObj.searchParams.get('path')||'services');const spec=catalogPathSpec(raw);
     if(!spec)return json(res,422,{ok:false,error:'مسار الكتالوج غير مسموح'});
-    if(raw==='services'||raw.startsWith('services/')){const seed=await ensureLocalServiceCatalogSeeded();ensureNumericSiteServiceIds();const got=catalogReadPath(raw);let value=got.value;if(raw==='services'&&value&&typeof value==='object'&&!Array.isArray(value)){const includeUnapproved=isAdmin(req)&&urlObj.searchParams.get('includeUnapprovedAutoImports')==='1';value=Object.fromEntries(Object.entries(value).filter(([,v])=>v&&typeof v==='object'&&(includeUnapproved||v.unapprovedAutoImport!==true)&&(isAdmin(req)||!hasExplicitSiteServiceDisable(v))));if(includeUnapproved){const archived=readJSON('quarantined_provider_services.json',{});for(const [archiveKey,archiveRow] of Object.entries(archived&&typeof archived==='object'&&!Array.isArray(archived)?archived:{}))if(archiveRow&&typeof archiveRow==='object')value[archiveKey]=archiveRow;}for(const [freeKey,freeRow] of Object.entries(readAdminFreeServices())){if(!freeRow||freeRow.adminFreeService!==true||freeRow.enabled===false||freeRow.deleted===true)continue;const safeRow=isAdmin(req)?{...freeRow,fbKey:freeKey,adminFreeServiceKey:freeKey}:{...adminFreeServicePublic({...freeRow,fbKey:freeKey,adminFreeServiceKey:freeKey})};value[freeKey]=safeRow;}for(const [manualKey,manualRow] of Object.entries(readAdminManualServices())){if(!manualRow||manualRow.serviceKind!=='manual_support'||manualRow.enabled===false||manualRow.deleted===true)continue;value[manualKey]=adminManualServicePublic(manualRow,manualKey);}}else if(raw.startsWith('services/')){const serviceKey=raw.slice('services/'.length),freeRow=readAdminFreeServices()[serviceKey],manualFound=findAdminManualService(serviceKey,'');if(freeRow&&freeRow.adminFreeService===true)value=(freeRow.enabled===false||freeRow.deleted===true)?null:(isAdmin(req)?{...freeRow,fbKey:serviceKey,adminFreeServiceKey:serviceKey}:{...adminFreeServicePublic({...freeRow,fbKey:serviceKey,adminFreeServiceKey:serviceKey})});else if(manualFound&&manualFound.row?.serviceKind==='manual_support')value=(manualFound.row.enabled===false||manualFound.row.deleted===true)?null:adminManualServicePublic(manualFound.row,manualFound.key);else if(!isAdmin(req)&&value&&typeof value==='object'&&hasExplicitSiteServiceDisable(value))value=null;}if(value&&typeof value==='object'&&value.unapprovedAutoImport===true&&!(isAdmin(req)&&urlObj.searchParams.get('includeUnapprovedAutoImports')==='1'))value=null;return json(res,200,{ok:true,value,source:seed.source,storageMode:DATA_IS_EXTERNAL?'persistent-volume':'release-local',warning:seed.warning||(!DATA_IS_EXTERNAL?'الكتالوج محفوظ في ملفات الخادم؛ لثبات التعديلات بعد إعادة نشر Railway يجب أن يكون مجلد البيانات مرتبطاً بوحدة تخزين دائمة.':'')});}
-    if(spec.bucket==='categoryMeta'){
-      // Hosting metadata is authoritative. Do not merge the entire legacy Firebase categoryMeta tree;
-      // old releases populated it with every provider category and caused phantom sections/large payloads.
-      const localRoot=readJSON('category_meta.json',{});let value=localRoot;for(const part of spec.parts){if(!value||typeof value!=='object'||!Object.prototype.hasOwnProperty.call(value,part)){value=null;break;}value=value[part];}
-      return json(res,200,{ok:true,value,source:'hosting-file',storageMode:DATA_IS_EXTERNAL?'persistent-volume':'release-local',warning:!DATA_IS_EXTERNAL?'صور/بيانات الأقسام محفوظة محلياً؛ استخدم Railway Volume لضمان بقائها بعد إعادة النشر.':''});
+    let seed;try{seed=await ensureLocalServiceCatalogSeeded();}catch(e){return json(res,503,{ok:false,error:'تعذر تحميل كتالوج الخدمات من Firebase؛ لم يتم استخدام نسخة Railway قديمة بدلاً منه. '+String(e.message||e).slice(0,180),source:'firebase',storageMode:'firebase'});}
+    if(raw==='services'||raw.startsWith('services/')){ensureNumericSiteServiceIds();const got=catalogReadPath(raw);let value=got.value;if(raw==='services'&&value&&typeof value==='object'&&!Array.isArray(value)){const includeUnapproved=isAdmin(req)&&urlObj.searchParams.get('includeUnapprovedAutoImports')==='1';value=Object.fromEntries(Object.entries(value).filter(([,v])=>v&&typeof v==='object'&&(includeUnapproved||v.unapprovedAutoImport!==true)&&(isAdmin(req)||!hasExplicitSiteServiceDisable(v))));if(includeUnapproved){const archived=readJSON('quarantined_provider_services.json',{});for(const [archiveKey,archiveRow] of Object.entries(archived&&typeof archived==='object'&&!Array.isArray(archived)?archived:{}))if(archiveRow&&typeof archiveRow==='object')value[archiveKey]=archiveRow;}for(const [freeKey,freeRow] of Object.entries(readAdminFreeServices())){if(!freeRow||freeRow.adminFreeService!==true||freeRow.enabled===false||freeRow.deleted===true)continue;const safeRow=isAdmin(req)?{...freeRow,fbKey:freeKey,adminFreeServiceKey:freeKey}:{...adminFreeServicePublic({...freeRow,fbKey:freeKey,adminFreeServiceKey:freeKey})};value[freeKey]=safeRow;}for(const [manualKey,manualRow] of Object.entries(readAdminManualServices())){if(!manualRow||manualRow.serviceKind!=='manual_support'||manualRow.enabled===false||manualRow.deleted===true)continue;value[manualKey]=adminManualServicePublic(manualRow,manualKey);}}else if(raw.startsWith('services/')){const serviceKey=raw.slice('services/'.length),freeRow=readAdminFreeServices()[serviceKey],manualFound=findAdminManualService(serviceKey,'');if(freeRow&&freeRow.adminFreeService===true)value=(freeRow.enabled===false||freeRow.deleted===true)?null:(isAdmin(req)?{...freeRow,fbKey:serviceKey,adminFreeServiceKey:serviceKey}:{...adminFreeServicePublic({...freeRow,fbKey:serviceKey,adminFreeServiceKey:serviceKey})});else if(manualFound&&manualFound.row?.serviceKind==='manual_support')value=(manualFound.row.enabled===false||manualFound.row.deleted===true)?null:adminManualServicePublic(manualFound.row,manualFound.key);else if(!isAdmin(req)&&value&&typeof value==='object'&&hasExplicitSiteServiceDisable(value))value=null;}if(value&&typeof value==='object'&&value.unapprovedAutoImport===true&&!(isAdmin(req)&&urlObj.searchParams.get('includeUnapprovedAutoImports')==='1'))value=null;return json(res,200,{ok:true,value,source:'firebase',storage:'firebase+verified-server-cache',storageMode:'firebase',warning:''});}
+    const got=catalogReadPath(raw);let value=got.value;
+    if(raw==='categoryMeta'&&value&&typeof value==='object'&&!Array.isArray(value)){
+      // Firebase remains the source of truth, but orphan metadata created by a provider probe
+      // is not presented as a real section until ordered or linked to a saved service.
+      const services=catalogObject(readJSON('services.json',{})),order=catalogObject(readJSON('catalog_settings.json',{}).catalogOrder),explicit=new Set((Array.isArray(order.categories)?order.categories:[]).map(normalizeCatalogLabel)),groups=new Set(),serviceKeys=new Set(Object.keys(services));
+      for(const row of Object.values(services))for(const group of catalogRowGroups(row)){const norm=normalizeCatalogLabel(group);if(norm)groups.add(norm);}
+      value=Object.fromEntries(Object.entries(value).filter(([key,meta])=>{const name=String(meta?.name||key),norm=normalizeCatalogLabel(name);const linked=Array.isArray(meta?.serviceKeys)&&meta.serviceKeys.some(k=>serviceKeys.has(String(k)));return (norm&&explicit.has(norm))||linked||(norm&&groups.has(norm));}));
     }
-    const got=catalogReadPath(raw);return json(res,200,{ok:true,value:got.value,source:'hosting-file',storageMode:DATA_IS_EXTERNAL?'persistent-volume':'release-local'});
+    return json(res,200,{ok:true,value,source:'firebase',storage:'firebase+verified-server-cache',storageMode:'firebase',warning:''});
   }
   if(p==='/api/admin/catalog/sections'&&req.method==='POST'){
     if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
+    try{await ensureLocalServiceCatalogSeeded();}catch(e){return json(res,503,{ok:false,error:'تعذر الاتصال بقاعدة Firebase؛ لم يتم تعديل الأقسام: '+String(e.message||e).slice(0,160)});}
     const b=await bodyJSON(req,2*1024*1024),action=String(b.action||'').trim().toLowerCase();
     const labelKey=value=>normalizeCatalogLabel(String(value??'').normalize('NFKC').replace(/[\u200B-\u200F\uFEFF]/g,'').replace(/\s+/g,' '));
     const metaKeyFor=(root,name)=>Object.keys(root||{}).find(k=>labelKey(root[k]?.name||k)===labelKey(name))||'';
@@ -4450,8 +4573,11 @@ async function routeAPI(req,res,urlObj){
           if(!settingsNext.catalogOrder.categories.some(x=>labelKey(x)===labelKey(item.name)))settingsNext.catalogOrder.categories.push(item.name);
         }
         settingsNext.catalogOrder=canonicalCatalogOrder(settingsNext.catalogOrder,metaNext);settingsNext.catalogUpdatedAt=nowISO();
+        const remotePatch={};for(const [key,row] of Object.entries(metaNext))if(!catalogValuesEqual(metaBefore[key]??null,row))remotePatch['categoryMeta/'+key]=row;
+        remotePatch['settings/catalogOrder']=settingsNext.catalogOrder;remotePatch['settings/svcsVersion']=String(Date.now());
+        try{await persistFirebaseCatalogPatch(remotePatch,{verify:true,atomic:true,timeoutMs:35000});}catch(e){return json(res,503,{ok:false,error:'لم يتم حفظ الأقسام في Firebase، لذلك لم نعلن نجاح الإضافة: '+String(e.message||e).slice(0,160)});}
         writeJSON('category_meta.json',metaNext);writeJSON('catalog_settings.json',settingsNext);
-        return json(res,200,{ok:true,action,created:requested.length,sections:requested.map(x=>x.name),storage:'hosting-json',storageMode:DATA_IS_EXTERNAL?'persistent-volume':'release-local',warning:!DATA_IS_EXTERNAL?'اربط Railway Volume دائماً على /data واجعل SADA_DATA_DIR=/data حتى تبقى الأقسام بعد إعادة النشر.':''});
+        return json(res,200,{ok:true,action,created:requested.length,sections:requested.map(x=>x.name),storage:'firebase',storageMode:'firebase',verified:true});
       }
       if(action==='pin'){
         const name=categoryName;if(!name)return json(res,422,{ok:false,error:'اسم القسم مطلوب.'});
@@ -4461,8 +4587,11 @@ async function routeAPI(req,res,urlObj){
         const ord=settingsNext.catalogOrder&&typeof settingsNext.catalogOrder==='object'?settingsNext.catalogOrder:{categories:[],services:{}};
         if(!Array.isArray(ord.categories))ord.categories=[];if(!ord.categories.some(x=>labelKey(x)===labelKey(name)))ord.categories.push(name);
         settingsNext.catalogOrder=canonicalCatalogOrder(ord,metaNext);settingsNext.catalogUpdatedAt=nowISO();
+        const remotePatch={};for(const [metaKey,metaValue] of Object.entries(metaNext))if(!catalogValuesEqual(metaBefore[metaKey]??null,metaValue))remotePatch['categoryMeta/'+metaKey]=metaValue;
+        remotePatch['settings/catalogOrder']=settingsNext.catalogOrder;remotePatch['settings/svcsVersion']=String(Date.now());
+        try{await persistFirebaseCatalogPatch(remotePatch,{verify:true,atomic:true,timeoutMs:30000});}catch(e){return json(res,503,{ok:false,error:'تعذر تثبيت القسم في Firebase؛ لم يتم تأكيد الحفظ: '+String(e.message||e).slice(0,150)});}
         writeJSON('category_meta.json',metaNext);writeJSON('catalog_settings.json',settingsNext);
-        return json(res,200,{ok:true,action,pinned:b.pinned,name,storage:'hosting-json',storageMode:DATA_IS_EXTERNAL?'persistent-volume':'release-local'});
+        return json(res,200,{ok:true,action,pinned:b.pinned,name,storage:'firebase',storageMode:'firebase',verified:true});
       }
       if(action==='delete'){
         const name=categoryName;if(!name)return json(res,422,{ok:false,error:'اسم القسم مطلوب.'});
@@ -4493,26 +4622,17 @@ async function routeAPI(req,res,urlObj){
         let wroteServices=false,wroteMeta=false,wroteSettings=false;
         try{writeJSON('services.json',servicesNext);wroteServices=true;ensureNumericSiteServiceIds();writeJSON('category_meta.json',metaNext);wroteMeta=true;writeJSON('catalog_settings.json',settingsNext);wroteSettings=true;}
         catch(e){try{if(wroteServices)writeJSON('services.json',servicesBefore);if(wroteMeta)writeJSON('category_meta.json',metaBefore);if(wroteSettings)writeJSON('catalog_settings.json',settingsBefore);ensureNumericSiteServiceIds();}catch(rollbackError){console.error('Catalog section delete rollback failed:',String(rollbackError.message||rollbackError));}throw e;}
-        // Clean up obsolete Firebase mirrors as well as the authoritative hosting JSON.
-        // Host files remain the catalog source of truth; this multi-location patch prevents
-        // stale Firebase service/category records from reappearing as ghost entries later.
-        const remoteWarnings=[],remotePatch={};
-        const legacyServiceKeys=[...new Set([...serviceIdsDeleted,...serviceIdsUnlinked])];
-        for(const key of legacyServiceKeys)remotePatch['services/'+key]=null;
+        // Firebase is the authoritative catalog: delete exclusive services, update shared services,
+        // remove the deleted category metadata and persist the final ordering in one verified patch.
+        const remotePatch={};
+        for(const key of serviceIdsDeleted)remotePatch['services/'+key]=null;
+        for(const key of serviceIdsUnlinked)remotePatch['services/'+key]=servicesNext[key];
         for(const key of matchedMetaKeys)remotePatch['categoryMeta/'+key]=null;
-        for(const [metaKey,meta] of Object.entries(metaNext)){
-          const old=metaBefore[metaKey]&&typeof metaBefore[metaKey]==='object'?metaBefore[metaKey]:{};
-          const beforeKeys=Array.isArray(old.serviceKeys)?old.serviceKeys.map(String):[];
-          const nextKeys=Array.isArray(meta?.serviceKeys)?meta.serviceKeys.map(String):[];
-          if(JSON.stringify(beforeKeys)!==JSON.stringify(nextKeys))remotePatch['categoryMeta/'+metaKey+'/serviceKeys']=nextKeys.length?nextKeys:null;
-        }
-        const remoteEntries=Object.entries(remotePatch);let firebaseCleanupCount=0;
-        for(let i=0;i<remoteEntries.length;i+=100){
-          const patch=Object.fromEntries(remoteEntries.slice(i,i+100));
-          try{await firebasePatchJson('',patch,12000);firebaseCleanupCount+=Object.keys(patch).length;}
-          catch(e){remoteWarnings.push(String(e.message||e).slice(0,140));break;}
-        }
-        return json(res,200,{ok:true,action,name,matchedServices:matches,deletedServices:serviceIdsDeleted.length,unlinkedServices:serviceIdsUnlinked.length,deletedServiceKeys:serviceIdsDeleted,deletedMetadataKeys:matchedMetaKeys,backup:'catalog-backups/'+backupName,storage:'hosting-json',storageMode:DATA_IS_EXTERNAL?'persistent-volume':'release-local',firebaseLegacyCatalogCleanupCount:firebaseCleanupCount,firebaseLegacyCatalogCleanupWarning:remoteWarnings.length?remoteWarnings.join('; '):'',warning:!DATA_IS_EXTERNAL?'الكتالوج محفوظ في مساحة الإصدار الحالية فقط؛ اربط Railway Volume لضمان بقائه بعد إعادة النشر.':''});
+        for(const [metaKey,meta] of Object.entries(metaNext))if(!catalogValuesEqual(metaBefore[metaKey]??null,meta))remotePatch['categoryMeta/'+metaKey]=meta;
+        remotePatch['settings/catalogOrder']=settingsNext.catalogOrder;remotePatch['settings/svcsVersion']=String(Date.now());
+        try{await persistFirebaseCatalogPatch(remotePatch,{verify:true,atomic:true,timeoutMs:45000});}
+        catch(e){try{writeJSON('services.json',servicesBefore);writeJSON('category_meta.json',metaBefore);writeJSON('catalog_settings.json',settingsBefore);ensureNumericSiteServiceIds();}catch(rollbackError){console.error('Catalog Firebase rollback failed:',String(rollbackError.message||rollbackError));}return json(res,503,{ok:false,error:'فشل تأكيد حذف القسم وتعديل الخدمات في Firebase؛ لم تُعرض العملية كنجاح. '+String(e.message||e).slice(0,160)});}
+        return json(res,200,{ok:true,action,name,matchedServices:matches,deletedServices:serviceIdsDeleted.length,unlinkedServices:serviceIdsUnlinked.length,deletedServiceKeys:serviceIdsDeleted,deletedMetadataKeys:matchedMetaKeys,backup:'catalog-backups/'+backupName,storage:'firebase',storageMode:'firebase',firebaseVerified:true});
       }
       return json(res,422,{ok:false,error:'عملية الأقسام غير مدعومة. استخدم create أو pin أو delete.'});
     }catch(e){return json(res,500,{ok:false,error:'تعذر حفظ تغيير الأقسام. لم نعرض العملية كنجاح: '+String(e.message||e).slice(0,180)});}
@@ -4520,21 +4640,16 @@ async function routeAPI(req,res,urlObj){
   if(p==='/api/admin/catalog'&&req.method==='POST'){
     if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
     const b=await bodyJSON(req,10*1024*1024);const rawPath=String(b.path||'');const mode=String(b.mode||'set');
+    try{await ensureLocalServiceCatalogSeeded();}catch(e){return json(res,503,{ok:false,error:'تعذر الاتصال بقاعدة Firebase؛ لم يتم حفظ التغيير: '+String(e.message||e).slice(0,160)});}
     const out=catalogMutatePath(rawPath,mode,b.value);if(!out.ok)return json(res,422,out);
-    const spec=catalogPathSpec(rawPath);let imageMirrored=false,imageMirrorWarning='';
-    if(spec?.bucket==='categoryMeta'&&spec.parts.length===1){
-      const key=spec.parts[0],meta=readJSON('category_meta.json',{})[key];
-      if(isCustomCategoryImage(meta)){
-        try{await firebaseWriteJson('categoryMeta/'+key,meta,12000);imageMirrored=true;}
-        catch(e){imageMirrorWarning=String(e.message||e).slice(0,140);if(!DATA_IS_EXTERNAL)return json(res,503,{ok:false,persistedLocal:true,path:rawPath,error:'حُفظت الصورة محلياً لكن تعذرت مزامنتها إلى Firebase. اربط تخزيناً دائماً أو أصلح صلاحية Firebase قبل الاعتماد على بقائها بعد إعادة النشر.',firebaseError:imageMirrorWarning});}
-      }
-    }
-    return json(res,200,{ok:true,persisted:true,storage:'hosting-json'+(imageMirrored?'+firebase-category-image':''),imageMirrored,storageMode:DATA_IS_EXTERNAL?'persistent-volume':'release-local',path:rawPath,warning:imageMirrorWarning?('الصورة محلية فقط حالياً: '+imageMirrorWarning):(!DATA_IS_EXTERNAL&&!imageMirrored?'تم حفظ البيانات داخل مجلد الخادم الحالي؛ لثبات الملفات العامة بعد إعادة النشر يلزم Volume دائم.':'')});
+    try{const verified=await persistCatalogPathMutation(rawPath,mode,b.value);const spec=catalogPathSpec(rawPath);if(spec&&(spec.bucket==='services'||spec.bucket==='categoryMeta')){const cfg=readJSON('catalog_settings.json',{});if(cfg.catalogOrder)await firebaseWriteJson('settings/catalogOrder',cfg.catalogOrder,12000);await firebaseWriteJson('settings/svcsVersion',String(Date.now()),8000);}return json(res,200,{ok:true,persisted:true,storage:'firebase',storageMode:'firebase',path:verified.path,verified:true});}
+    catch(e){try{await reloadLocalCatalogFromFirebase();}catch(reloadError){console.error('Firebase catalog rollback reload failed:',String(reloadError.message||reloadError));}return json(res,503,{ok:false,persisted:false,path:rawPath,error:'لم يتم تأكيد حفظ التغيير في Firebase؛ أُلغيت نتيجة العملية ولم تُعرض كنجاح. '+String(e.message||e).slice(0,160)});}
   }
   if(p==='/api/admin/catalog/batch'&&req.method==='POST'){
     if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
     const b=await bodyJSON(req,10*1024*1024);const out=catalogApplyBatch(b.updates);if(!out.ok)return json(res,422,out);
-    return json(res,200,{ok:true,persisted:true,count:out.count,storage:'hosting-json',storageMode:DATA_IS_EXTERNAL?'persistent-volume':'release-local',warning:!DATA_IS_EXTERNAL?'البيانات في مجلد النشر الحالي؛ اربط Volume دائم في Railway حتى تبقى بعد إعادة النشر.':''});
+    try{await persistCatalogBatchToFirebase(b.updates||{});await firebaseWriteJson('settings/svcsVersion',String(Date.now()),8000);return json(res,200,{ok:true,persisted:true,count:out.count,storage:'firebase',storageMode:'firebase',verified:true});}
+    catch(e){try{await reloadLocalCatalogFromFirebase();}catch(reloadError){console.error('Firebase catalog batch rollback reload failed:',String(reloadError.message||reloadError));}return json(res,503,{ok:false,persisted:false,error:'فشل تأكيد حفظ دفعة الكتالوج في Firebase؛ لم تُعلن العملية كنجاح. '+String(e.message||e).slice(0,160)});}
   }
   // v1.5.97: retired manual database upload/import/backup/restore tools.
   if(/^\/api\/admin\/(?:reset|database\/(?:backup|restore)|legacy-import\/(?:upload|preview|apply|status)|firebase\/import-catalog)$/.test(p)){
@@ -4868,10 +4983,10 @@ async function routeAPI(req,res,urlObj){
     if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
     const b=await bodyJSON(req,10*1024*1024);const services=Array.isArray(b.services)?b.services:[];
     if(!services.length||services.length>500)return json(res,422,{ok:false,error:'حدد من 1 إلى 500 خدمة صالحة للاستيراد.'});
-    await ensureLocalServiceCatalogSeeded();
+    try{await ensureLocalServiceCatalogSeeded();}catch(e){return json(res,503,{ok:false,error:'تعذر تحميل قاعدة Firebase؛ لم يبدأ الاستيراد: '+String(e.message||e).slice(0,160)});}
     const dest=String(b.destination||'__all__').trim().slice(0,100),at=nowISO();
     const categoryKey=dest==='__all__'?'':String(b.categoryKey||dest.replace(/[^a-zA-Z0-9_\-\u0600-\u06ff]+/g,'_')).slice(0,150)||'category';
-    const root=readJSON('services.json',{}),metaRoot=readJSON('category_meta.json',{}),quarantineArchive=readJSON('quarantined_provider_services.json',{});let added=0,updated=0,skipped=0,restoredArchived=0;const serviceKeys=[];
+    const root=readJSON('services.json',{}),metaRoot=readJSON('category_meta.json',{}),quarantineArchive=readJSON('quarantined_provider_services.json',{});const servicesBeforeImport=JSON.parse(JSON.stringify(root)),metaBeforeImport=JSON.parse(JSON.stringify(metaRoot)),quarantineBeforeImport=JSON.parse(JSON.stringify(quarantineArchive)),settingsBeforeImport=JSON.parse(JSON.stringify(readJSON('catalog_settings.json',{})));let added=0,updated=0,skipped=0,restoredArchived=0;const serviceKeys=[];
     for(const item of services){
       const data=item&&item.data&&typeof item.data==='object'?item.data:null;if(!data){skipped++;continue;}
       const providerId=String(data.providerId||'').trim(),sourceId=String(data.providerServiceId||data.smmpartyId||data.sourceServiceId||data.serviceId||'').trim(),name=String(data.name||'').trim(),price=Number(data.sellingUsd??(Number(data.price||0)/FIXED_RATE));
@@ -4891,11 +5006,14 @@ async function routeAPI(req,res,urlObj){
       metaRoot[categoryKey]={...old,...(b.categoryMeta&&typeof b.categoryMeta==='object'?b.categoryMeta:{}),name:dest,serviceKeys:[...new Set([...serviceKeys,...(Array.isArray(old.serviceKeys)?old.serviceKeys.map(String):[])])],updatedAt:at,updatedBy:String(session(req)?.username||ADMIN_USER)};
     }
     try{writeJSON('services.json',root);ensureNumericSiteServiceIds();if(restoredArchived)writeJSON('quarantined_provider_services.json',quarantineArchive);writeJSON('category_meta.json',metaRoot);const cfg=readJSON('catalog_settings.json',{});cfg.legacySeedAttempted=true;cfg.catalogUpdatedAt=at;cfg.lastImportCount=serviceKeys.length;const order=cfg.catalogOrder&&typeof cfg.catalogOrder==='object'?cfg.catalogOrder:{categories:[],services:{}};if(!Array.isArray(order.categories))order.categories=[];if(!order.services||typeof order.services!=='object'||Array.isArray(order.services))order.services={};if(dest!=='__all__'&&!order.categories.some(x=>normalizeCatalogLabel(x)===normalizeCatalogLabel(dest)))order.categories.push(dest);const destBucket=dest==='__all__'?'__all__':(categoryKey||normalizeCatalogKey(dest));for(const bucket of new Set([destBucket,'__all__'])){const previous=Array.isArray(order.services[bucket])?order.services[bucket].map(String):[];order.services[bucket]=[...serviceKeys,...previous.filter(k=>!serviceKeys.includes(k))];}cfg.catalogOrder=canonicalCatalogOrder(order,metaRoot);writeJSON('catalog_settings.json',cfg);const verify=readJSON('services.json',{});const missing=serviceKeys.filter(k=>!verify[k]||String(verify[k].providerServiceId||verify[k].smmpartyId||'')==='');if(missing.length)throw new Error('فشل التحقق من '+missing.length+' خدمة بعد الحفظ.');
-      let imageMirrored=false,imageMirrorWarning='';
-      if(dest!=='__all__'&&metaRoot[categoryKey]&&isCustomCategoryImage(metaRoot[categoryKey])){try{await firebaseWriteJson('categoryMeta/'+categoryKey,metaRoot[categoryKey],12000);imageMirrored=true;}catch(e){imageMirrorWarning=String(e.message||e).slice(0,140);}}
-      const warning=imageMirrorWarning?('حُفظت الصورة في ملفات الخادم لكن تعذرت مزامنتها إلى Firebase: '+imageMirrorWarning+(DATA_IS_EXTERNAL?'':' — اربط Railway Volume قبل إعادة النشر حتى لا تضيع النسخة المحلية.')):(!imageMirrored&&!DATA_IS_EXTERNAL?'تم الحفظ في ملفات الخادم دون نسخة Firebase للصورة؛ اربط Railway Volume دائماً.':'');
-      return json(res,200,{ok:true,added,updated,restoredArchived,skipped,total:serviceKeys.length,serviceKeys,verified:true,destination:dest,storage:'hosting-json'+(imageMirrored?'+firebase-category-image':''),imageMirrored,storageMode:DATA_IS_EXTERNAL?'persistent-volume':'release-local',checkedAt:nowISO(),warning});}
-    catch(e){return json(res,500,{ok:false,error:'تعذر حفظ الخدمات في ملفات الاستضافة: '+String(e.message||e).slice(0,160)});}
+      const freshRoot=readJSON('services.json',{}),freshMeta=readJSON('category_meta.json',{}),freshCfg=readJSON('catalog_settings.json',{}),remotePatch={};
+      for(const key of serviceKeys){if(!freshRoot[key])throw new Error('الخدمة '+key+' غير موجودة في الكتالوج بعد الحفظ المحلي.');remotePatch['services/'+key]=freshRoot[key];}
+      if(dest!=='__all__'&&freshMeta[categoryKey])remotePatch['categoryMeta/'+categoryKey]=freshMeta[categoryKey];
+      if(freshCfg.catalogOrder)remotePatch['settings/catalogOrder']=freshCfg.catalogOrder;
+      remotePatch['settings/svcsVersion']=String(Date.now());
+      await persistFirebaseCatalogPatch(remotePatch,{verify:true,atomic:true,timeoutMs:45000});
+      return json(res,200,{ok:true,added,updated,restoredArchived,skipped,total:serviceKeys.length,serviceKeys,verified:true,firebaseVerified:true,destination:dest,storage:'firebase',storageMode:'firebase',checkedAt:nowISO()});}
+    catch(e){try{writeJSON('services.json',servicesBeforeImport);writeJSON('category_meta.json',metaBeforeImport);writeJSON('catalog_settings.json',settingsBeforeImport);writeJSON('quarantined_provider_services.json',quarantineBeforeImport);SITE_SERVICE_IDS_DIRTY=true;}catch(rollbackError){console.error('Firebase service import rollback failed:',String(rollbackError.message||rollbackError));}return json(res,503,{ok:false,persisted:false,error:'لم يتم تأكيد حفظ الخدمات في Firebase، لذلك ألغيت العملية محلياً. '+String(e.message||e).slice(0,180)});}
   }
   // Support chat is served through the privileged server SDK, never by granting clients write access to chats.
   if(p==='/api/support/chat'&&req.method==='GET'){
@@ -5225,13 +5343,16 @@ async function routeAPI(req,res,urlObj){
     if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
     const b=await bodyJSON(req,10*1024*1024);const list=Array.isArray(b.services)?b.services:[];if(list.length>25000)return json(res,413,{ok:false,error:'عدد الخدمات كبير جداً'});
     const safe=list.map(s=>{const providerServiceId=String(s?.smmpartyId||s?.providerServiceId||s?.serviceId||'').trim();const fbId=String(s?.fbKey||s?.id||'').trim();return {id:providerServiceId,fbId,name:String(s?.name||'خدمة'),category:String(s?.category||((Array.isArray(s?.groups)&&s.groups[0])||'عام')),sellingUsd:Number(s?.sellingUsd ?? (Number(s?.price||0)/FIXED_RATE)),rateUsd:Number(s?.sellingUsd||s?.smmRateUsd||s?.rateUsd||0),min:Number(s?.min||100),max:Number(s?.max||10000),refill:!!s?.refill,cancel:!!s?.cancel,providerId:String(s?.providerId||''),providerServiceId,smmRateUsd:Number(s?.smmRateUsd||s?.rate||0),updatedAt:nowISO()};}).filter(x=>x.id&&x.providerId);
-    const root=readJSON('services.json',{});let merged=0,skippedUnapprovedNew=0;const accepted=[];
+    try{await ensureLocalServiceCatalogSeeded();}catch(e){return json(res,503,{ok:false,error:'تعذر تحميل Firebase؛ لم يبدأ تحديث الخدمات: '+String(e.message||e).slice(0,150)});}
+    const root=readJSON('services.json',{}),rootBefore=JSON.parse(JSON.stringify(root));let merged=0,skippedUnapprovedNew=0;const accepted=[],changedKeys=[];
     for(const x of safe){let key=x.fbId&&root[x.fbId]?x.fbId:Object.keys(root).find(k=>!root[k]?.unapprovedAutoImport&&String(root[k]?.providerId||'')===x.providerId&&String(root[k]?.providerServiceId||root[k]?.smmpartyId||root[k]?.serviceId||'')===x.id);
       // This compatibility endpoint may refresh existing rows only. Adding new rows requires /api/admin/services/import.
       if(!key){skippedUnapprovedNew++;continue;}const old=root[key]||{};if(old.unapprovedAutoImport===true){skippedUnapprovedNew++;continue;}
-      root[key]={...old,...x,fbKey:key,smmpartyId:x.id,serviceId:x.id,source:old.source||'smmparty',name:old.name||x.name,groups:Array.isArray(old.groups)?old.groups:[x.category],categories:Array.isArray(old.categories)?old.categories:[x.category],price:Number(old.price??(x.sellingUsd*FIXED_RATE)),basePrice:Number(old.basePrice??(x.sellingUsd*FIXED_RATE)),createdAt:old.createdAt||nowISO()};merged++;accepted.push(x);}
-    try{if(merged)writeJSON('services.json',root);if(accepted.length)writeJSON('api_services.json',accepted);const cfg=readJSON('catalog_settings.json',{});cfg.legacySeedAttempted=true;cfg.catalogUpdatedAt=nowISO();cfg.lastSyncCount=merged;cfg.lastUnapprovedSyncRows=skippedUnapprovedNew;writeJSON('catalog_settings.json',cfg);return json(res,200,{ok:true,count:merged,received:safe.length,skippedUnapprovedNew,catalogCount:Object.keys(root).length,syncedAt:nowISO(),persistedRemotely:false,storage:'hosting-json',importPolicy:'manual-approval-required',storageMode:DATA_IS_EXTERNAL?'persistent-volume':'release-local',warning:!DATA_IS_EXTERNAL?'الخدمات حُفظت كملفات على الخادم؛ اربط Volume دائم في Railway حتى تبقى بعد إعادة النشر.':''});}
-    catch(e){return json(res,500,{ok:false,error:'تعذر حفظ كتالوج الخدمات على الاستضافة: '+String(e.message||e).slice(0,160)});}
+      root[key]={...old,...x,fbKey:key,smmpartyId:x.id,serviceId:x.id,source:old.source||'smmparty',name:old.name||x.name,groups:Array.isArray(old.groups)?old.groups:[x.category],categories:Array.isArray(old.categories)?old.categories:[x.category],price:Number(old.price??(x.sellingUsd*FIXED_RATE)),basePrice:Number(old.basePrice??(x.sellingUsd*FIXED_RATE)),createdAt:old.createdAt||nowISO()};merged++;accepted.push(x);changedKeys.push(key);}
+    try{if(merged)writeJSON('services.json',root);if(accepted.length)writeJSON('api_services.json',accepted);const cfg=readJSON('catalog_settings.json',{});cfg.legacySeedAttempted=true;cfg.catalogUpdatedAt=nowISO();cfg.lastSyncCount=merged;cfg.lastUnapprovedSyncRows=skippedUnapprovedNew;writeJSON('catalog_settings.json',cfg);
+      const latest=readJSON('services.json',{}),patch={};for(const key of changedKeys)patch['services/'+key]=latest[key];if(cfg.catalogOrder)patch['settings/catalogOrder']=cfg.catalogOrder;if(merged)patch['settings/svcsVersion']=String(Date.now());if(Object.keys(patch).length)await persistFirebaseCatalogPatch(patch,{verify:true,atomic:true,timeoutMs:45000});
+      return json(res,200,{ok:true,count:merged,received:safe.length,skippedUnapprovedNew,catalogCount:Object.keys(root).length,syncedAt:nowISO(),persistedRemotely:true,storage:'firebase',importPolicy:'manual-approval-required',storageMode:'firebase',verified:true});}
+    catch(e){try{writeJSON('services.json',rootBefore);SITE_SERVICE_IDS_DIRTY=true;}catch(_){}return json(res,503,{ok:false,error:'تعذر تأكيد تحديث الخدمات في Firebase؛ لم نعلن التحديث نجاحاً. '+String(e.message||e).slice(0,160)});}
   }
   if(p==='/api/admin/sync-users' && req.method==='POST'){
     if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});const b=await bodyJSON(req);const list=Array.isArray(b.users)?b.users:[];const store=readJSON('users.json',{users:{}});let n=0;for(const x of list.slice(0,10000)){const u=String(x?.username||'').trim();const bal=Number(x?.balance);if(!u||!Number.isFinite(bal)||bal<0)continue;store.users[u]={...(store.users[u]||{name:u,role:'user'}),balance:Number(bal.toFixed(4)),totalSpent:Number(x?.totalSpent||store.users[u]?.totalSpent||0),totalOrders:Number(x?.totalOrders||store.users[u]?.totalOrders||0),discountPct:Number(x?.discountPct??store.users[u]?.discountPct??0)};n++;}writeJSON('users.json',store);return json(res,200,{ok:true,count:n});

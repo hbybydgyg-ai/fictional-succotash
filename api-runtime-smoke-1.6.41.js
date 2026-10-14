@@ -16,7 +16,7 @@ function readBody(req){return new Promise((resolve,reject)=>{let body='';req.on(
 function clone(v){return v===undefined?undefined:JSON.parse(JSON.stringify(v));}
 function pathParts(url){return decodeURIComponent(url.pathname.replace(/^\/+/, '').replace(/\.json$/,'')).split('/').filter(Boolean);}
 function getAt(root,parts){let x=root;for(const part of parts){if(!x||typeof x!=='object'||!Object.prototype.hasOwnProperty.call(x,part))return null;x=x[part];}return x===undefined?null:x;}
-function setAt(root,parts,value){if(!parts.length)throw new Error('root mutation not expected');let x=root;for(const part of parts.slice(0,-1)){if(!x[part]||typeof x[part]!=='object'||Array.isArray(x[part]))x[part]={};x=x[part];}const last=parts[parts.length-1];if(value===null)delete x[last];else x[last]=clone(value);}
+function setAt(root,parts,value){if(!parts.length){if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('root must remain an object');for(const key of Object.keys(root))delete root[key];Object.assign(root,clone(value));return;}let x=root;for(const part of parts.slice(0,-1)){if(!x[part]||typeof x[part]!=='object'||Array.isArray(x[part]))x[part]={};x=x[part];}const last=parts[parts.length-1];if(value===null)delete x[last];else x[last]=clone(value);}
 async function requestJson(url,opts={}){const response=await fetch(url,opts);const text=await response.text();let data;try{data=text?JSON.parse(text):null;}catch{data={raw:text};}return {status:response.status,data,headers:response.headers};}
 async function main(){
   const tempDir=fs.mkdtempSync(path.join(os.tmpdir(),'sada-api-smoke-'));
@@ -33,7 +33,9 @@ async function main(){
         const value=bodyText?JSON.parse(bodyText):null;setAt(rootDb,parts,value);dbVersion++;res.statusCode=200;res.setHeader('Content-Type','application/json');res.setHeader('ETag',`"${dbVersion}"`);res.end(JSON.stringify(value));return;
       }
       if(method==='PATCH'){
-        const value=bodyText?JSON.parse(bodyText):{};const current=getAt(rootDb,parts)||{};const next={...current,...value};setAt(rootDb,parts,next);dbVersion++;res.statusCode=200;res.setHeader('Content-Type','application/json');res.setHeader('ETag',`"${dbVersion}"`);res.end(JSON.stringify(next));return;
+        const value=bodyText?JSON.parse(bodyText):{};
+        if(parts.length===0){for(const [patchPath,patchValue] of Object.entries(value)){const relative=patchPath.split('/').filter(Boolean);if(relative.length)setAt(rootDb,relative,patchValue);else if(patchValue===null)delete rootDb[patchPath];else rootDb[patchPath]=clone(patchValue);}dbVersion++;res.statusCode=200;res.setHeader('Content-Type','application/json');res.setHeader('ETag',`"${dbVersion}"`);res.end(JSON.stringify(clone(rootDb)));return;}
+        const current=getAt(rootDb,parts)||{};const next={...current,...value};setAt(rootDb,parts,next);dbVersion++;res.statusCode=200;res.setHeader('Content-Type','application/json');res.setHeader('ETag',`"${dbVersion}"`);res.end(JSON.stringify(next));return;
       }
       if(method==='DELETE'){setAt(rootDb,parts,null);dbVersion++;res.statusCode=200;res.end('null');return;}
       res.statusCode=405;res.end('{}');
@@ -216,7 +218,31 @@ async function main(){
     const explicitImport=await req('/api/admin/services/import',{method:'POST',headers:{...adminCookie,'Content-Type':'application/json'},body:JSON.stringify({destination:'Test',categoryKey:'Test',categoryMeta:{name:'Test'},services:[{data:{providerId:'mock-provider',providerServiceId:'99',smmpartyId:'99',name:'Manually approved mock service',sellingUsd:2,category:'Test',groups:['Test'],min:1,max:1000}}]})});
     assert.equal(explicitImport.status,200,`explicit selected-service import should still work: ${JSON.stringify(explicitImport.data)}`);assert.equal(explicitImport.data.added,1);
     const afterExplicitImport=JSON.parse(fs.readFileSync(path.join(dataDir,'services.json'),'utf8'));
-    assert.equal(Object.values(afterExplicitImport).some(v=>String(v?.providerServiceId)==='99'&&v.name==='Manually approved mock service'),true,'explicit admin import must remain available');
+    const importedEntry=Object.entries(afterExplicitImport).find(([,v])=>String(v?.providerServiceId||'')==='99'&&v.name==='Manually approved mock service');
+    assert(importedEntry,'explicit admin import must remain available');
+    assert(rootDb.services?.[importedEntry[0]],'every manually imported service must be written into Firebase services before the endpoint returns success');
+    assert(rootDb.categoryMeta?.Test?.name==='Test','section metadata associated with the manually imported service must be stored in Firebase');
+    console.log('PASS runtime: manual service import is persisted and visible in Firebase before returning success');
+    const deleteImported=await req('/api/admin/catalog',{method:'POST',headers:{...adminCookie,'Content-Type':'application/json'},body:JSON.stringify({path:'services/'+importedEntry[0],mode:'remove'})});
+    assert.equal(deleteImported.status,200,`manual service deletion should be Firebase-verified: ${JSON.stringify(deleteImported.data)}`);
+    assert.equal(rootDb.services?.[importedEntry[0]],undefined,'deleting a service must remove its exact record from Firebase services');
+    assert.equal(JSON.parse(fs.readFileSync(path.join(dataDir,'services.json'),'utf8'))[importedEntry[0]],undefined,'deleted service must also be removed from the server cache');
+    console.log('PASS runtime: deleting a service removes the Firebase record and the local cache row');
+    const sectionName='Firebase Section Deletion Smoke',sectionKey='firebase_section_deletion_smoke';
+    const madeSection=await req('/api/admin/catalog/sections',{method:'POST',headers:{...adminCookie,'Content-Type':'application/json'},body:JSON.stringify({action:'create',sections:[{name:sectionName,platforms:['Instagram']}]})});
+    assert.equal(madeSection.status,200,`section creation must be persisted to Firebase: ${JSON.stringify(madeSection.data)}`);
+    assert.equal(rootDb.categoryMeta?.[sectionKey]?.name,sectionName,'new sections must be stored in Firebase categoryMeta');
+    assert((rootDb.settings?.catalogOrder?.categories||[]).includes(sectionName),'new sections must be stored in Firebase catalog order');
+    const sectionService=await req('/api/admin/services/import',{method:'POST',headers:{...adminCookie,'Content-Type':'application/json'},body:JSON.stringify({destination:sectionName,categoryKey:sectionKey,categoryMeta:{name:sectionName},services:[{data:{providerId:'mock-provider',providerServiceId:'98',smmpartyId:'98',name:'Firebase section deletion test service',sellingUsd:2,category:sectionName,groups:[sectionName],min:1,max:1000}}]})});
+    assert.equal(sectionService.status,200,`service for deletion test must be saved to Firebase: ${JSON.stringify(sectionService.data)}`);
+    const sectionServiceEntry=Object.entries(rootDb.services||{}).find(([,v])=>String(v?.providerServiceId||'')==='98');
+    assert(sectionServiceEntry,'service associated with the new section must exist in Firebase before deletion');
+    const deletedSection=await req('/api/admin/catalog/sections',{method:'POST',headers:{...adminCookie,'Content-Type':'application/json'},body:JSON.stringify({action:'delete',name:sectionName,confirmation:'DELETE_SECTION'})});
+    assert.equal(deletedSection.status,200,`section deletion must be Firebase-verified: ${JSON.stringify(deletedSection.data)}`);
+    assert.equal(rootDb.categoryMeta?.[sectionKey],undefined,'deleted section metadata must be removed from Firebase');
+    assert.equal(rootDb.services?.[sectionServiceEntry[0]],undefined,'service belonging exclusively to deleted section must be removed from Firebase');
+    assert(!(rootDb.settings?.catalogOrder?.categories||[]).includes(sectionName),'deleted section must be removed from Firebase category ordering');
+    console.log('PASS runtime: section creation, service import and section deletion update Firebase metadata, service rows and order');
     const restoreArchived=await req('/api/admin/services/import',{method:'POST',headers:{...adminCookie,'Content-Type':'application/json'},body:JSON.stringify({destination:'Test',categoryKey:'Test',categoryMeta:{name:'Test'},services:[{data:{providerId:'mock-provider',providerServiceId:'79',smmpartyId:'79',name:'Admin reapproved archived service',sellingUsd:6,category:'Test',groups:['Test'],min:1,max:1000}}]})});
     assert.equal(restoreArchived.status,200,`explicit import should be able to restore a quarantined service: ${JSON.stringify(restoreArchived.data)}`);assert.equal(restoreArchived.data.updated,1,'manual selection upgrades the existing legacy row in-place');assert.equal(restoreArchived.data.restoredArchived,0,'no archive should be created by automatic migration');
     const afterRestore=JSON.parse(fs.readFileSync(path.join(dataDir,'services.json'),'utf8'));

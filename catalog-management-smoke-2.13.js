@@ -12,8 +12,11 @@ assert.match(server, /if\(action==='pin'\)[\s\S]*?pinned:b\.pinned/, 'section pi
 assert.match(server, /if\(action==='delete'\)[\s\S]*?b\.confirmation!=='DELETE_SECTION'/, 'section delete must require an explicit confirmation token');
 assert.ok(server.includes("fs.writeFileSync(backupFull,JSON.stringify({createdAt:nowISO(),action:'delete-section'"), 'section deletion must write a recovery backup');
 assert.ok(server.includes("remotePatch['services/'+key]=null") && server.includes("remotePatch['categoryMeta/'+key]=null"), 'deleting a section must clean obsolete Firebase service and metadata mirrors');
-assert.ok(server.includes("remotePatch['categoryMeta/'+metaKey+'/serviceKeys']"), 'metadata in remaining categories must lose dangling service references');
-assert.ok(server.includes("await firebasePatchJson('',patch,12000)"), 'Firebase legacy cleanup must use bounded multi-location writes');
+assert.ok(server.includes("remotePatch['categoryMeta/'+metaKey]=meta") && server.includes("remotePatch['settings/catalogOrder']=settingsNext.catalogOrder"), 'metadata references and order must be persisted in Firebase after section deletion');
+assert.ok(server.includes("await persistFirebaseCatalogPatch(remotePatch,{verify:true,atomic:true,timeoutMs:45000})"), 'section deletion must be an atomic verified Firebase mutation');
+assert.ok(server.includes('async function ensureLocalServiceCatalogSeeded()') && server.includes("firebaseGetJson('services',15000)") && server.includes("source:'firebase'"), 'catalog startup must load and migrate into Firebase rather than relying on Railway files');
+assert.ok(server.includes('async function persistCatalogPathMutation') && server.includes('await persistCatalogPathMutation(rawPath,mode,b.value)') && server.includes('persistCatalogBatchToFirebase'), 'single and batch catalog writes must be verified in Firebase');
+assert.ok(server.includes('firebaseVerified:true') && server.includes("storage:'firebase'"), 'manual service import must not report success until Firebase write/read-back verification passes');
 
 // Provider category import and typed section creation remain available in the admin catalog UI.
 assert.ok(html.includes("mtab.textContent='➕ إنشاء أقسام كاملة'"), 'admin must retain the bulk-section creation view');
@@ -29,8 +32,8 @@ const catSortChunk = html.slice(finalCatSort, html.indexOf('});', finalCatSort) 
 assert.ok(catSortChunk.includes('resolveMeta(a.name)?.pinned===true') && catSortChunk.includes('if(ap!==bp)return ap-bp'), 'pinned sections must precede unpinned sections in the actual order form');
 assert.ok(html.includes('const serviceRank=new Map(savedOrder.map((id,i)=>[id,i]))') && html.includes('if(ar!==br)return ar-br'), 'service dropdown must rank services using saved catalog order');
 assert.ok(html.includes("fetch('/api/catalog?path=settings/catalogOrder'"), 'order form must refresh the authoritative saved ordering from the hosting API');
-assert.ok(html.includes("const shown='2.13'") && html.includes('SADA-1.6.41-HOST-CATALOG-ONLY-2.13-20261014'), 'HTML visible version and build identity must match this release');
-assert.equal(pkg.buildId, 'SADA-1.6.41-HOST-CATALOG-ONLY-2.13-20261014', 'package buildId must match release');
+assert.ok(html.includes("const shown='2.14'") && html.includes('SADA-1.6.41-FIREBASE-CATALOG-PRIMARY-2.14-20261014'), 'HTML visible version and build identity must match this release');
+assert.equal(pkg.buildId, 'SADA-1.6.41-FIREBASE-CATALOG-PRIMARY-2.14-20261014', 'package buildId must match release');
 
 // Run the real backend ordering helpers in a small isolated VM to prove new services are prepended.
 const helperStart = server.indexOf('function canonicalCatalogOrder(');
@@ -58,4 +61,4 @@ assert.equal(changed, true, 'adding a service must update the saved order');
 assert.equal(state['catalog_settings.json'].catalogOrder.services.instagram[0], 'new-service', 'new service must be first in its category');
 assert.equal(state['catalog_settings.json'].catalogOrder.services.__all__[0], 'new-service', 'new service must also be first in All');
 
-console.log('PASS catalog management 2.13 smoke checks: bulk sections, pinning, delete cleanup, and new-service-first ordering verified');
+console.log('PASS catalog management 2.14 smoke checks: bulk sections, pinning, Firebase-authoritative persistence, delete cleanup, and new-service-first ordering verified');
