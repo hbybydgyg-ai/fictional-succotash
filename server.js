@@ -44,8 +44,8 @@ function purgeCatalogServiceSnapshots(){
 }
 purgeCatalogServiceSnapshots();
 const APP_NAME = 'صدى العراق';
-const APP_VERSION = '1.6.58';
-const BUILD_ID = 'SADA-1.6.58-FREE-SERVICES-VISIBLE-ADMIN-CARD-20261015';
+const APP_VERSION = '1.6.59';
+const BUILD_ID = 'SADA-1.6.59-FREE-SERVICES-BULK-IMPORT-GLOBAL-24H-LIMIT-20261015';
 // Keep the owner's admin identity available after packaging, but store only a scrypt hash
 // in the project. Railway variables can still explicitly override this packaged credential.
 function loadBundledAdminAuth(){
@@ -3322,6 +3322,37 @@ function normalizeWebsiteOrderService(row,providerId,serviceId,fbKey=''){
 function readAdminFreeServices(){
   const v=readJSON('free_services.json',{});return v&&typeof v==='object'&&!Array.isArray(v)?v:{};
 }
+// All services created in the administrator's Free Services manager share one account-wide
+// allowance. Provider catalog pages are cached briefly in memory so searching/paging the
+// supplier list does not repeatedly call the upstream API.
+const ADMIN_FREE_SERVICES_GLOBAL_USAGE_KEY=sha256('sada-admin-free-services-global-usage-v1').slice(0,40);
+const ADMIN_FREE_PROVIDER_CATALOG_CACHE=new Map();
+async function loadAdminFreeProviderCatalog(providerId,forceRefresh=false){
+  const pid=String(providerId||'').trim();if(!pid)throw new Error('اختر المزود أولاً.');
+  const cached=ADMIN_FREE_PROVIDER_CATALOG_CACHE.get(pid),now=Date.now();
+  if(!forceRefresh&&cached&&now-Number(cached.cachedAt||0)<60000)return cached;
+  await ensureProviderRuntime(pid);
+  const {prov}=getProviderById(pid,{allowSingleFallback:false});
+  if(!prov?.url||!prov?.key)throw new Error('المزود غير موجود أو لم تُحفظ بيانات API الخاصة به.');
+  const data=normalizeProviderServices(await providerRequest(prov,{action:'services'},25000));
+  const rows=data.map(row=>{
+    const service=String(row.service||'').trim(),min=Math.max(1,Math.floor(Number(row.min??row.minimum)||1));
+    const max=Math.max(min,Math.floor(Number(row.max??row.maximum)||1000000));
+    return {...row,service,name:String(row.name||providerServiceName(row,service)).slice(0,240),rate:Number(row.rate),ratePresent:row.ratePresent===true&&Number.isFinite(Number(row.rate))&&Number(row.rate)>=0,min,max,category:String(row.category||row.category_name||row.categoryName||''),description:String(row.description||row.providerDescription||'').slice(0,1200)};
+  }).filter(row=>row.service);
+  const entry={providerId:pid,providerName:String(prov.name||pid),cachedAt:now,rows};
+  ADMIN_FREE_PROVIDER_CATALOG_CACHE.set(pid,entry);
+  if(ADMIN_FREE_PROVIDER_CATALOG_CACHE.size>24){const oldest=[...ADMIN_FREE_PROVIDER_CATALOG_CACHE.entries()].sort((a,b)=>Number(a[1].cachedAt||0)-Number(b[1].cachedAt||0))[0];if(oldest)ADMIN_FREE_PROVIDER_CATALOG_CACHE.delete(oldest[0]);}
+  return entry;
+}
+async function adminFreeCategoryExists(category){
+  const target=String(category||'').trim();if(!target)return false;
+  const serviceRoot=readJSON('services.json',{}),metaRoot=readJSON('category_meta.json',{});
+  for(const row of Object.values(serviceRoot&&typeof serviceRoot==='object'&&!Array.isArray(serviceRoot)?serviceRoot:{}))if(freeServiceGroups(row).some(g=>String(g).trim()===target))return true;
+  if(Object.entries(metaRoot&&typeof metaRoot==='object'&&!Array.isArray(metaRoot)?metaRoot:{}).some(([k,v])=>String(v?.name||k).trim()===target))return true;
+  try{const remote=await firebaseGetJson('categoryMeta',6500);if(remote&&typeof remote==='object'&&Object.entries(remote).some(([k,v])=>String(v?.name||k).trim()===target))return true;}catch(_){}
+  return false;
+}
 function readAdminManualServices(){
   const v=readJSON('manual_services.json',{});return v&&typeof v==='object'&&!Array.isArray(v)?v:{};
 }
@@ -3396,52 +3427,58 @@ function mirrorAdminFreeServiceUsage(username,serviceKey,localId,state,at=''){
 async function reserveAdminFreeServiceUsage(username,serviceKey,limit,localId,userPath){
   const userKey=String(username||'').trim().toLowerCase(),svcKey=String(serviceKey||'').trim(),requestId=String(localId||'').trim(),path=String(userPath||'').trim();
   if(!userKey||!svcKey||!requestId||!path)return {ok:false,error:'تعذر تثبيت هوية الحساب أو سجل Firebase للطلب المجاني.'};
-  const usageKey=sha256(svcKey).slice(0,40),now=Date.now(),at=new Date(now).toISOString(),windowMs=24*60*60*1000,max=Math.max(1,Math.min(100,Math.floor(Number(limit)||2)));
+  const usageKey=ADMIN_FREE_SERVICES_GLOBAL_USAGE_KEY,now=Date.now(),at=new Date(now).toISOString(),windowMs=24*60*60*1000,max=2;
   let tx;
   try{
     tx=await firebaseTransaction(path,current=>{
       if(!current||typeof current!=='object'||Array.isArray(current))return {write:false,result:{error:'user-record-not-found'}};
       const source=current.sadaAdminFreeServiceUsage&&typeof current.sadaAdminFreeServiceUsage==='object'&&!Array.isArray(current.sadaAdminFreeServiceUsage)?current.sadaAdminFreeServiceUsage:{};
-      const usage={...source};let dirty=false;
-      for(const [k,v] of Object.entries(usage)){
-        const fresh=(Array.isArray(v)?v:[]).filter(x=>x&&typeof x==='object'&&Number.isFinite(Date.parse(x.at||''))&&now-Date.parse(x.at||'')<windowMs);
-        if(fresh.length!==(Array.isArray(v)?v.length:0)){dirty=true;if(fresh.length)usage[k]=fresh;else delete usage[k];}
+      // Migrate old per-service counters into one global list. De-duplicate by request ID so
+      // an order already copied into the global bucket never counts twice.
+      const byRequest=new Map();
+      for(const value of Object.values(source))for(const row of (Array.isArray(value)?value:[])){
+        if(!row||typeof row!=='object'||!String(row.requestId||'').trim()||String(row.state||'')==='rejected')continue;
+        const stamp=Date.parse(row.at||'');if(!Number.isFinite(stamp)||now-stamp<0||now-stamp>=windowMs)continue;
+        const id=String(row.requestId),prior=byRequest.get(id);if(!prior||(Date.parse(prior.at||'')||0)<stamp)byRequest.set(id,{...row,requestId:id,at:new Date(stamp).toISOString()});
       }
-      const rows=Array.isArray(usage[usageKey])?[...usage[usageKey]]:[];
+      const rows=[...byRequest.values()].sort((a,b)=>(Date.parse(a.at)||0)-(Date.parse(b.at)||0));
+      const normalized=rows.length?{[usageKey]:rows}:{};
+      const sourceChanged=JSON.stringify(source)!==JSON.stringify(normalized);
       const previous=rows.find(x=>String(x.requestId||'')===requestId);
-      if(previous){if(dirty){current.sadaAdminFreeServiceUsage=usage;return {write:true,value:current,result:{duplicate:true}};}return {write:false,result:{duplicate:true}};}
-      if(rows.length>=max){const oldest=rows.map(x=>Date.parse(x.at||'')).filter(Number.isFinite).sort((a,b)=>a-b)[0]||now;const nextAllowedAt=new Date(oldest+windowMs).toISOString();if(dirty){current.sadaAdminFreeServiceUsage=usage;return {write:true,value:current,result:{limit:max,nextAllowedAt}};}return {write:false,result:{limit:max,nextAllowedAt}};}
-      rows.push({requestId,at,state:'reserved'});usage[usageKey]=rows;current.sadaAdminFreeServiceUsage=usage;current.updatedAt=nowISO();
-      return {write:true,value:current,result:{claimed:true}};
+      if(previous){if(sourceChanged){current.sadaAdminFreeServiceUsage=normalized;return {write:true,value:current,result:{duplicate:true}};}return {write:false,result:{duplicate:true}};}
+      if(rows.length>=max){const validStamps=rows.map(x=>Date.parse(x.at||'')).filter(Number.isFinite).sort((a,b)=>a-b);const oldest=validStamps[0]||now;const nextAllowedAt=new Date(oldest+windowMs).toISOString();if(sourceChanged){current.sadaAdminFreeServiceUsage=normalized;return {write:true,value:current,result:{limit:max,nextAllowedAt}};}return {write:false,result:{limit:max,nextAllowedAt}};}
+      rows.push({requestId,at,state:'reserved'});current.sadaAdminFreeServiceUsage={[usageKey]:rows};current.updatedAt=nowISO();
+      return {write:true,value:current,result:{claimed:true,used:rows.length}};
     },12000,8);
   }catch(e){console.error('free service Firebase usage reservation failed:',String(e.message||e).slice(0,180));return {ok:false,storageUnavailable:true,error:'تعذر حفظ حد الاستخدام المجاني في Firebase؛ لم نرسل طلباً إلى المزود. حاول لاحقاً.'};}
   const result=tx?.result||{};
   if(result.error)return {ok:false,error:'لم يتم العثور على سجل الحساب في Firebase؛ لم يُرسل طلب مجاني.'};
   if(result.duplicate)return {ok:false,duplicate:true,error:'هذا الطلب المجاني قيد المعالجة أو سبق إرساله. لا تعِد المحاولة برقم طلب جديد قبل التحقق من سجل المزود.'};
-  if(result.limit){return {ok:false,limit:max,nextAllowedAt:result.nextAllowedAt,error:'وصلت إلى الحد المسموح لهذه الخدمة المجانية ('+max+' طلب خلال 24 ساعة). حاول مجدداً بعد '+new Date(result.nextAllowedAt).toLocaleString('en-GB',{timeZone:'Asia/Baghdad',hour12:false})+' بتوقيت بغداد.'};}
+  if(result.limit){return {ok:false,limit:max,nextAllowedAt:result.nextAllowedAt,error:'وصلت إلى الحد المشترك للخدمات المجانية كلها: طلبان لكل حساب خلال 24 ساعة. حاول مجدداً بعد '+new Date(result.nextAllowedAt).toLocaleString('en-GB',{timeZone:'Asia/Baghdad',hour12:false})+' بتوقيت بغداد.'};}
   if(!result.claimed)return {ok:false,error:'تعذر تأكيد حجز استخدام الخدمة المجانية؛ لم يُرسل طلب للمزود.'};
-  mirrorAdminFreeServiceUsage(userKey,svcKey,requestId,'reserved',at);
-  return {ok:true,usageKey,requestId};
+  mirrorAdminFreeServiceUsage(userKey,'__all_admin_free_services__',requestId,'reserved',at);
+  return {ok:true,usageKey,requestId,limit:max,used:result.used||1};
 }
 async function finalizeAdminFreeServiceUsage(username,serviceKey,localId,state,userPath){
   const userKey=String(username||'').trim().toLowerCase(),svcKey=String(serviceKey||'').trim(),requestId=String(localId||'').trim(),path=String(userPath||'').trim();
   if(!userKey||!svcKey||!requestId||!path)return {ok:false,error:'missing-usage-identity'};
-  const usageKey=sha256(svcKey).slice(0,40);let ok=false;
+  const usageKey=ADMIN_FREE_SERVICES_GLOBAL_USAGE_KEY;let ok=false;
   try{
     const tx=await firebaseTransaction(path,current=>{
       if(!current||typeof current!=='object'||Array.isArray(current))return {write:false,result:{missing:true}};
       const old=current.sadaAdminFreeServiceUsage&&typeof current.sadaAdminFreeServiceUsage==='object'&&!Array.isArray(current.sadaAdminFreeServiceUsage)?current.sadaAdminFreeServiceUsage:{};
-      const usage={...old},rows=Array.isArray(usage[usageKey])?[...usage[usageKey]]:[],idx=rows.findIndex(x=>String(x?.requestId||'')===requestId);
-      if(idx<0)return {write:false,result:{missing:true}};
-      if(state==='rejected')rows.splice(idx,1);else rows[idx]={...rows[idx],state:String(state||'accepted'),updatedAt:nowISO()};
-      if(rows.length)usage[usageKey]=rows;else delete usage[usageKey];current.sadaAdminFreeServiceUsage=usage;current.updatedAt=nowISO();
+      const byRequest=new Map();
+      for(const value of Object.values(old))for(const row of (Array.isArray(value)?value:[]))if(row&&typeof row==='object'&&String(row.requestId||'').trim()){const id=String(row.requestId);if(!byRequest.has(id))byRequest.set(id,{...row,requestId:id});}
+      const target=byRequest.get(requestId);if(!target)return {write:false,result:{missing:true}};
+      if(state==='rejected')byRequest.delete(requestId);else byRequest.set(requestId,{...target,state:String(state||'accepted'),updatedAt:nowISO()});
+      const rows=[...byRequest.values()].sort((a,b)=>(Date.parse(a.at||0)||0)-(Date.parse(b.at||0)||0));
+      current.sadaAdminFreeServiceUsage=rows.length?{[usageKey]:rows}:{};current.updatedAt=nowISO();
       return {write:true,value:current,result:{updated:true}};
     },12000,8);
     ok=!!(tx?.result?.updated||tx?.result?.missing);
     if(!ok)console.warn('free service usage state not confirmed; reservation remains fail-closed');
   }catch(e){console.warn('free service usage finalization failed; reservation remains fail-closed:',String(e.message||e).slice(0,140));}
-  // Do not depend on local disk to permit/reject provider orders; retain a mirror for backup and support.
-  mirrorAdminFreeServiceUsage(userKey,svcKey,requestId,state);
+  mirrorAdminFreeServiceUsage(userKey,'__all_admin_free_services__',requestId,state);
   return {ok};
 }
 function nextAdminFreeSiteServiceId(){
@@ -4503,7 +4540,48 @@ async function routeAPI(req,res,urlObj){
   if(p==='/api/admin/free-services'&&req.method==='GET'){
     if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});ensureNumericSiteServiceIds();
     const cfg=providerStore(),deletedIds=cfg.deletedProviderIds instanceof Set?cfg.deletedProviderIds:new Set(Array.isArray(cfg.deletedProviderIds)?cfg.deletedProviderIds.map(String):[]),providers=Object.entries(cfg.providers||{}).filter(([id,v])=>v&&!deletedIds.has(String(id))).map(([id,v])=>({id:String(id),name:String(v.name||id),configured:!!(v.url&&v.key)}));
-    return json(res,200,{ok:true,services:Object.entries(readAdminFreeServices()).filter(([,v])=>v&&!v.deleted).map(([key,v])=>({...v,key,fbKey:key,providerRateUsd:catalogRate(v)})).sort((a,b)=>(Date.parse(b.updatedAt||b.createdAt||0)||0)-(Date.parse(a.updatedAt||a.createdAt||0)||0)),providers,storageMode:DATA_IS_EXTERNAL?'persistent-volume':'release-local',warning:!DATA_IS_EXTERNAL?'اربط Railway Volume على /data وثبّت SADA_DATA_DIR=/data حتى تبقى إعدادات الخدمات المجانية بعد إعادة النشر.':''});
+    return json(res,200,{ok:true,services:Object.entries(readAdminFreeServices()).filter(([,v])=>v&&!v.deleted).map(([key,v])=>({...v,key,fbKey:key,providerRateUsd:catalogRate(v)})).sort((a,b)=>(Date.parse(b.updatedAt||b.createdAt||0)||0)-(Date.parse(a.updatedAt||a.createdAt||0)||0)),providers,usagePolicy:{perUser:2,windowHours:24,scope:'all-admin-free-services'},storageMode:DATA_IS_EXTERNAL?'persistent-volume':'release-local',warning:!DATA_IS_EXTERNAL?'اربط Railway Volume على /data وثبّت SADA_DATA_DIR=/data حتى تبقى إعدادات الخدمات المجانية بعد إعادة النشر.':''});
+  }
+  if(p==='/api/admin/free-services/provider-catalog'&&req.method==='POST'){
+    if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
+    const b=await bodyJSON(req,64*1024),providerId=String(b.providerId||'').trim(),query=String(b.query||'').trim().toLocaleLowerCase('ar');
+    if(!providerId)return json(res,422,{ok:false,error:'اختر المزود أولاً.'});
+    try{
+      const catalog=await loadAdminFreeProviderCatalog(providerId,b.refresh===true);
+      const matched=catalog.rows.filter(row=>!query||[row.service,row.name,row.category,row.description].some(v=>String(v||'').toLocaleLowerCase('ar').includes(query)));
+      const limit=Math.max(1,Math.min(200,Math.floor(Number(b.limit)||100))),offset=Math.max(0,Math.min(100000,Math.floor(Number(b.offset)||0)));
+      const services=matched.slice(offset,offset+limit).map(row=>({providerServiceId:String(row.service),name:String(row.name||''),rate:Number(row.rate),ratePresent:row.ratePresent===true,min:Math.max(1,Math.floor(Number(row.min)||1)),max:Math.max(Math.max(1,Math.floor(Number(row.min)||1)),Math.floor(Number(row.max)||1000000)),category:String(row.category||''),description:String(row.description||''),refill:!!row.refill,cancel:!!row.cancel,rawType:String(row.type||row.service_type||'')}));
+      return json(res,200,{ok:true,providerId,providerName:catalog.providerName,total:matched.length,offset,limit,services,hasMore:offset+services.length<matched.length,cachedAt:new Date(catalog.cachedAt).toISOString(),usagePolicy:{limit:2,windowHours:24,scope:'all-admin-free-services-per-user'}});
+    }catch(e){return json(res,502,{ok:false,error:'تعذر جلب قائمة خدمات المزود: '+String(e.message||e).slice(0,200)});}
+  }
+  if(p==='/api/admin/free-services/bulk-save'&&req.method==='POST'){
+    if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});ensureNumericSiteServiceIds();
+    const b=await bodyJSON(req,256*1024),providerId=String(b.providerId||'').trim(),category=String(b.category||'').trim().slice(0,160),platform=String(b.platform||'Other').trim();
+    const ids=[...new Set((Array.isArray(b.providerServiceIds)?b.providerServiceIds:[]).map(x=>String(x||'').trim()).filter(Boolean))];
+    if(!providerId||!ids.length)return json(res,422,{ok:false,error:'اختر المزود وحدد خدمة واحدة على الأقل من القائمة.'});
+    if(ids.length>50)return json(res,422,{ok:false,error:'يمكن إضافة 50 خدمة كحد أقصى في الدفعة الواحدة.'});
+    if(!category)return json(res,422,{ok:false,error:'اختر القسم الذي ستظهر بداخله الخدمات.'});
+    const validPlatforms=new Set(['Instagram','Tiktok','Youtube','Facebook','Telegram','Twitter','Snapchat','Whatsapp','Linkedin','Other']);if(!validPlatforms.has(platform))return json(res,422,{ok:false,error:'المنصة المختارة غير مدعومة.'});
+    if(!await adminFreeCategoryExists(category))return json(res,422,{ok:false,error:'القسم المختار غير موجود حالياً. اختر قسماً مستخدماً في الموقع.'});
+    try{
+      const catalog=await loadAdminFreeProviderCatalog(providerId,true),byId=new Map(catalog.rows.map(row=>[String(row.service),row]));
+      const missing=ids.filter(id=>!byId.has(id));if(missing.length)return json(res,409,{ok:false,error:'بعض الخدمات المحددة لم تعد موجودة لدى المزود: '+missing.slice(0,8).join(', ')+'. حدّث القائمة ثم أعد الاختيار؛ لم نحفظ أي خدمة.'});
+      const bad=ids.filter(id=>byId.get(id)?.ratePresent!==true||!Number.isFinite(Number(byId.get(id)?.rate))||Number(byId.get(id)?.rate)<0);
+      if(bad.length)return json(res,422,{ok:false,error:'لا يمكن إضافة خدمات دون تكلفة مزود رقمية موثوقة. أزل الخدمات غير الموثقة من التحديد: '+bad.slice(0,8).join(', ')+'. لم نحفظ أي خدمة.'});
+      const root=readAdminFreeServices(),activeSources=new Set(Object.values(root).filter(row=>row&&!row.deleted&&row.adminFreeService===true).map(row=>String(row.providerId||'')+'|'+String(row.providerServiceId||'')));
+      const skipped=[],toAdd=[];
+      for(const id of ids){const row=byId.get(id),sourceKey=providerId+'|'+id;if(activeSources.has(sourceKey)){skipped.push({providerServiceId:id,name:String(row.name||('خدمة '+id)),reason:'مضافة مسبقاً'});continue;}toAdd.push({id,row});}
+      const usedIds=new Set(allSiteServiceRows().map(entry=>currentSiteServiceId(entry.row)).filter(id=>/^\d{4}$/.test(id)));
+      const added=[],at=nowISO(),providerName=String(catalog.providerName||providerId);
+      for(const entry of toAdd){
+        const {id,row}=entry,siteServiceId=allocateFourDigitSiteServiceId(usedIds);usedIds.add(siteServiceId);
+        const serviceKey='free_'+crypto.randomBytes(12).toString('hex'),min=Math.max(1,Math.floor(Number(row.min)||1)),max=Math.max(min,Math.floor(Number(row.max)||1000000)),providerRate=Number(row.rate);
+        const record={fbKey:serviceKey,adminFreeServiceKey:serviceKey,adminFreeService:true,free:true,enabled:true,id:siteServiceId,siteServiceId,internalServiceId:siteServiceId,serviceId:siteServiceId,providerId,providerName,providerServiceId:id,smmpartyId:id,source:'smmparty',sourceType:'admin-free',name:String(row.name||('خدمة رقم '+id)).trim().slice(0,200),description:String(row.description||'').trim().slice(0,3000),desc:String(row.description||'').trim().slice(0,3000),category,groups:[category],categories:[category],app:platform,apps:[platform],platforms:[platform],min,max,perAccountLimit:2,limitHours:24,sellingUsd:0,rateUsd:0,rate:0,price:0,basePrice:Number((providerRate*FIXED_RATE).toFixed(6)),providerRateUsd:providerRate,smmRateUsd:providerRate,baseProviderRateUsd:providerRate,smmRate:providerRate,providerRateCheckedAt:nowISO(),providerAvailable:true,availabilityStatus:'available',refill:!!row.refill,cancel:!!row.cancel,quality:String(row.rawType||'SMM').slice(0,80),createdAt:at,updatedAt:at,updatedBy:String(currentSession?.username||ADMIN_USER)};
+        root[serviceKey]=record;added.push({...record,key:serviceKey});
+      }
+      if(added.length)writeJSON('free_services.json',root);
+      return json(res,200,{ok:true,providerId,added,addedCount:added.length,skipped,skippedCount:skipped.length,globalUsageLimit:{perUser:2,windowHours:24,scope:'all-admin-free-services'},storageMode:DATA_IS_EXTERNAL?'persistent-volume':'release-local',warning:!DATA_IS_EXTERNAL?'تنبيه: اربط Railway Volume على /data حتى تبقى الخدمات بعد إعادة النشر.':''});
+    }catch(e){return json(res,502,{ok:false,error:'تعذر حفظ الخدمات المحددة: '+String(e.message||e).slice(0,200)});}
   }
   if(p==='/api/admin/free-services/verify-service'&&req.method==='POST'){
     if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
@@ -4530,15 +4608,12 @@ async function routeAPI(req,res,urlObj){
     }
     if(action!=='save')return json(res,422,{ok:false,error:'الإجراء غير مدعوم.'});
     const providerId=String(b.providerId||'').trim(),providerServiceId=String(b.providerServiceId||'').trim(),name=String(b.name||'').trim().slice(0,200),category=String(b.category||'').trim().slice(0,160),platform=String(b.platform||'Other').trim();
-    const min=Math.floor(Number(b.min)),max=Math.floor(Number(b.max)),perAccountLimit=Math.floor(Number(b.perAccountLimit));
+    const min=Math.floor(Number(b.min)),max=Math.floor(Number(b.max)),perAccountLimit=2;
     if(!providerId||!providerServiceId||!name||!category)return json(res,422,{ok:false,error:'أكمل المزود ورقم الخدمة واسم الخدمة والقسم.'});
     if(!Number.isSafeInteger(min)||min<1||!Number.isSafeInteger(max)||max<min||max>1000000000)return json(res,422,{ok:false,error:'حدود الكمية غير صحيحة؛ يجب أن تكون الكمية العليا مساوية للأدنى أو أكبر.'});
-    if(!Number.isSafeInteger(perAccountLimit)||perAccountLimit<1||perAccountLimit>100)return json(res,422,{ok:false,error:'حد الطلبات لكل حساب يجب أن يكون بين 1 و100 خلال 24 ساعة.'});
+    // The account-wide allowance is fixed: two orders across every admin-managed free service in 24 hours.
     const validPlatforms=new Set(['Instagram','Tiktok','Youtube','Facebook','Telegram','Twitter','Snapchat','Whatsapp','Linkedin','Other']);if(!validPlatforms.has(platform))return json(res,422,{ok:false,error:'المنصة المختارة غير مدعومة.'});
-    let categoryExists=false;const serviceRoot=readJSON('services.json',{}),metaRoot=readJSON('category_meta.json',{});
-    for(const row of Object.values(serviceRoot&&typeof serviceRoot==='object'?serviceRoot:{}))if(freeServiceGroups(row).some(g=>String(g).trim()===category)){categoryExists=true;break;}
-    if(!categoryExists)categoryExists=Object.entries(metaRoot&&typeof metaRoot==='object'?metaRoot:{}).some(([k,v])=>String(v?.name||k).trim()===category);
-    if(!categoryExists){try{const remote=await firebaseGetJson('categoryMeta',6500);if(remote&&typeof remote==='object')categoryExists=Object.entries(remote).some(([k,v])=>String(v?.name||k).trim()===category);}catch(_){}}
+    const categoryExists=await adminFreeCategoryExists(category);
     if(!categoryExists)return json(res,422,{ok:false,error:'القسم المختار غير موجود حالياً. اختر قسماً مستخدماً في الموقع.'});
     try{
       await ensureProviderRuntime(providerId);const {prov}=getProviderById(providerId,{allowSingleFallback:false});if(!prov?.url||!prov?.key)return json(res,404,{ok:false,error:'المزود غير موجود أو لم تُحفظ بيانات API الخاصة به.'});
@@ -6624,7 +6699,7 @@ async function routeAPI(req,res,urlObj){
     try { buildFile=fs.readFileSync(path.join(ROOT,'BUILD_ID.txt'),'utf8').trim(); } catch(_) {}
     const deploymentConsistent=uiVersion===APP_VERSION && uiBuildId===BUILD_ID && versionFile===APP_VERSION && buildFile===BUILD_ID;
     const dbInfo=firebaseDatabaseDiagnosticInfo();
-    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.58',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
+    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.59',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
     // Keep operational configuration details private; only an authenticated admin can inspect them.
     if(isAdmin(req)){const credentialStatus=firebaseServiceAccountStatus();health.firebaseDatabase={host:dbInfo.host,source:dbInfo.source,databaseProjectHint:dbInfo.databaseProjectHint,serviceAccountProjectId:dbInfo.serviceAccountProjectId||null,configuredWebProjectId:dbInfo.configuredWebProjectId||null,serviceAccountProjectMatch:dbInfo.serviceAccountProjectMatch};health.securityConfig={sessionSecretConfigured:!!String(process.env.SESSION_SECRET||'').trim(),dedicatedEncryptionKeyConfigured:!!String(process.env.SADA_ENCRYPTION_KEY||'').trim(),stableEncryptionAvailable:telegramEncryptionReady(),firebaseConfigured:!!FIREBASE_DATABASE_URL,firebaseServiceAccountConfigured:credentialStatus.ok,firebaseCredentialStatus:{ok:credentialStatus.ok,code:credentialStatus.code,source:credentialStatus.source,message:credentialStatus.message},firebaseDatabaseSecretConfigured:!!String(process.env.FIREBASE_DATABASE_SECRET||'').trim(),firebaseAuthAvailable:firebaseAuthAvailable(),emailServiceConfigured:!!(String(process.env.RESEND_API_KEY||'').trim()&&String(process.env.RESEND_FROM_EMAIL||process.env.EMAIL_FROM||'').trim()),telegramTokenFromEnvironment:!!String(process.env.TELEGRAM_BOT_TOKEN||'').trim(),adminPasswordFromEnvironment:!!(String(process.env.ADMIN_PASSWORD||'').trim()||String(process.env.ADMIN_PASSWORD_HASH||'').trim()),adminPasswordConfigured:adminPasswordConfigured()};}
     return json(res,200,health);

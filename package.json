@@ -1,6 +1,6 @@
 {
   "name": "sadairaq-railway",
-  "version": "1.6.58",
+  "version": "1.6.59",
   "private": true,
   "description": "صدى العراق — Firebase-authoritative service catalog, server-authoritative wallet and orders",
   "scripts": {
@@ -10,7 +10,7 @@
   "engines": {
     "node": ">=22"
   },
-  "buildId": "SADA-1.6.58-FREE-SERVICES-VISIBLE-ADMIN-CARD-20261015",
+  "buildId": "SADA-1.6.59-FREE-SERVICES-BULK-IMPORT-GLOBAL-24H-LIMIT-20261015",
   "dependencies": {
     "google-auth-library": "^11.2.0",
     "firebase-admin": "^14.5.0"
