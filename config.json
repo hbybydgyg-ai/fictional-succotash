@@ -1,7 +1,7 @@
 {
   "appName": "صدى العراق",
-  "version": "2.33",
-  "buildId": "SADA-1.6.59-FREE-SERVICES-BULK-IMPORT-GLOBAL-24H-LIMIT-20261015",
+  "version": "2.34",
+  "buildId": "SADA-1.6.60-FREE-SERVICES-PRICE-RANGE-FILTER-20261015",
   "currency": "USD",
   "exchangeRate": 1250,
   "fixedRecharge": "5000 IQD = 4 USD",

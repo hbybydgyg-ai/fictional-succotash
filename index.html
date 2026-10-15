@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
-<meta name="sada-version" content="1.6.59">
-<meta name="sada-build-id" content="SADA-1.6.59-FREE-SERVICES-BULK-IMPORT-GLOBAL-24H-LIMIT-20261015">
+<meta name="sada-version" content="1.6.60">
+<meta name="sada-build-id" content="SADA-1.6.60-FREE-SERVICES-PRICE-RANGE-FILTER-20261015">
 <script id="sada168-session-presence">try{window.__SADA_BOOT_HAD_SESSION=Boolean(localStorage.getItem('sadairaq_session_token')||localStorage.getItem('tz_u'));}catch(_){window.__SADA_BOOT_HAD_SESSION=false}</script>
 
 <style id="sada167-preboot-splash-style">
@@ -2428,7 +2428,7 @@ body.app-active { overflow:hidden !important; height:100dvh !important; }
 </style>
 
 <style>
-/* SADA 1.6.59 — unified premium image halo and responsive glow */
+/* SADA 1.6.60 — unified premium image halo and responsive glow */
 :root{
   --sada-glow-cyan: rgba(28,232,211,.62);
   --sada-glow-blue: rgba(65,139,255,.52);
@@ -2836,7 +2836,7 @@ html.sada-lite-motion .ks-particle{display:none!important}
         </div>
         <i class="fas fa-ellipsis" style="color:var(--t2);font-size:12px;flex-shrink:0"></i>
       </div>
-      <div id="sada-sidebar-version" class="sada-sidebar-version" aria-label="إصدار التطبيق 2.33"><i class="fas fa-code-branch" aria-hidden="true"></i><span>إصدار التطبيق</span><b>2.33</b></div>
+      <div id="sada-sidebar-version" class="sada-sidebar-version" aria-label="إصدار التطبيق 2.34"><i class="fas fa-code-branch" aria-hidden="true"></i><span>إصدار التطبيق</span><b>2.34</b></div>
     </div>
   </div>
 
@@ -6388,7 +6388,7 @@ function tgSend(msg){fetch(`https://api.telegram.org/bot${CFG.tg.token}/sendMess
 <script id="sada-v1530-category-service-fix">
 (function(){
   'use strict';
-  const VERSION='1.6.59';
+  const VERSION='1.6.60';
   const RATE=1250;
   const $=id=>document.getElementById(id);
   const clean=v=>String(v??'').replace(/[\u200B-\u200D\uFEFF]/g,'').replace(/\s+/gu,' ').trim();
@@ -6574,7 +6574,7 @@ function tgSend(msg){fetch(`https://api.telegram.org/bot${CFG.tg.token}/sendMess
   };
   // Refresh the catalog index only; never rewrite every service's image on page load.
   setTimeout(()=>{hydrateAllCategoryMeta().then(()=>{repairServiceIndex();try{window.buildCatDD?.();window.buildSvcDD?.(SEL_CAT||'__all__')}catch(_){}})},900);
-  window.SadaIraqBuildId='SADA-1.6.59-FREE-SERVICES-BULK-IMPORT-GLOBAL-24H-LIMIT-20261015';
+  window.SadaIraqBuildId='SADA-1.6.60-FREE-SERVICES-PRICE-RANGE-FILTER-20261015';
 })();
 
 </script>
@@ -7777,7 +7777,7 @@ function admPays(){nav('admin');setTimeout(()=>admNavTo('payments',null),150);}
 /* ===== صدى العراق v1.5.76 — FINAL UI / ORDER / IMPORT REPAIR ===== */
 (function(){
   const RATE157=1250;
-  const SADA_BUILD='1.6.59';
+  const SADA_BUILD='1.6.60';
   const s157=window.safe||function(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))};
   const m157=window.mk||function(t,c,x){const e=document.createElement(t);if(c)e.className=c;if(x!==undefined)e.textContent=x;return e};
   const t157=(m,x)=>{try{toast(m,x)}catch(_){}};
@@ -8172,7 +8172,7 @@ function admPays(){nav('admin');setTimeout(()=>admNavTo('payments',null),150);}
 ═══════════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  const SADA_VERSION='1.6.59';
+  const SADA_VERSION='1.6.60';
   const RATE=1250;
   const ATHIR_NUMBER='07903221783';
     window.SadaIraqVersion=SADA_VERSION;
@@ -8193,7 +8193,7 @@ function admPays(){nav('admin');setTimeout(()=>admNavTo('payments',null),150);}
       b=document.createElement('div'); b.id='sadairaq-version-badge';
       document.body.appendChild(b);
     }
-    const EXPECTED_BUILD='SADA-1.6.59-FREE-SERVICES-BULK-IMPORT-GLOBAL-24H-LIMIT-20261015';
+    const EXPECTED_BUILD='SADA-1.6.60-FREE-SERVICES-PRICE-RANGE-FILTER-20261015';
     const applyClientVersion=()=>{
       b.dataset.deployState='checking';
       b.textContent='صدى العراق · الإصدار '+SADA_VERSION+' · جارٍ فحص الخادم…';
@@ -8515,12 +8515,12 @@ function admPays(){nav('admin');setTimeout(()=>admNavTo('payments',null),150);}
 ═══════════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  const V='1.6.59', RATE=1250, DEFAULT_WA='https://wa.me/9647762267959';
+  const V='1.6.60', RATE=1250, DEFAULT_WA='https://wa.me/9647762267959';
   const $=id=>document.getElementById(id), txt=v=>String(v??''), api=(p,o)=>fetch(p,Object.assign({credentials:'include',cache:'no-store',headers:{'Content-Type':'application/json'}},o||{})).then(async r=>{const t=await r.text();let d={};try{d=t?JSON.parse(t):{}}catch(_){d={error:t||('HTTP '+r.status)}};if(!r.ok||d.error)throw new Error(d.error||('HTTP '+r.status));return d;});
   const ensure=fn=>document.readyState==='loading'?document.addEventListener('DOMContentLoaded',fn,{once:true}):fn();
   window.SECTION_META=window.SECTION_META||{};
   window.SadaIraqVersion=V;
-window.SadaIraqBuildId='SADA-1.6.59-FREE-SERVICES-BULK-IMPORT-GLOBAL-24H-LIMIT-20261015';
+window.SadaIraqBuildId='SADA-1.6.60-FREE-SERVICES-PRICE-RANGE-FILTER-20261015';
 
   function safe(v){return txt(v).replace(/[&<>\"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[m]));}
   function appLabel(id){const p=(CFG.platforms||[]).find(x=>x.id===id);return p?.lbl||id||'عام';}
@@ -8914,13 +8914,13 @@ window.SadaIraqBuildId='SADA-1.6.59-FREE-SERVICES-BULK-IMPORT-GLOBAL-24H-LIMIT-2
 <script>
 (function(){
 'use strict';
-const V='1.6.59';
+const V='1.6.60';
 const $=id=>document.getElementById(id);
 const safe=v=>String(v??'').replace(/[&<>\"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[m]));
 const api=window.apiJSON||((p,o)=>fetch(p,Object.assign({credentials:'include',cache:'no-store',headers:{'Content-Type':'application/json'}},o||{})).then(async r=>{const t=await r.text();let d={};try{d=t?JSON.parse(t):{}}catch(_){d={error:t}}if(!r.ok||d.error)throw new Error(d.error||('HTTP '+r.status));return d;}));
 const mk=window.mk||((tag,cls,txt)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(txt!==undefined)e.textContent=txt;return e;});
 window.SadaIraqVersion=V;
-window.SadaIraqBuildId='SADA-1.6.59-FREE-SERVICES-BULK-IMPORT-GLOBAL-24H-LIMIT-20261015';
+window.SadaIraqBuildId='SADA-1.6.60-FREE-SERVICES-PRICE-RANGE-FILTER-20261015';
 
 function setVersion(){
   const b=$('sadairaq-version-badge');
@@ -10490,7 +10490,7 @@ setTimeout(repairNow,250);
 <script id="sadairaq-v1524-unified-features">
 (function(){
   'use strict';
-  const V='1.6.59', RATE=1250;
+  const V='1.6.60', RATE=1250;
   const $=id=>document.getElementById(id);
   const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
   const usd=v=>'USD '+Number(v||0).toFixed(2);
@@ -10719,7 +10719,7 @@ curl -X POST ${base}/order -H "Authorization: Bearer YOUR_API_KEY" -H "Content-T
 <script id="sadairaq-v1525-script">
 (function(){
   'use strict';
-  const V='1.6.59', RATE=1250, $=id=>document.getElementById(id), esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])), n=v=>{const x=Number(v);return Number.isFinite(x)?x:0};
+  const V='1.6.60', RATE=1250, $=id=>document.getElementById(id), esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])), n=v=>{const x=Number(v);return Number.isFinite(x)?x:0};
   const API=(p,o={})=>fetch(p,Object.assign({credentials:'include',cache:'no-store'},o)).then(async r=>{const t=await r.text();let d={};try{d=t?JSON.parse(t):{}}catch(_){d={error:t||('HTTP '+r.status)}}if(!r.ok||d.error)throw new Error(d.error||('HTTP '+r.status));return d});
   const iconRoot='/platform-icons/';
   const icons={instagram:'instagram.svg',tiktok:'tiktok.svg',facebook:'facebook.svg',youtube:'youtube.svg',telegram:'telegram.svg',twitter:'twitter.svg',snapchat:'snapchat.svg',whatsapp:'whatsapp.svg',linkedin:'linkedin.svg',other:'other.svg'};
@@ -10896,7 +10896,7 @@ curl -X POST ${base}/order -H "Authorization: Bearer YOUR_API_KEY" -H "Content-T
 <script id="sadairaq-v1528-final-script">
 (function(){
   'use strict';
-  const V28='1.6.59';
+  const V28='1.6.60';
   const $28=id=>document.getElementById(id);
   const N28=v=>{const n=Number(v);return Number.isFinite(n)?n:0};
   const E28=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
@@ -12091,7 +12091,7 @@ curl -X POST ${base}/order -H "Authorization: Bearer YOUR_API_KEY" -H "Content-T
   document.addEventListener('DOMContentLoaded',startFinal);window.addEventListener('load',()=>setTimeout(startFinal,100));setTimeout(startFinal,250);setTimeout(startFinal,1200);
   // Observe the whole document so both independent controls survive page/route re-renders.
   if(document.body){const mo=new MutationObserver(()=>{ensureOrderWhatsApp();});mo.observe(document.body,{childList:true,subtree:true});}
-  window.__SADA_V1562_DIAGNOSTIC__={version:'1.6.59',buildId:'SADA-1.6.59-FREE-SERVICES-BULK-IMPORT-GLOBAL-24H-LIMIT-20261015',hasFetchGuard:true,orderAudit:true};
+  window.__SADA_V1562_DIAGNOSTIC__={version:'1.6.60',buildId:'SADA-1.6.60-FREE-SERVICES-PRICE-RANGE-FILTER-20261015',hasFetchGuard:true,orderAudit:true};
 })();
 </script>
 
@@ -12433,7 +12433,7 @@ curl -X POST ${base}/order -H "Authorization: Bearer YOUR_API_KEY" -H "Content-T
   const oldNav=window.nav;window.nav=function(name){const result=oldNav?oldNav.apply(this,arguments):undefined;setTimeout(safeEnhance,40);return result};
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{safeEnhance();setTimeout(safeEnhance,300);setTimeout(safeEnhance,1000)},{once:true});else{safeEnhance();setTimeout(safeEnhance,300)}
   if(document.body&&window.MutationObserver){let queued=false;const mo=new MutationObserver(()=>{if(queued)return;queued=true;requestAnimationFrame(()=>{queued=false;safeEnhance()})});mo.observe(document.body,{childList:true,subtree:true})}
-  window.__SADA_V1551_DIAGNOSTIC__={version:'1.6.59',features:['image-bounds','catalog-order','preserve-service-names','whatsapp-recharge','api-live-test']};
+  window.__SADA_V1551_DIAGNOSTIC__={version:'1.6.60',features:['image-bounds','catalog-order','preserve-service-names','whatsapp-recharge','api-live-test']};
 })();
 </script>
 
@@ -12536,7 +12536,7 @@ curl -X POST ${base}/order -H "Authorization: Bearer YOUR_API_KEY" -H "Content-T
  const nav=window.nav;if(typeof nav==='function'&&!nav.__sada1552Wrapped){const next=function(){const result=nav.apply(this,arguments);setTimeout(safe52,80);return result};next.__sada1552Wrapped=true;window.nav=next;}
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{safe52();setTimeout(safe52,500);setTimeout(safe52,1500)},{once:true});else{safe52();setTimeout(safe52,350)}
  if(window.MutationObserver&&document.body){let t=false;new MutationObserver(()=>{if(t)return;t=true;requestAnimationFrame(()=>{t=false;safe52()})}).observe(document.body,{childList:true,subtree:true})}
- window.__SADA_V1552_DIAGNOSTIC__={version:'1.6.59',features:['binance-pay-whatsapp-steps','platform-icons-every-service','full-provider-category-import','manual-quantity-bounds','provider-cost-based-global-markup','automatic-price-sync','numeric-order-fallback','order-card-polish']};
+ window.__SADA_V1552_DIAGNOSTIC__={version:'1.6.60',features:['binance-pay-whatsapp-steps','platform-icons-every-service','full-provider-category-import','manual-quantity-bounds','provider-cost-based-global-markup','automatic-price-sync','numeric-order-fallback','order-card-polish']};
 })();
 </script>
 
@@ -12631,7 +12631,7 @@ curl -X POST ${base}/order -H "Authorization: Bearer YOUR_API_KEY" -H "Content-T
     const wrapped=function(){clearPreviousService();const result=nativeSelectPlat.apply(this,arguments);const search=$('svc-search-inp');if(search)search.value='';setTimeout(()=>{try{window.buildCatDD?.();window.buildSvcDD?.(window.SEL_CAT||'__all__')}catch(_){}},0);return result};
     wrapped.__sada1560Wrapped=true;window.selectPlat=wrapped;
   }
-  window.__SADA_V1560_DIAGNOSTIC__={version:'1.6.59',features:['compact-binance-wallet-card','no-inline-order-whatsapp','left-floating-whatsapp','category-change-clears-stale-service-and-search']};
+  window.__SADA_V1560_DIAGNOSTIC__={version:'1.6.60',features:['compact-binance-wallet-card','no-inline-order-whatsapp','left-floating-whatsapp','category-change-clears-stale-service-and-search']};
 })();
 </script>
 
@@ -12712,7 +12712,7 @@ curl -X POST ${base}/order -H "Authorization: Bearer YOUR_API_KEY" -H "Content-T
  function renderPages(d){const root=$('oa-pages');if(!root)return;root.innerHTML='';if(Number(d.totalPages||1)<=1){root.innerHTML='<span style="font-size:10px;color:var(--t2)">عدد النتائج: '+Number(d.total||0).toLocaleString('ar-IQ')+'</span>';return}const prev=document.createElement('button');prev.className='btn bs2 btn-sm';prev.textContent='السابق';prev.disabled=d.page<=1;prev.onclick=()=>{state.page--;refresh()};const label=document.createElement('span');label.textContent='صفحة '+d.page+' من '+d.totalPages+' · '+d.total+' نتيجة';label.style.cssText='font-size:10px;color:var(--t1)';const next=document.createElement('button');next.className='btn bs2 btn-sm';next.textContent='التالي';next.disabled=d.page>=d.totalPages;next.onclick=()=>{state.page++;refresh()};root.append(prev,label,next)}
  function showCheckResult(d){const note=$('oa-source-note');const hasProviderStatus=!!(d.providerNormalizedStatus&&d.providerNormalizedStatus!=='unknown');const success=!!(d.externalVerified&&d.saved&&hasProviderStatus);const msg=d.warning||(success?'تم التحقق من حالة المزود وحفظ الحالة الجديدة.':d.externalVerified?(d.saved?'اتصل الموقع بالمزود لكن الحالة التي أعادها غير معروفة؛ لم نفترض اكتمال الطلب.':'تم الاتصال بالمزود لكن تعذر تأكيد حفظ الحالة.'):'تعذر التحقق الخارجي؛ الحالة المخزنة لم تتغير.');if(note)note.innerHTML='<div class="oa-note '+(success?'':'warn')+'">'+esc(msg)+(d.providerStatus?'<br>الحالة كما أرجعها المزود: <b>'+esc(d.providerStatus)+'</b>':'')+'</div>';notify(msg,success?'ok':'wrn')}
  async function initialize(){shell();try{const d=await api('/api/admin/order-audit/settings');if(d.settings){state.settings=d.settings;$('oa-delay-hours').value=d.settings.delayHours;$('oa-notify-admin').checked=!!d.settings.notifyAdmin}}catch(e){$('oa-settings-note').textContent='تعذر قراءة الإعدادات: '+e.message;$('oa-settings-note').style.color='#ff9b9b'}await refresh(true);if(!state.autoTimer)state.autoTimer=setInterval(()=>{if($('adm-sub-order-audit')?.classList.contains('on'))refresh(true)},60000)}
- window.loadOrderAuditSection=initialize;window.__SADA_V1562_ORDER_AUDIT__={version:'1.6.59',features:['overdue-dashboard','exact-site-and-provider-id-lookup','provider-status-refresh','copyable-provider-messages','completion-cancellation-tabs','server-deduplicated-alerts','settings']};
+ window.loadOrderAuditSection=initialize;window.__SADA_V1562_ORDER_AUDIT__={version:'1.6.60',features:['overdue-dashboard','exact-site-and-provider-id-lookup','provider-status-refresh','copyable-provider-messages','completion-cancellation-tabs','server-deduplicated-alerts','settings']};
  const old=window.admNavTo;window.admNavTo=function(sub,el){const result=old?old.apply(this,arguments):undefined;if(sub==='order-audit'){setTimeout(()=>initialize(),20)}return result};
  document.addEventListener('DOMContentLoaded',()=>{if(document.getElementById('adm-sub-order-audit'))shell()},{once:true});
 })();
@@ -12867,7 +12867,7 @@ body:has(#modal-mask.on) #wa-float{display:none!important}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{init();setTimeout(init,250);setTimeout(init,800)},{once:true});else{init();setTimeout(init,250)}
   document.addEventListener('visibilitychange',()=>{if(!document.hidden){pinWhatsApp();if($('pg-wallet')?.classList.contains('on'))buildRechargeMethods()}});
   if(document.body&&window.MutationObserver){let queued=false;const obs=new MutationObserver(()=>{if(queued)return;queued=true;requestAnimationFrame(()=>{queued=false;pinWhatsApp();const w=$('pg-wallet');if(w&&w.classList.contains('on'))buildRechargeMethods()})});obs.observe(document.body,{childList:true,subtree:true});}
-  window.__SADA_V1565_DIAGNOSTIC__={version:'1.6.59',methods:methods.map(m=>m.id),features:['kareemi-whatsapp','vodafone-cash-egp','stc-sawa-sar','itunes-us','sham-cash','crypto','opaque-wa-float']};
+  window.__SADA_V1565_DIAGNOSTIC__={version:'1.6.60',methods:methods.map(m=>m.id),features:['kareemi-whatsapp','vodafone-cash-egp','stc-sawa-sar','itunes-us','sham-cash','crypto','opaque-wa-float']};
 })();
 </script>
 
@@ -12902,7 +12902,7 @@ body:has(#modal-mask.on) #wa-float{display:none!important}
 <script id="sada1666-welcome-refunds-admin-splash">
 (function(){
  'use strict';
- const BUILD='SADA-1.6.59-FREE-SERVICES-BULK-IMPORT-GLOBAL-24H-LIMIT-20261015';
+ const BUILD='SADA-1.6.60-FREE-SERVICES-PRICE-RANGE-FILTER-20261015';
  const $=id=>document.getElementById(id);
  const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
  const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -13028,7 +13028,7 @@ body:has(#modal-mask.on) #wa-float{display:none!important}
    await refreshLocalBalanceAfterServer66(String(order.user||window.CU?.u||''));if(d.refund?.credited)toast66('تم تأكيد الحالة وإعادة المبلغ إلى المحفظة من الخادم.','ok');else if(d.refund?.state==='pending')toast66('تم تحديث الحالة، لكن الاسترداد ما زال قيد التحقق ولم يُضف رصيد جديد.','wrn');else toast66('تم تحديث حالة المزود. لم يُضف رصيد تلقائي إضافي.','inf');return d;
  };
  window.cancelOrd=async function(key,id,amt){try{if(!window.DB||!window.FB_OK)throw new Error('قاعدة بيانات الطلبات غير متصلة.');const snap=await window.DB.ref('orders/'+String(key)).once('value');if(!snap.exists())throw new Error('الطلب غير موجود.');const order={...snap.val(),_k:String(key)};if(!order.providerId||!(order.providerOrderId||order.smmpartyOrderId))throw new Error('لا يمكن إلغاء هذا الطلب من المتصفح مباشرةً. تواصل مع الدعم حتى لا يُضاف الرصيد مرتين.');if(!confirm('إرسال طلب إلغاء فعلي للمزوّد للطلب #'+(id||order.id||'')+'؟ لن يُعاد الرصيد إلا بعد تأكيد الحالة من الخادم.'))return;await window.cancelProviderOrder(order);window.loadOrds?.();}catch(e){toast66('تعذر إلغاء الطلب بأمان: '+e.message,'err')}};
- window.__SADA_1666__={version:'1.6.59',buildId:BUILD,features:['3-second-splash','admin-configurable-welcome','telegram-activation-and-overdue-channels','user-refund-history','admin-balance-report-and-adjustments','provider-confirmed-idempotent-refunds','server-authoritative-cancel','service-icon-motion']};
+ window.__SADA_1666__={version:'1.6.60',buildId:BUILD,features:['3-second-splash','admin-configurable-welcome','telegram-activation-and-overdue-channels','user-refund-history','admin-balance-report-and-adjustments','provider-confirmed-idempotent-refunds','server-authoritative-cancel','service-icon-motion']};
 })();
 </script>
 
@@ -13108,7 +13108,7 @@ body:has(#modal-mask.on) #wa-float{display:none!important}
 <script id="sada167-earn-notifications-dashboard">
 (function(){
 'use strict';
-const BUILD='SADA-1.6.59-FREE-SERVICES-BULK-IMPORT-GLOBAL-24H-LIMIT-20261015';
+const BUILD='SADA-1.6.60-FREE-SERVICES-PRICE-RANGE-FILTER-20261015';
 const $=id=>document.getElementById(id);
 const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const money=v=>'$'+Math.max(0,Number(v)||0).toFixed(2);
@@ -13177,7 +13177,7 @@ window.sada167Refresh=()=>{refreshNotifications67();loadHomeExtras67()};
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init67,{once:true});else init67();
 const priorLaunch=window.launchApp;if(typeof priorLaunch==='function'&&!priorLaunch.__sada167StatsWrapped){const wrap=function(){const r=priorLaunch.apply(this,arguments);setTimeout(()=>{ensureUserPages67();ensureAccountStatsFooter68();refreshNotifications67();loadHomeExtras67()},250);return r};wrap.__sada167StatsWrapped=true;window.launchApp=wrap}
 setInterval(refreshNotifications67,35000);document.addEventListener('visibilitychange',()=>{if(!document.hidden){refreshNotifications67();loadHomeExtras67()}});
-window.__SADA_167__={version:'1.6.59',buildId:BUILD,features:['earn-balance-review','user-notification-center','per-user-order-alerts','fast-session-start','hourly-price-sync-default','zero-price-protection','partial-refund-idempotency']};
+window.__SADA_167__={version:'1.6.60',buildId:BUILD,features:['earn-balance-review','user-notification-center','per-user-order-alerts','fast-session-start','hourly-price-sync-default','zero-price-protection','partial-refund-idempotency']};
 })();
 </script>
 
@@ -13330,7 +13330,7 @@ window.__SADA_167__={version:'1.6.59',buildId:BUILD,features:['earn-balance-revi
  function markServiceImages(){const page=$('pg-order');if(!page)return;page.querySelectorAll('#svc-options img.sada-svc-thumb,#svc-options img.sada1550-service-thumb,#cat-options img.sada-svc-thumb,#cat-options img.sada1550-category-thumb').forEach(img=>{img.loading='lazy';img.decoding='async'})}
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{ensureAdminNotices70();mergeUsersAndWallets70();markServiceImages();refreshSupportBadge70()},{once:true});else{ensureAdminNotices70();mergeUsersAndWallets70();markServiceImages();refreshSupportBadge70()}
  setInterval(()=>{if(document.hidden)return;refreshSupportBadge70();if($('pg-order')?.classList.contains('on'))markServiceImages();if(window.CU?.role==='admin'&&$('adm-panel')?.classList.contains('on')){ensureAdminNotices70();mergeUsersAndWallets70()}},45000);
- window.SADA_V1570_TEST={version:'1.6.59',features:['restored-original-admin-login-default','unified-notifications-center','broadcast-notifications','required-link-notifications','telegram-activation-channel','telegram-overdue-channel','support-reply-in-app-notification','support-branding','combined-users-balances-discounts','service-image-motion','static-platform-icons','order-card-redesign','server-backed-admin-users','site-wide-real-order-count','welcome-settings-durable-save','telegram-persistent-key-guidance']};
+ window.SADA_V1570_TEST={version:'1.6.60',features:['restored-original-admin-login-default','unified-notifications-center','broadcast-notifications','required-link-notifications','telegram-activation-channel','telegram-overdue-channel','support-reply-in-app-notification','support-branding','combined-users-balances-discounts','service-image-motion','static-platform-icons','order-card-redesign','server-backed-admin-users','site-wide-real-order-count','welcome-settings-durable-save','telegram-persistent-key-guidance']};
 })();
 </script>
 
@@ -13351,7 +13351,7 @@ window.__SADA_167__={version:'1.6.59',buildId:BUILD,features:['earn-balance-revi
  // Hide legacy duplicate navigation entries but keep their core functions accessible from the consolidated destinations.
  function tidyAdminNav(){const sb=$('adm-panel')?.querySelector('.adm-sb');if(!sb)return;for(const sub of ['sada24-tg','sada-v1527-tg']){const el=sb.querySelector('[data-sub="'+sub+'"]');if(el)el.style.display='none';}const stats=sb.querySelector('[data-sub="sada24-stats"]');if(stats){const t=stats.querySelector('span');if(t)t.textContent='الأرباح';stats.title='إيرادات الموقع وتكاليف المزودين وصافي الأرباح';}const welcome=$('adm-sub-sada1666-welcome');if(welcome){const cards=welcome.querySelectorAll('.sada1666-admin-tools');if(cards.length>1){cards[1].style.display='none';cards[1].setAttribute('aria-hidden','true');}const it=sb.querySelector('[data-sub="sada1666-welcome"]');if(it){const t=it.querySelector('span');if(t)t.textContent='إعدادات الترحيب';}}const wallet=sb.querySelector('[data-sub="wallets19"]'),users=sb.querySelector('[data-sub="users"]');if(wallet&&users){wallet.style.display='none';users.style.display='';const span=users.querySelector('span');if(span)span.textContent='المستخدمون';users.title='إدارة حسابات المستخدمين';}}
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',tidyAdminNav,{once:true});else tidyAdminNav();setInterval(()=>{if(!document.hidden)tidyAdminNav()},45000);
- window.SADA_V1571_EMAIL_EARNINGS={version:'1.6.59',features:['resend-email-verification','password-recovery-email-code','account-email-change-verification','legacy-firebase-account-lookup','encrypted-persistent-telegram-token','profit-dashboard-metrics','safe-json-backups']};
+ window.SADA_V1571_EMAIL_EARNINGS={version:'1.6.60',features:['resend-email-verification','password-recovery-email-code','account-email-change-verification','legacy-firebase-account-lookup','encrypted-persistent-telegram-token','profit-dashboard-metrics','safe-json-backups']};
 })();
 </script>
 
@@ -13686,7 +13686,7 @@ const oldLaunch=window.launchApp;if(typeof oldLaunch==='function'&&!oldLaunch.__
     finally{if(button){button.disabled=false;button.textContent=button.dataset.oldText||'إرسال طلب الشحن';delete button.dataset.oldText;}}
   }
   window.loadAdmStats=loadAdmStats1603;window.refreshAdmDashboard=refreshAdmDashboard1603;window.checkPendingPays=checkPendingPays1603;window.loadAdmPaysFull=loadAdmPaysFull1603;window.showAdmPayModal=showAdmPayModal1603;window.loadPayHist=loadPayHist1603;window.submitPay=submitPay1603;
-  window.SADA_V1603_ADMIN_REPAIRS={version:'1.6.59',features:['firebase-verification-route-unblocked','server-authoritative-dashboard','server-authoritative-payments','idempotent-payment-credit','firebase-key-aware-wallet-adjustment','explicit-errors-instead-of-infinite-loaders']};
+  window.SADA_V1603_ADMIN_REPAIRS={version:'1.6.60',features:['firebase-verification-route-unblocked','server-authoritative-dashboard','server-authoritative-payments','idempotent-payment-credit','firebase-key-aware-wallet-adjustment','explicit-errors-instead-of-infinite-loaders']};
 })();
 </script>
 
@@ -13756,7 +13756,7 @@ async function requestAccountSummary(){try{return await window.api('/api/user/su
 const d=await requestAccountSummary();if(!shell.isConnected)return;const p=d.profile||{};const storedEmail=String(p.email||window.CU?.email||window.CU?.mail||'').trim();email.textContent=storedEmail||'لم يُسجّل بريد إلكتروني';if(storedEmail&&window.CU){window.CU.email=storedEmail;try{localStorage.setItem('tz_u',JSON.stringify(window.CU))}catch(_){}}const iqd=Number(d.balanceIQD??window.CU?.bal??window.BAL??0);bal.textContent='$'+(iqd/1250).toFixed(2);stats.querySelector('[data-metric="spend"]').textContent='$'+(Number(d.spentIQD||0)/1250).toFixed(2);stats.querySelector('[data-metric="done"]').textContent=Number(d.completedOrders||0).toLocaleString('ar-IQ');stats.querySelector('[data-metric="orders"]').textContent=Number(d.orders||0).toLocaleString('ar-IQ');details.replaceChildren();const bits=[['اسم المستخدم',p.username||window.CU?.u||window.CU?.username||'—'],['رقم الهاتف',p.phone||'غير مضاف'],['تاريخ التسجيل',p.joined||p.createdAt||'غير متوفر'],['آخر تسجيل دخول',p.lastLoginAt||'غير متوفر'],['المستوى',p.level||'مبتدئ']];for(const [k,v] of bits){const row=profNode('div','',k+' : '+v);details.appendChild(row)}note.textContent='تم تحديث الرصيد والإحصائيات من الخادم · آخر تحديث '+new Date(d.checkedAt||Date.now()).toLocaleTimeString('ar-IQ',{hour:'2-digit',minute:'2-digit'})}catch(e){const detail=String(e?.message||e||'خطأ غير معروف');note.textContent='تعذر تحميل الإحصائيات من الخادم: '+detail;note.style.color='#ff9ba7';bal.textContent='$'+(Number(window.BAL||window.CU?.bal||0)/1250).toFixed(2)}})();});};
 // A profile modal is ephemeral; remove its sizing class on close so other dialogs retain their own styles.
 const oldClose=window.closeModal;if(typeof oldClose==='function'&&!oldClose.__sada624Cleanup){const wrappedClose=function(){const r=oldClose.apply(this,arguments);$('modal-mask')?.classList.remove('sada624-profile-mask');$('modal-box')?.classList.remove('sada624-profile-modal');return r};wrappedClose.__sada624Cleanup=true;window.closeModal=wrappedClose}
-window.SADA_V1626_RELEASE={version:'1.6.59',features:['earn-page-premium-order','welcome-every-entry','profile-neon-live-data','consolidated-notifications-telegram-channel-tests','sidebar-slot-rearrangement','service-category-image-glow','wallet-premium-motion','api-key-stable-encryption-resolver']};
+window.SADA_V1626_RELEASE={version:'1.6.60',features:['earn-page-premium-order','welcome-every-entry','profile-neon-live-data','consolidated-notifications-telegram-channel-tests','sidebar-slot-rearrangement','service-category-image-glow','wallet-premium-motion','api-key-stable-encryption-resolver']};
 })();
 </script>
 
@@ -13764,8 +13764,8 @@ window.SADA_V1626_RELEASE={version:'1.6.59',features:['earn-page-premium-order',
 <script id="sada1629-runtime-version-badge-fix">
 (function(){
   'use strict';
-  const EXPECTED_VERSION='1.6.59';
-  const EXPECTED_BUILD='SADA-1.6.59-FREE-SERVICES-BULK-IMPORT-GLOBAL-24H-LIMIT-20261015';
+  const EXPECTED_VERSION='1.6.60';
+  const EXPECTED_BUILD='SADA-1.6.60-FREE-SERVICES-PRICE-RANGE-FILTER-20261015';
   const $=id=>document.getElementById(id);
   function ensureBadge(){
     let b=$('sadairaq-version-badge');
@@ -14135,7 +14135,7 @@ function installWalletPage(){const current=window.CU||(typeof CU!=='undefined'?C
 const oldLaunch=window.launchApp;if(typeof oldLaunch==='function'&&!oldLaunch.__sada1599Secure){const wrapped=function(){const out=oldLaunch.apply(this,arguments);return out};wrapped.__sada1599Secure=true;window.launchApp=wrapped}
 const oldLoadAdmin=window.loadAdminPage;if(typeof oldLoadAdmin==='function'&&!oldLoadAdmin.__sada1599Secure){const wrapped=function(){const out=oldLoadAdmin.apply(this,arguments);setTimeout(loadAdmMsgs,700);return out};wrapped.__sada1599Secure=true;window.loadAdminPage=wrapped}
 document.addEventListener('DOMContentLoaded',()=>{setTimeout(startUserChatPoll,1200)});
-window.SADA_V1599_FIXES={version:'1.6.59',features:['telegram-stable-server-derived-encryption-key','telegram-channel-id-normalization','server-authoritative-asiacell-topups','server-backed-recharge-statistics','server-backed-wallet-list-and-discount-updates','privileged-server-support-chat','privileged-server-provider-service-import']};
+window.SADA_V1599_FIXES={version:'1.6.60',features:['telegram-stable-server-derived-encryption-key','telegram-channel-id-normalization','server-authoritative-asiacell-topups','server-backed-recharge-statistics','server-backed-wallet-list-and-discount-updates','privileged-server-support-chat','privileged-server-provider-service-import']};
 })();
 </script>
 
@@ -14178,7 +14178,7 @@ window.SADA_V1599_FIXES={version:'1.6.59',features:['telegram-stable-server-deri
 </style>
 <script id="sada174-version-fix">
 (function(){
-  const version='1.6.59';
+  const version='1.6.60';
   document.querySelectorAll('[data-sada-version]').forEach(el=>{el.textContent=version});
   const versionNodes=[...document.querySelectorAll('body *')].filter(el=>el.children.length===0 && /^1\.5\.73$/.test((el.textContent||'').trim()));
   versionNodes.forEach(el=>{if(!el.closest('script,style,code,pre'))el.textContent=version});
@@ -14234,7 +14234,7 @@ window.SADA_V1599_FIXES={version:'1.6.59',features:['telegram-stable-server-deri
 </script>
 
 
-<!-- Sada Iraq v1.6.59: final server-authoritative catalog, wallet, orders and support navigation -->
+<!-- Sada Iraq v1.6.60: final server-authoritative catalog, wallet, orders and support navigation -->
 <script id="sada-v1600-final">
 (function(){
   'use strict';
@@ -14290,7 +14290,7 @@ window.SADA_V1599_FIXES={version:'1.6.59',features:['telegram-stable-server-deri
   function init(){installAdapter(typeof DB!=='undefined'?DB:null);pinSupport();}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
   setInterval(()=>{if(document.hidden||!document.getElementById('adm-panel')?.classList.contains('on'))return;try{installAdapter(typeof DB!=='undefined'?DB:null);pinSupport()}catch(_){}},10000);
-  window.SADA_V1600={version:'1.6.59',features:['host-json-service-catalog','server-authoritative-wallet-ui','server-authoritative-orders-list','fixed-firebase-user-path-resolution','support-pinned-first','server-only-service-sync']};
+  window.SADA_V1600={version:'1.6.60',features:['host-json-service-catalog','server-authoritative-wallet-ui','server-authoritative-orders-list','fixed-firebase-user-path-resolution','support-pinned-first','server-only-service-sync']};
 })();
 </script>
 
@@ -14353,7 +14353,7 @@ window.SADA_V1599_FIXES={version:'1.6.59',features:['telegram-stable-server-deri
   function refreshStats(){const me=userNow();if(me&&me.u&&!document.hidden){window.refreshSadaUserBalance1600?.();window.loadHomeExtras67?.()}}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{pinSupportAndFinance();refreshStats()},{once:true});else{pinSupportAndFinance();refreshStats()}
   setInterval(()=>{try{pinSupportAndFinance();refreshStats();if($('adm-panel')?.classList.contains('on'))addUserFinanceButtons()}catch(_){}},25000);
-  window.SADA_V1600_FINAL={version:'1.6.59',features:['server-only-order-submission','no-browser-wallet-debits','server-backed-wallet-adjustments','server-backed-user-balance-refresh','telegram-fallback-diagnostics','pinned-support-inbox','hosting-file-service-catalog']};
+  window.SADA_V1600_FINAL={version:'1.6.60',features:['server-only-order-submission','no-browser-wallet-debits','server-backed-wallet-adjustments','server-backed-user-balance-refresh','telegram-fallback-diagnostics','pinned-support-inbox','hosting-file-service-catalog']};
 })();
 </script>
 
@@ -14400,7 +14400,7 @@ window.SADA_V1599_FIXES={version:'1.6.59',features:['telegram-stable-server-deri
   const oldAdm=window.admNavTo;if(typeof oldAdm==='function'&&!oldAdm.__sada1602DescWrapped){const wrapped=function(sub,el){if(sub==='sada-service-descriptions'){install();showEditor();return}return oldAdm.apply(this,arguments)};wrapped.__sada1602DescWrapped=true;window.admNavTo=wrapped}
   const oldLaunch=window.launchApp;if(typeof oldLaunch==='function'&&!oldLaunch.__sada1602DescWrapped){const wrapped=function(){const r=oldLaunch.apply(this,arguments);setTimeout(install,250);return r};wrapped.__sada1602DescWrapped=true;window.launchApp=wrapped}
   function init(){install()};if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();setInterval(()=>{if(document.hidden||!document.getElementById('adm-panel')?.classList.contains('on')||!document.getElementById('adm-sub-sada-service-descriptions')?.classList.contains('on'))return;try{install()}catch(_){}},15000);
-  window.SADA_SERVICE_DESCRIPTIONS={version:'1.6.59',storage:'hosting-json',features:['provider-description-preservation','manual-service-description','category-description-fallback']};
+  window.SADA_SERVICE_DESCRIPTIONS={version:'1.6.60',storage:'hosting-json',features:['provider-description-preservation','manual-service-description','category-description-fallback']};
 })();
 </script>
 
@@ -14573,7 +14573,7 @@ window.SADA_V1599_FIXES={version:'1.6.59',features:['telegram-stable-server-deri
  async function syncHostMeta1605(force=false){
    if(hostMetaSyncPromise1605)return hostMetaSyncPromise1605;
    if(!force&&hostMetaSyncAt1605&&Date.now()-hostMetaSyncAt1605<30000)return false;
-   hostMetaSyncPromise1605=(async()=>{const d=await api('/api/catalog?path=categoryMeta');if(!d.value||typeof d.value!=='object')return false;const signature=JSON.stringify(d.value);const changed=signature!==hostMetaSyncSignature1605;hostMetaSyncAt1605=Date.now();if(!changed)return false;hostMetaSyncSignature1605=signature;window.SADA_HOST_CATEGORY_META1605=d.value;window.SECTION_META=window.SECTION_META||{};for(const [k,v] of Object.entries(d.value)){if(!v||typeof v!=='object')continue;const n=clean(v.name||k);if(n)window.SECTION_META[n]={...(window.SECTION_META[n]||{}),...v,name:n};}return true;})().catch(e=>{console.warn('Sada v1.6.59 category metadata sync:',e.message||e);return false}).finally(()=>{hostMetaSyncPromise1605=null});
+   hostMetaSyncPromise1605=(async()=>{const d=await api('/api/catalog?path=categoryMeta');if(!d.value||typeof d.value!=='object')return false;const signature=JSON.stringify(d.value);const changed=signature!==hostMetaSyncSignature1605;hostMetaSyncAt1605=Date.now();if(!changed)return false;hostMetaSyncSignature1605=signature;window.SADA_HOST_CATEGORY_META1605=d.value;window.SECTION_META=window.SECTION_META||{};for(const [k,v] of Object.entries(d.value)){if(!v||typeof v!=='object')continue;const n=clean(v.name||k);if(n)window.SECTION_META[n]={...(window.SECTION_META[n]||{}),...v,name:n};}return true;})().catch(e=>{console.warn('Sada v1.6.60 category metadata sync:',e.message||e);return false}).finally(()=>{hostMetaSyncPromise1605=null});
    return hostMetaSyncPromise1605;
  }
  function installHostCatalogRefresh1605(){const prior=window.loadAllSvcs;if(typeof prior!=='function'||prior.__sada1605HostMeta)return;const wrapped=async function(){const r=await prior.apply(this,arguments);const changed=await syncHostMeta1605();if(changed)try{window.buildCatDD?.();window.buildSvcDD?.(window.SEL_CAT||'__all__');}catch(_){}return r};wrapped.__sada1605HostMeta=true;window.loadAllSvcs=wrapped;}
@@ -14582,7 +14582,7 @@ window.SADA_V1599_FIXES={version:'1.6.59',features:['telegram-stable-server-deri
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
  setTimeout(()=>{syncHostMeta1605().then(changed=>{if(changed)rebuildCatalogSelectors1605()});installHostCatalogRefresh1605()},1600);
  setInterval(()=>{if(document.hidden)return;try{mountOrders();installServiceWrapper();installProviderCheck();installHostCatalogRefresh1605()}catch(_){}},45000);
- window.SADA_V1605={version:'1.6.59',features:['premium-order-history','arabic-order-status','visible-service-description','custom-category-service-images','firebase-wallet-key-fix','live-provider-api-diagnostics','exact-name-unique-id-reconcile']};
+ window.SADA_V1605={version:'1.6.60',features:['premium-order-history','arabic-order-status','visible-service-description','custom-category-service-images','firebase-wallet-key-fix','live-provider-api-diagnostics','exact-name-unique-id-reconcile']};
 })();
 </script>
 
@@ -14781,7 +14781,7 @@ function polishOrderForm(){
 }
 function init(){bindAsiaCell();polishOrderForm();const entry=$('sadairaq-ac-entry');if(entry)new MutationObserver(bindAsiaCell).observe(entry,{attributes:true,attributeFilter:['onclick']});const order=$('pg-order');if(order)new MutationObserver(()=>polishOrderForm()).observe(order,{childList:true,subtree:true});}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
-window.SADA1637_UI_FIXES={version:'1.6.59',openAsiaCell:openWizard,polishOrderForm,onLogout:()=>{clearState();$('sada1637-asiacell-wizard-overlay')?.remove();document.body.style.removeProperty('overflow');}};
+window.SADA1637_UI_FIXES={version:'1.6.60',openAsiaCell:openWizard,polishOrderForm,onLogout:()=>{clearState();$('sada1637-asiacell-wizard-overlay')?.remove();document.body.style.removeProperty('overflow');}};
 })();
 </script>
 
@@ -14825,7 +14825,7 @@ window.SADA1637_UI_FIXES={version:'1.6.59',openAsiaCell:openWizard,polishOrderFo
 .sada-sidebar-version{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:10px;padding:10px 8px;border-top:1px solid var(--bd);color:var(--t2);font-size:10px;font-weight:750;letter-spacing:.15px}.sada-sidebar-version i{color:var(--blue)}.sada-sidebar-version b{display:inline-flex;align-items:center;justify-content:center;min-width:34px;padding:4px 8px;border:1px solid rgba(91,164,255,.25);border-radius:999px;background:rgba(91,164,255,.08);color:var(--blue);font-size:11px;font-weight:950}.sb-foot{padding-bottom:max(10px,env(safe-area-inset-bottom))}
 </style>
 <script id="sada-v2-sidebar-only-version">
-(function(){'use strict';const shown='2.33';function apply(){const badge=document.getElementById('sadairaq-version-badge');if(badge){badge.style.setProperty('display','none','important');badge.setAttribute('aria-hidden','true')}const v=document.querySelector('#sada-sidebar-version b');if(v&&v.textContent.trim()!==shown)v.textContent=shown;document.title='صدى العراق';}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',apply,{once:true});else apply();window.addEventListener('pageshow',apply);})();
+(function(){'use strict';const shown='2.34';function apply(){const badge=document.getElementById('sadairaq-version-badge');if(badge){badge.style.setProperty('display','none','important');badge.setAttribute('aria-hidden','true')}const v=document.querySelector('#sada-sidebar-version b');if(v&&v.textContent.trim()!==shown)v.textContent=shown;document.title='صدى العراق';}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',apply,{once:true});else apply();window.addEventListener('pageshow',apply);})();
 </script>
 
 <script id="sada-free-services-21">
@@ -14855,7 +14855,7 @@ window.SADA1637_UI_FIXES={version:'1.6.59',openAsiaCell:openWizard,polishOrderFo
     try{
       window.openModal('الخدمات المجانية الخاصة بي',async body=>{
         const root=document.createElement('div');root.style.cssText='display:flex;flex-direction:column;gap:12px';
-        const intro=document.createElement('div');intro.className='card';intro.style.cssText='padding:12px;border:1px solid rgba(34,197,94,.25)';intro.innerHTML='<div style="font-weight:950;font-size:14px;color:var(--t0)"><i class="fas fa-gift" style="color:#22c55e;margin-left:5px"></i> عروض مجانية ممولة من صدى العراق</div><div style="font-size:11px;color:var(--t2);line-height:1.8;margin-top:5px">هذه الخدمات منفصلة عن الخدمات المجانية الأصلية عند المزود. المستخدم يدفع صفراً، والتكلفة تُحتسب على حساب المزود الخاص بك. الحد موحّد على كل الخدمات هنا: طلبان إجمالاً لكل حساب خلال أي 24 ساعة، حتى لو اختار المستخدم خدمتين مختلفتين.</div>';
+        const intro=document.createElement('div');intro.className='card';intro.style.cssText='padding:12px;border:1px solid rgba(34,197,94,.25)';intro.innerHTML='<div style="font-weight:950;font-size:14px;color:var(--t0)"><i class="fas fa-gift" style="color:#22c55e;margin-left:5px"></i> عروض مجانية ممولة من صدى العراق</div><div style="font-size:11px;color:var(--t2);line-height:1.8;margin-top:5px">هذه الخدمات منفصلة عن الخدمات المجانية الأصلية عند المزود. المستخدم يدفع صفراً، والتكلفة تُحتسب على حساب المزود الخاص بك. حد الاستخدام مشترك بين جميع الخدمات المجانية التي تديرها: طلبان فقط لكل حساب خلال 24 ساعة، مهما اختلفت الخدمة.</div>';
         root.appendChild(intro);
         const warning=document.createElement('div');warning.style.cssText='font-size:10px;color:var(--ylw);line-height:1.7';warning.textContent='';root.appendChild(warning);
         const form=document.createElement('div');form.className='card';form.style.cssText='padding:12px;display:flex;flex-direction:column;gap:9px';
@@ -14863,44 +14863,98 @@ window.SADA1637_UI_FIXES={version:'1.6.59',openAsiaCell:openWizard,polishOrderFo
         const grid=document.createElement('div');grid.style.cssText='display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px';form.appendChild(grid);
         const field=(label,el,wide=false)=>{const box=document.createElement('div');box.className='fld';box.style.minWidth='0';if(wide)box.style.gridColumn='1/-1';const l=document.createElement('label');l.textContent=label;box.append(l,el);grid.appendChild(box);return el};
         const provider=document.createElement('select');provider.className='inp';provider.innerHTML='<option value="">اختر المزود</option>';field('المزود الذي تشتري منه الخدمة',provider,true);
-        const providerCatalogBtn=document.createElement('button');providerCatalogBtn.type='button';providerCatalogBtn.className='btn bs2 btn-w';providerCatalogBtn.innerHTML='<i class="fas fa-cloud-download-alt"></i> جلب الخدمات من المزود (اختيار متعدد)';field('بديل إضافة رقم خدمة يدوي',providerCatalogBtn,true);
-        const providerId=document.createElement('input');providerId.className='inp';providerId.placeholder='أدخل Service ID كما يظهر عند المزود';providerId.inputMode='numeric';field('رقم الخدمة عند المزود (Service ID)',providerId);
+        const browseBtn=document.createElement('button');browseBtn.type='button';browseBtn.className='btn bp btn-w';browseBtn.innerHTML='<i class="fas fa-cloud-download-alt"></i> جلب الخدمات من المزود لتحديد عدة خدمات';field('الإضافة الجماعية (اختياري)',browseBtn,true);
+        const providerId=document.createElement('input');providerId.className='inp';providerId.placeholder='أدخل Service ID كما يظهر عند المزود';providerId.inputMode='numeric';field('أو أدخل رقم خدمة واحد يدوياً (Service ID)',providerId);
         const verify=document.createElement('button');verify.type='button';verify.className='btn bs2 btn-w';verify.innerHTML='<i class="fas fa-magnifying-glass"></i> التحقق من الخدمة';field('تحقق من الخدمة وتكلفتها',verify);
         const name=document.createElement('input');name.className='inp';name.maxLength=200;name.placeholder='الاسم الذي سيظهر للمستخدم';field('اسم الخدمة داخل صدى العراق',name,true);
         const platform=document.createElement('select');platform.className='inp';[['Instagram','إنستغرام'],['Tiktok','تيك توك'],['Youtube','يوتيوب'],['Facebook','فيسبوك'],['Telegram','تيليجرام'],['Twitter','تويتر / X'],['Snapchat','سناب شات'],['Whatsapp','واتساب'],['Linkedin','لينكدإن'],['Other','أخرى']].forEach(([v,t])=>{const o=new Option(t,v);platform.appendChild(o)});field('المنصة',platform);
         const category=document.createElement('select');category.className='inp';category.innerHTML='<option value="">اختر قسماً موجوداً</option>';field('القسم الذي ستظهر بداخله الخدمة',category,true);
         const min=document.createElement('input');min.className='inp';min.type='number';min.min='1';min.step='1';min.value='50';field('أقل كمية مسموحة',min);
         const max=document.createElement('input');max.className='inp';max.type='number';max.min='1';max.step='1';max.value='100';field('أعلى كمية مسموحة',max);
-        const limit=document.createElement('input');limit.className='inp';limit.type='number';limit.min='2';limit.max='2';limit.step='1';limit.value='2';limit.readOnly=true;limit.title='هذا حد مشترك على جميع الخدمات المجانية وليس لكل خدمة على حدة';field('الحد المشترك لجميع الخدمات: طلبان لكل حساب / 24 ساعة',limit,true);
+        const limit=document.createElement('input');limit.className='inp';limit.type='number';limit.min='2';limit.max='2';limit.step='1';limit.value='2';limit.readOnly=true;limit.setAttribute('aria-readonly','true');limit.style.opacity='.8';field('حد الاستخدام المشترك لجميع الخدمات / 24 ساعة (ثابت)',limit,true);
         const desc=document.createElement('textarea');desc.className='inp';desc.rows=3;desc.maxLength=3000;desc.placeholder='وصف اختياري يظهر للمستخدم';field('وصف الخدمة (اختياري)',desc,true);
         const costNote=document.createElement('div');costNote.style.cssText='grid-column:1/-1;border-radius:10px;padding:9px;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.18);color:var(--t1);font-size:11px;line-height:1.8';costNote.textContent='تحقق من رقم خدمة المزود أولاً؛ سيظهر سعر المستخدم مجانياً، بينما يبقى سعر المزود على حسابك.';grid.appendChild(costNote);
         const actions=document.createElement('div');actions.style.cssText='display:flex;gap:7px;flex-wrap:wrap';const save=document.createElement('button');save.type='button';save.className='btn bok';save.innerHTML='<i class="fas fa-check"></i> حفظ الخدمة المجانية';const clear=document.createElement('button');clear.type='button';clear.className='btn bs2';clear.textContent='تفريغ الحقول';actions.append(save,clear);form.appendChild(actions);root.appendChild(form);
-        const catalogPanel=document.createElement('div');catalogPanel.className='card';catalogPanel.style.cssText='padding:12px;display:flex;flex-direction:column;gap:9px';catalogPanel.hidden=true;catalogPanel.innerHTML='<div style="font-weight:950;font-size:13px"><i class="fas fa-list-check" style="color:var(--blue);margin-left:5px"></i> جلب خدمات المزود واختيار أكثر من خدمة</div><div style="color:var(--t2);font-size:11px;line-height:1.8">ابحث برقم الخدمة أو الاسم، وحدد عدة خدمات ثم أضفها دفعة واحدة. ستأخذ كلها المنصة والقسم المختارين في النموذج، وتحتفظ كل خدمة بحدود الكمية وتكلفة المزود الأصلية. حد الاستخدام مجاني ومشترك لجميع الخدمات: طلبان لكل حساب خلال 24 ساعة.</div>';
-        const catalogSearch=document.createElement('input');catalogSearch.className='inp';catalogSearch.type='search';catalogSearch.placeholder='ابحث باسم الخدمة أو رقمها أو القسم لدى المزود...';catalogSearch.autocomplete='off';catalogPanel.appendChild(catalogSearch);
-        const catalogStatus=document.createElement('div');catalogStatus.style.cssText='font-size:11px;color:var(--t2);line-height:1.7';catalogStatus.textContent='اختر المزود ثم اضغط «جلب الخدمات من المزود».';catalogPanel.appendChild(catalogStatus);
-        const catalogRows=document.createElement('div');catalogRows.style.cssText='display:flex;flex-direction:column;gap:6px;max-height:300px;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;touch-action:pan-y;-webkit-overflow-scrolling:touch';catalogPanel.appendChild(catalogRows);
-        const catalogFoot=document.createElement('div');catalogFoot.style.cssText='display:flex;align-items:center;gap:7px;flex-wrap:wrap';const loadMore=document.createElement('button');loadMore.type='button';loadMore.className='btn bs2 btn-sm';loadMore.textContent='تحميل المزيد';loadMore.hidden=true;const selectedCount=document.createElement('b');selectedCount.style.cssText='font-size:11px;color:var(--t1);flex:1';selectedCount.textContent='المحدد: 0';const bulkSave=document.createElement('button');bulkSave.type='button';bulkSave.className='btn bok';bulkSave.innerHTML='<i class="fas fa-gift"></i> إضافة الخدمات المحددة مجاناً';catalogFoot.append(loadMore,selectedCount,bulkSave);catalogPanel.appendChild(catalogFoot);root.appendChild(catalogPanel);
+        const pickerPanel=document.createElement('div');pickerPanel.className='card';pickerPanel.style.cssText='display:none;padding:12px;border:1px solid rgba(99,102,241,.32);gap:9px;flex-direction:column';
+        const pickerTitle=document.createElement('div');pickerTitle.style.cssText='font-weight:950;font-size:13px';pickerTitle.innerHTML='<i class="fas fa-list-check" style="color:var(--acc,#8b7bff)"></i> اختر أكثر من خدمة لتفعيل النظام المجاني عليها';pickerPanel.appendChild(pickerTitle);
+        const pickerHint=document.createElement('div');pickerHint.style.cssText='font-size:11px;line-height:1.8;color:var(--t2)';pickerHint.textContent='كل خدمة تستخدم حدود الكمية الأصلية من المزود. الحد المشترك للمستخدم هو طلبان فقط خلال 24 ساعة من مجموع الخدمات المجانية كلها. حدد حتى 250 خدمة في الدفعة الواحدة.';pickerPanel.appendChild(pickerHint);
+        const pickerSearch=document.createElement('input');pickerSearch.className='inp';pickerSearch.type='search';pickerSearch.placeholder='ابحث باسم الخدمة أو رقمها أو القسم عند المزود';pickerSearch.setAttribute('aria-label','البحث في خدمات المزود');pickerPanel.appendChild(pickerSearch);
+        const priceFilterWrap=document.createElement('div');priceFilterWrap.style.cssText='display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;align-items:end';
+        const priceField=(labelText,placeholder)=>{const field=document.createElement('label');field.style.cssText='display:flex;flex-direction:column;gap:5px;min-width:0;font-size:10px;color:var(--t2);font-weight:800';const label=document.createElement('span');label.textContent=labelText;const input=document.createElement('input');input.className='inp';input.type='number';input.min='0';input.step='0.000001';input.inputMode='decimal';input.placeholder=placeholder;input.style.minWidth='0';input.setAttribute('aria-label',labelText);field.append(label,input);priceFilterWrap.appendChild(field);return input;};
+        const pickerMinRate=priceField('أقل تكلفة للمزود / 1000 USD','بدون حد أدنى');
+        const pickerMaxRate=priceField('أعلى تكلفة للمزود / 1000 USD','بدون حد أعلى');
+        const sortField=document.createElement('label');sortField.style.cssText='grid-column:1/-1;display:flex;flex-direction:column;gap:5px;min-width:0;font-size:10px;color:var(--t2);font-weight:800';const sortLabel=document.createElement('span');sortLabel.textContent='ترتيب الخدمات حسب تكلفة المزود';const pickerPriceSort=document.createElement('select');pickerPriceSort.className='inp';pickerPriceSort.setAttribute('aria-label','ترتيب الخدمات حسب تكلفة المزود');[['asc','الأقل سعراً أولاً'],['desc','الأعلى سعراً أولاً'],['provider','ترتيب المزود الأصلي']].forEach(([value,label])=>pickerPriceSort.add(new Option(label,value)));pickerPriceSort.value='asc';sortField.append(sortLabel,pickerPriceSort);priceFilterWrap.appendChild(sortField);pickerPanel.appendChild(priceFilterWrap);
+        const priceFilterHint=document.createElement('div');priceFilterHint.style.cssText='font-size:10px;color:var(--t2);line-height:1.7';priceFilterHint.textContent='الأسعار هنا هي تكلفة المزود لكل 1,000، وليست سعر بيع للمستخدم. اترك الحقول فارغة لإظهار كل الأسعار. تغيير التصفية لا يلغي الخدمات التي حددتها سابقاً.';pickerPanel.appendChild(priceFilterHint);
+        const pickerStatus=document.createElement('div');pickerStatus.style.cssText='font-size:11px;color:var(--t1);line-height:1.7';pickerStatus.textContent='اختر المزود ثم اضغط «جلب الخدمات من المزود».';pickerPanel.appendChild(pickerStatus);
+        const pickerRows=document.createElement('div');pickerRows.style.cssText='display:flex;flex-direction:column;gap:6px;max-height:min(42vh,360px);overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;touch-action:pan-y;padding:2px';pickerPanel.appendChild(pickerRows);
+        const pickerActions=document.createElement('div');pickerActions.style.cssText='display:flex;gap:6px;flex-wrap:wrap';const selectShown=document.createElement('button');selectShown.type='button';selectShown.className='btn bs2 btn-sm';selectShown.textContent='تحديد الخدمات الظاهرة';const showMore=document.createElement('button');showMore.type='button';showMore.className='btn bs2 btn-sm';showMore.textContent='عرض 60 خدمة إضافية';const clearSelection=document.createElement('button');clearSelection.type='button';clearSelection.className='btn bs2 btn-sm';clearSelection.textContent='إلغاء التحديد';const bulkSave=document.createElement('button');bulkSave.type='button';bulkSave.className='btn bok btn-sm';bulkSave.disabled=true;bulkSave.innerHTML='<i class="fas fa-gift"></i> إضافة الخدمات المحددة مجاناً';pickerActions.append(selectShown,showMore,clearSelection,bulkSave);pickerPanel.appendChild(pickerActions);root.appendChild(pickerPanel);
         const listPanel=document.createElement('div');listPanel.className='card';listPanel.style.cssText='padding:12px';const listHead=document.createElement('div');listHead.style.cssText='display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:9px';const listTitle=document.createElement('b');listTitle.textContent='الخدمات التي أضفتها أنت';const refresh=document.createElement('button');refresh.type='button';refresh.className='btn bs2 btn-sm';refresh.textContent='تحديث';listHead.append(listTitle,refresh);const rows=document.createElement('div');rows.style.cssText='display:flex;flex-direction:column;gap:8px';listPanel.append(listHead,rows);root.appendChild(listPanel);body.appendChild(root);
-        let allCategories=[],editingKey='',knownProviders=[],catalogProviderRows=[],catalogOffset=0,catalogTotal=0,catalogQuery='',catalogSearchTimer=null,catalogFetchBusy=false;const selectedProviderIds=new Set();
+        let allCategories=[],editingKey='',knownProviders=[],providerCatalogRows=[],filteredProviderRows=[],selectedProviderServices=new Map(),pickerLimit=60;
         function fillCategories(services,meta){const names=new Set();for(const row of Object.values(services||{})){for(const g of (Array.isArray(row?.groups)?row.groups:Array.isArray(row?.categories)?row.categories:[row?.category]))if(String(g||'').trim())names.add(String(g).trim())}for(const [k,v] of Object.entries(meta||{})){const n=String(v?.name||k).trim();if(n)names.add(n)}allCategories=[...names].sort((a,b)=>a.localeCompare(b,'ar'));const selected=category.value;category.replaceChildren(new Option('اختر قسماً موجوداً',''));allCategories.forEach(v=>category.add(new Option(v,v)));if(allCategories.includes(selected))category.value=selected;}
         function clearForm(){editingKey='';formTitle.textContent='إضافة خدمة مجانية';save.innerHTML='<i class="fas fa-check"></i> حفظ الخدمة المجانية';provider.value='';providerId.value='';name.value='';category.value='';platform.value='Instagram';min.value='50';max.value='100';limit.value='2';desc.value='';costNote.textContent='تحقق من رقم خدمة المزود أولاً؛ سيظهر سعر المستخدم مجانياً، بينما يبقى سعر المزود على حسابك.';costNote.style.color='var(--t1)';}
-        function loadForm(item){editingKey=String(item.key||'');formTitle.textContent='تعديل الخدمة المجانية';save.innerHTML='<i class="fas fa-floppy-disk"></i> حفظ التعديلات';provider.value=String(item.providerId||'');providerId.value=String(item.providerServiceId||'');name.value=String(item.name||'');category.value=String(item.category||'');platform.value=String(item.app||'Other');min.value=String(item.min||1);max.value=String(item.max||item.min||1);limit.value=String(item.perAccountLimit||2);desc.value=String(item.description||item.desc||'');costNote.textContent='التكلفة الحالية المسجلة على المزود: '+Number(item.providerRateUsd||0).toFixed(6)+' USD لكل 1000. سيتم التحقق من رقم الخدمة عند الحفظ.';form.scrollIntoView({behavior:'smooth',block:'start'});}
+        function loadForm(item){editingKey=String(item.key||'');formTitle.textContent='تعديل الخدمة المجانية';save.innerHTML='<i class="fas fa-floppy-disk"></i> حفظ التعديلات';provider.value=String(item.providerId||'');providerId.value=String(item.providerServiceId||'');name.value=String(item.name||'');category.value=String(item.category||'');platform.value=String(item.app||'Other');min.value=String(item.min||1);max.value=String(item.max||item.min||1);limit.value='2';desc.value=String(item.description||item.desc||'');costNote.textContent='التكلفة الحالية المسجلة على المزود: '+Number(item.providerRateUsd||0).toFixed(6)+' USD لكل 1000. سيتم التحقق من رقم الخدمة عند الحفظ.';form.scrollIntoView({behavior:'smooth',block:'start'});}
         async function loadRows(){rows.replaceChildren();const d=await api('/api/admin/free-services');knownProviders=d.providers||[];const chosenProvider=provider.value;provider.replaceChildren(new Option('اختر المزود',''));knownProviders.forEach(p=>{const o=new Option((p.name||p.id)+(p.configured?'':' · يحتاج إعداد API'),p.id);o.disabled=!p.configured;provider.appendChild(o)});if(knownProviders.some(p=>p.id===chosenProvider))provider.value=chosenProvider;
           warning.textContent=d.warning||'';warning.style.color=d.warning?'var(--ylw)':'var(--t2)';
           const catDoc=await api('/api/catalog?path=categoryMeta').catch(()=>({value:{}}));const svcDoc=await api('/api/catalog?path=services').catch(()=>({value:{}}));fillCategories(svcDoc.value||{},catDoc.value||{});
           const items=d.services||[];if(!items.length){const empty=document.createElement('div');empty.className='empty';empty.textContent='لم تضف خدمات مجانية خاصة بك بعد.';rows.appendChild(empty);return}
-          for(const item of items){const card=document.createElement('div');card.style.cssText='border:1px solid var(--bd);border-radius:11px;padding:10px;background:var(--bg2)';const top=document.createElement('div');top.style.cssText='display:flex;justify-content:space-between;gap:8px;align-items:flex-start';const left=document.createElement('div');left.style.cssText='min-width:0;flex:1';const nm=document.createElement('div');nm.style.cssText='font-size:12px;font-weight:900;color:var(--t0)';nm.textContent=item.name||'خدمة مجانية';const meta=document.createElement('div');meta.style.cssText='font-size:10px;color:var(--t2);line-height:1.8;margin-top:4px';meta.textContent='المزود: '+(item.providerName||item.providerId)+' · Service ID: '+item.providerServiceId+' · القسم: '+item.category;left.append(nm,meta);const status=document.createElement('span');status.style.cssText='font-size:10px;font-weight:850;color:'+(item.enabled?'#22c55e':'#f59e0b');status.textContent=item.enabled?'مفعّلة':'متوقفة';top.append(left,status);card.appendChild(top);const info=document.createElement('div');info.style.cssText='font-size:10px;color:var(--t2);line-height:1.8;margin-top:6px';info.textContent='سعر المستخدم: مجاني · الكمية '+item.min+'–'+item.max+' · الحد المشترك على جميع الخدمات: طلبان لكل حساب / 24 ساعة';card.appendChild(info);const btns=document.createElement('div');btns.style.cssText='display:flex;gap:6px;flex-wrap:wrap;margin-top:8px';const edit=document.createElement('button');edit.type='button';edit.className='btn bs2 btn-sm';edit.textContent='تعديل';edit.onclick=()=>loadForm(item);const toggle=document.createElement('button');toggle.type='button';toggle.className='btn '+(item.enabled?'bdng':'bok')+' btn-sm';toggle.textContent=item.enabled?'إيقاف':'تفعيل';toggle.onclick=async()=>{toggle.disabled=true;try{await api('/api/admin/free-services',{method:'POST',body:JSON.stringify({action:'toggle',key:item.key,enabled:!item.enabled})});await loadRows();notify(item.enabled?'تم إيقاف عرض الخدمة المجانية.':'تم تفعيل الخدمة المجانية.','ok')}catch(e){notify('تعذر تغيير الحالة: '+e.message,'err')}finally{toggle.disabled=false}};const del=document.createElement('button');del.type='button';del.className='btn bdng btn-sm';del.textContent='حذف';del.onclick=async()=>{if(!confirm('حذف '+(item.name||'الخدمة')+' من قائمة الخدمات المجانية التي تديرها؟ لن يتم حذف الخدمة الأصلية لدى المزود.'))return;del.disabled=true;try{await api('/api/admin/free-services',{method:'POST',body:JSON.stringify({action:'delete',key:item.key})});if(editingKey===item.key)clearForm();await loadRows();notify('تم حذف إعداد الخدمة الخاصة بك فقط.','ok')}catch(e){notify('تعذر الحذف: '+e.message,'err')}finally{del.disabled=false}};btns.append(edit,toggle,del);card.appendChild(btns);rows.appendChild(card);}
+          for(const item of items){const card=document.createElement('div');card.style.cssText='border:1px solid var(--bd);border-radius:11px;padding:10px;background:var(--bg2)';const top=document.createElement('div');top.style.cssText='display:flex;justify-content:space-between;gap:8px;align-items:flex-start';const left=document.createElement('div');left.style.cssText='min-width:0;flex:1';const nm=document.createElement('div');nm.style.cssText='font-size:12px;font-weight:900;color:var(--t0)';nm.textContent=item.name||'خدمة مجانية';const meta=document.createElement('div');meta.style.cssText='font-size:10px;color:var(--t2);line-height:1.8;margin-top:4px';meta.textContent='المزود: '+(item.providerName||item.providerId)+' · Service ID: '+item.providerServiceId+' · القسم: '+item.category;left.append(nm,meta);const status=document.createElement('span');status.style.cssText='font-size:10px;font-weight:850;color:'+(item.enabled?'#22c55e':'#f59e0b');status.textContent=item.enabled?'مفعّلة':'متوقفة';top.append(left,status);card.appendChild(top);const info=document.createElement('div');info.style.cssText='font-size:10px;color:var(--t2);line-height:1.8;margin-top:6px';info.textContent='سعر المستخدم: مجاني · الكمية '+item.min+'–'+item.max+' · الحد المشترك لجميع الخدمات المجانية: طلبان لكل حساب / 24 ساعة';card.appendChild(info);const btns=document.createElement('div');btns.style.cssText='display:flex;gap:6px;flex-wrap:wrap;margin-top:8px';const edit=document.createElement('button');edit.type='button';edit.className='btn bs2 btn-sm';edit.textContent='تعديل';edit.onclick=()=>loadForm(item);const toggle=document.createElement('button');toggle.type='button';toggle.className='btn '+(item.enabled?'bdng':'bok')+' btn-sm';toggle.textContent=item.enabled?'إيقاف':'تفعيل';toggle.onclick=async()=>{toggle.disabled=true;try{await api('/api/admin/free-services',{method:'POST',body:JSON.stringify({action:'toggle',key:item.key,enabled:!item.enabled})});await loadRows();notify(item.enabled?'تم إيقاف عرض الخدمة المجانية.':'تم تفعيل الخدمة المجانية.','ok')}catch(e){notify('تعذر تغيير الحالة: '+e.message,'err')}finally{toggle.disabled=false}};const del=document.createElement('button');del.type='button';del.className='btn bdng btn-sm';del.textContent='حذف';del.onclick=async()=>{if(!confirm('حذف '+(item.name||'الخدمة')+' من قائمة الخدمات المجانية التي تديرها؟ لن يتم حذف الخدمة الأصلية لدى المزود.'))return;del.disabled=true;try{await api('/api/admin/free-services',{method:'POST',body:JSON.stringify({action:'delete',key:item.key})});if(editingKey===item.key)clearForm();await loadRows();notify('تم حذف إعداد الخدمة الخاصة بك فقط.','ok')}catch(e){notify('تعذر الحذف: '+e.message,'err')}finally{del.disabled=false}};btns.append(edit,toggle,del);card.appendChild(btns);rows.appendChild(card);}
         }
-        function updateCatalogSelectionCount(){selectedCount.textContent='المحدد: '+selectedProviderIds.size+' من 50 كحد أقصى';bulkSave.disabled=selectedProviderIds.size===0||!provider.value||!category.value;}
-        function renderProviderCatalogRows(append=false){if(!append)catalogRows.replaceChildren();for(const item of catalogProviderRows){if(catalogRows.querySelector('[data-provider-service-id="'+CSS.escape(String(item.providerServiceId))+'"]'))continue;const line=document.createElement('label');line.setAttribute('data-provider-service-id',String(item.providerServiceId));line.style.cssText='display:flex;align-items:flex-start;gap:9px;padding:9px;border:1px solid var(--bd);border-radius:10px;background:var(--bg2);cursor:'+(item.ratePresent?'pointer':'not-allowed')+';min-width:0';const cb=document.createElement('input');cb.type='checkbox';cb.style.cssText='width:18px;height:18px;flex:0 0 auto;margin-top:3px;accent-color:#22c55e';cb.checked=selectedProviderIds.has(String(item.providerServiceId));cb.disabled=!item.ratePresent;cb.addEventListener('change',()=>{const id=String(item.providerServiceId);if(cb.checked){if(selectedProviderIds.size>=50){cb.checked=false;notify('اختر 50 خدمة كحد أقصى في الدفعة الواحدة.','err');return;}selectedProviderIds.add(id);}else selectedProviderIds.delete(id);updateCatalogSelectionCount();});const details=document.createElement('span');details.style.cssText='display:flex;flex-direction:column;gap:3px;min-width:0;flex:1';const nm=document.createElement('b');nm.style.cssText='font-size:12px;color:var(--t0);white-space:normal;overflow-wrap:anywhere';nm.textContent=item.name||('خدمة '+item.providerServiceId);const meta=document.createElement('span');meta.style.cssText='font-size:10px;line-height:1.7;color:var(--t2);overflow-wrap:anywhere';meta.textContent='Service ID: '+item.providerServiceId+' · الكمية '+item.min+'–'+item.max+' · '+(item.category||'بلا قسم لدى المزود');const rate=document.createElement('span');rate.style.cssText='font-size:11px;font-weight:850;color:'+(item.ratePresent?'#69e6c0':'#f87171');rate.textContent=item.ratePresent?'تكلفة المزود لكل 1,000: USD '+Number(item.rate).toFixed(6):'السعر غير موثوق؛ لا يمكن إضافة هذه الخدمة';details.append(nm,meta,rate);line.append(cb,details);catalogRows.appendChild(line);}updateCatalogSelectionCount();}
-        async function fetchProviderCatalog(query='',offset=0,append=false,refresh=false){if(catalogFetchBusy)return;if(!provider.value){notify('اختر المزود أولاً.','err');return;}catalogFetchBusy=true;providerCatalogBtn.disabled=true;loadMore.disabled=true;catalogStatus.textContent='جارٍ جلب الخدمات من المزود...';try{const d=await api('/api/admin/free-services/provider-catalog',{method:'POST',body:JSON.stringify({providerId:provider.value,query,offset,limit:100,refresh})});if(!append){catalogProviderRows=[];catalogRows.replaceChildren();catalogQuery=query;}catalogTotal=Number(d.total)||0;catalogOffset=Number(d.offset||0)+(d.services||[]).length;catalogProviderRows.push(...(d.services||[]));renderProviderCatalogRows(append);loadMore.hidden=!d.hasMore;catalogStatus.textContent='المزود: '+(d.providerName||provider.value)+' · النتائج: '+catalogTotal.toLocaleString('en-US')+' · المعروض: '+catalogOffset.toLocaleString('en-US')+' · حد الإضافة 50 خدمة لكل دفعة.'+(catalogTotal===0?' لا توجد نتائج مطابقة.':'');}catch(e){catalogStatus.textContent='تعذر جلب الخدمات: '+e.message;notify('تعذر جلب خدمات المزود: '+e.message,'err');}finally{catalogFetchBusy=false;providerCatalogBtn.disabled=false;loadMore.disabled=false;}}
-        providerCatalogBtn.addEventListener('click',async()=>{catalogPanel.hidden=false;selectedProviderIds.clear();updateCatalogSelectionCount();await fetchProviderCatalog(catalogSearch.value.trim(),0,false,true);});
-        catalogSearch.addEventListener('input',()=>{if(catalogSearchTimer)clearTimeout(catalogSearchTimer);catalogSearchTimer=setTimeout(()=>{if(!catalogPanel.hidden)fetchProviderCatalog(catalogSearch.value.trim(),0,false,false);},300);});
-        loadMore.addEventListener('click',()=>fetchProviderCatalog(catalogQuery,catalogOffset,true,false));
-        bulkSave.addEventListener('click',async()=>{if(!selectedProviderIds.size){notify('حدد خدمة واحدة على الأقل.','err');return;}if(!provider.value||!category.value){notify('اختر المزود والمنصة والقسم أولاً قبل إضافة الخدمات المحددة.','err');return;}if(!confirm('إضافة '+selectedProviderIds.size+' خدمة إلى إدارة الخدمات المجانية؟ سيصبح سعر المستخدم صفراً، وستُدفع تكلفة المزود من حساب الموقع. حد كل مستخدم طلبان إجمالاً لجميع الخدمات المجانية خلال 24 ساعة.'))return;bulkSave.disabled=true;const old=bulkSave.innerHTML;bulkSave.textContent='جارٍ التحقق وإضافة الخدمات...';try{const d=await api('/api/admin/free-services/bulk-save',{method:'POST',body:JSON.stringify({providerId:provider.value,providerServiceIds:[...selectedProviderIds],category:category.value,platform:platform.value})});selectedProviderIds.clear();updateCatalogSelectionCount();await loadRows();await fetchProviderCatalog(catalogQuery,0,false,false);notify('تمت إضافة '+Number(d.addedCount||0)+' خدمة مجانية. الخدمات المكررة التي تم تجاوزها: '+Number(d.skippedCount||0)+'. حد الاستخدام مشترك: طلبان لكل حساب خلال 24 ساعة.','ok');}catch(e){notify('لم تتم إضافة الخدمات المحددة: '+e.message,'err');}finally{bulkSave.disabled=false;bulkSave.innerHTML=old;updateCatalogSelectionCount();}});
-        provider.addEventListener('change',()=>{selectedProviderIds.clear();catalogProviderRows=[];catalogRows.replaceChildren();catalogPanel.hidden=true;catalogOffset=0;catalogTotal=0;catalogStatus.textContent='اضغط «جلب الخدمات من المزود» لعرض الخدمات المتاحة.';updateCatalogSelectionCount();costNote.textContent='غيّرت المزود؛ تحقق من رقم الخدمة مجدداً.'});
+        function filterAndSortProviderCatalogRows(rows, query, minRate, maxRate, sortMode){
+          const q=String(query||'').trim().toLocaleLowerCase();
+          const hasMin=minRate!==null&&minRate!==undefined&&minRate!=='';
+          const hasMax=maxRate!==null&&maxRate!==undefined&&maxRate!=='';
+          const min=hasMin?Number(minRate):null,max=hasMax?Number(maxRate):null;
+          if((hasMin&&(!Number.isFinite(min)||min<0))||(hasMax&&(!Number.isFinite(max)||max<0))||(hasMin&&hasMax&&min>max))return [];
+          const matched=(Array.isArray(rows)?rows:[]).map((row,index)=>({row,index})).filter(({row})=>{
+            const queryMatch=!q||[row.name,row.service,row.category,row.type].some(v=>String(v||'').toLocaleLowerCase().includes(q));if(!queryMatch)return false;
+            const rateValid=row.rateValid===true&&Number.isFinite(Number(row.rate))&&Number(row.rate)>=0;const rate=rateValid?Number(row.rate):null;
+            if(hasMin&&(rate===null||rate<min))return false;
+            if(hasMax&&(rate===null||rate>max))return false;
+            return true;
+          });
+          if(sortMode==='asc'||sortMode==='desc')matched.sort((a,b)=>{
+            const av=a.row.rateValid===true&&Number.isFinite(Number(a.row.rate))&&Number(a.row.rate)>=0?Number(a.row.rate):null;
+            const bv=b.row.rateValid===true&&Number.isFinite(Number(b.row.rate))&&Number(b.row.rate)>=0?Number(b.row.rate):null;
+            if(av===null&&bv===null)return a.index-b.index;if(av===null)return 1;if(bv===null)return -1;
+            const d=av-bv;return (sortMode==='desc'?-d:d)||a.index-b.index;
+          });
+          return matched.map(item=>item.row);
+        }
+        function renderProviderPicker(resetLimit=false){
+          if(resetLimit)pickerLimit=60;
+          const q=String(pickerSearch.value||'').trim().toLocaleLowerCase();
+          const minText=String(pickerMinRate.value||'').trim(),maxText=String(pickerMaxRate.value||'').trim();
+          const minRate=minText===''?null:Number(minText),maxRate=maxText===''?null:Number(maxText);
+          const validMin=minRate===null||(Number.isFinite(minRate)&&minRate>=0),validMax=maxRate===null||(Number.isFinite(maxRate)&&maxRate>=0);
+          pickerRows.replaceChildren();
+          if(!validMin||!validMax||(minRate!==null&&maxRate!==null&&minRate>maxRate)){
+            filteredProviderRows=[];const error=document.createElement('div');error.className='empty';error.style.color='#f87171';error.textContent=!validMin||!validMax?'أدخل سعراً رقمياً غير سالب.':'أقل سعر يجب أن يكون أقل من أو يساوي أعلى سعر.';pickerRows.appendChild(error);pickerStatus.textContent=error.textContent+' · لم يتم تغيير الخدمات المحددة سابقاً.';showMore.hidden=true;selectShown.disabled=true;updatePickerState();return;
+          }
+          const sortMode=pickerPriceSort.value;
+          filteredProviderRows=filterAndSortProviderCatalogRows(providerCatalogRows,q,minRate,maxRate,sortMode);
+          const visible=filteredProviderRows.slice(0,pickerLimit);
+          if(!providerCatalogRows.length){pickerStatus.textContent='لا توجد قائمة محمّلة بعد. اضغط جلب الخدمات من المزود.';}
+          else if(!visible.length){const empty=document.createElement('div');empty.className='empty';empty.textContent='لا توجد خدمة مطابقة للبحث.';pickerRows.appendChild(empty);}
+          for(const row of visible){const id=String(row.service||'').trim();const card=document.createElement('label');card.style.cssText='display:flex;align-items:flex-start;gap:8px;padding:9px;border:1px solid var(--bd);border-radius:10px;background:var(--bg2);cursor:pointer;min-width:0';
+            const box=document.createElement('input');box.type='checkbox';box.style.cssText='margin-top:3px;flex:0 0 auto';box.checked=selectedProviderServices.has(id);box.disabled=!row.rateValid;
+            const text=document.createElement('span');text.style.cssText='display:block;min-width:0;flex:1;overflow-wrap:anywhere';const title=document.createElement('span');title.style.cssText='display:block;font-size:12px;font-weight:900;color:var(--t0)';title.textContent=row.name||('خدمة '+id);const meta=document.createElement('span');meta.style.cssText='display:block;font-size:10px;color:var(--t2);line-height:1.8;margin-top:3px';meta.textContent='Service ID: '+id+' · تكلفة المزود لكل 1000: '+(row.rateValid?'USD '+Number(row.rate).toFixed(6):'غير موثوقة — لا يمكن اختيارها')+' · الكمية '+row.min+'–'+row.max+(row.category?' · قسم المزود: '+row.category:'');text.append(title,meta);card.append(box,text);pickerRows.appendChild(card);
+            box.addEventListener('change',()=>{if(box.checked){if(selectedProviderServices.size>=250&&!selectedProviderServices.has(id)){box.checked=false;notify('الحد الأقصى 250 خدمة في الدفعة الواحدة. أضف الدفعة الحالية ثم تابع.','err');return;}selectedProviderServices.set(id,row);}else selectedProviderServices.delete(id);updatePickerState();});
+          }
+          const rangeSummary=(minRate!==null?'من $'+minRate.toFixed(6)+'/1000':'من أي سعر')+' — '+(maxRate!==null?'إلى $'+maxRate.toFixed(6)+'/1000':'إلى أي سعر');
+          const sortSummary=sortMode==='asc'?'الأقل سعراً أولاً':sortMode==='desc'?'الأعلى سعراً أولاً':'ترتيب المزود الأصلي';
+          pickerStatus.textContent=(providerCatalogRows.length?'تم جلب '+providerCatalogRows.length.toLocaleString('en-US')+' خدمة من المزود. ':'')+'نطاق التكلفة: '+rangeSummary+' · الترتيب: '+sortSummary+' · النتائج: '+filteredProviderRows.length.toLocaleString('en-US')+' · المعروض: '+visible.length+' · المحدد إجمالاً: '+selectedProviderServices.size+' · الحد المشترك: طلبان لكل حساب خلال 24 ساعة.';
+          showMore.hidden=visible.length>=filteredProviderRows.length;selectShown.disabled=!visible.some(row=>row.rateValid);updatePickerState();
+        }
+        function updatePickerState(){bulkSave.disabled=selectedProviderServices.size===0;bulkSave.innerHTML='<i class=\"fas fa-gift\"></i> إضافة '+selectedProviderServices.size+' خدمة محددة مجاناً';}
+        browseBtn.addEventListener('click',async()=>{if(!provider.value){notify('اختر المزود أولاً ثم اضغط جلب الخدمات.','err');return;}browseBtn.disabled=true;const old=browseBtn.innerHTML;browseBtn.textContent='جارٍ جلب كتالوج المزود...';try{const d=await api('/api/admin/free-services/provider-catalog?providerId='+encodeURIComponent(provider.value));providerCatalogRows=Array.isArray(d.services)?d.services:[];selectedProviderServices.clear();pickerSearch.value='';pickerPanel.style.display='flex';pickerLimit=60;renderProviderPicker(true);const notes=[];if(d.truncated)notes.push('المزود لديه '+d.total+' خدمة؛ عُرضت أول '+d.returned+'. استخدم البحث لتحديد الخدمات.');if(d.invalidRateCount)notes.push(d.invalidRateCount+' خدمة استُبعدت لأن تكلفتها غير موثوقة.');if(notes.length)pickerStatus.textContent+=' '+notes.join(' ');}catch(e){notify('تعذر جلب الخدمات من المزود: '+e.message,'err')}finally{browseBtn.disabled=false;browseBtn.innerHTML=old;}});
+        pickerSearch.addEventListener('input',()=>renderProviderPicker(true));
+        pickerMinRate.addEventListener('input',()=>renderProviderPicker(true));pickerMaxRate.addEventListener('input',()=>renderProviderPicker(true));pickerPriceSort.addEventListener('change',()=>renderProviderPicker(true));
+        selectShown.addEventListener('click',()=>{const visible=filteredProviderRows.slice(0,pickerLimit);for(const row of visible){if(!row.rateValid)continue;const id=String(row.service||'');if(selectedProviderServices.has(id))continue;if(selectedProviderServices.size>=250){notify('الحد الأقصى 250 خدمة في الدفعة الواحدة.','err');break;}selectedProviderServices.set(id,row);}renderProviderPicker();});
+        showMore.addEventListener('click',()=>{pickerLimit+=60;renderProviderPicker();});
+        clearSelection.addEventListener('click',()=>{selectedProviderServices.clear();renderProviderPicker();});
+        bulkSave.addEventListener('click',async()=>{if(!selectedProviderServices.size)return;if(!provider.value||!category.value){notify('اختر المزود والقسم والمنصة قبل إضافة الخدمات المحددة.','err');return;}bulkSave.disabled=true;const old=bulkSave.innerHTML;bulkSave.textContent='جارٍ التحقق من الخدمات وحفظها...';try{const d=await api('/api/admin/free-services',{method:'POST',body:JSON.stringify({action:'save-bulk',providerId:provider.value,serviceIds:[...selectedProviderServices.keys()],category:category.value,platform:platform.value,description:desc.value,useProviderLimits:true})});selectedProviderServices.clear();renderProviderPicker();await loadRows();notify('تمت إضافة '+Number(d.added||0)+' خدمة مجانية، وتجاوز '+Number(d.skipped||0)+' خدمة لأنها مضافة مسبقاً. الحد المشترك: طلبان لكل حساب خلال 24 ساعة.','ok');}catch(e){notify('لم تكتمل الإضافة الجماعية: '+e.message,'err')}finally{bulkSave.disabled=selectedProviderServices.size===0;bulkSave.innerHTML=old;updatePickerState();}});
         verify.addEventListener('click',async()=>{verify.disabled=true;verify.textContent='جارٍ التحقق لدى المزود...';try{if(!provider.value)throw new Error('اختر المزود أولاً.');if(!providerId.value.trim())throw new Error('أدخل رقم الخدمة عند المزود.');const d=await api('/api/admin/free-services/verify-service',{method:'POST',body:JSON.stringify({providerId:provider.value,providerServiceId:providerId.value.trim()})});if(!name.value.trim())name.value=d.service.name||'';if(!min.value||Number(min.value)===50)min.value=String(d.service.min||1);if(!max.value||Number(max.value)===100)max.value=String(d.service.max||1000000);costNote.textContent='✅ تم التحقق من الخدمة: '+d.service.name+' · التكلفة الحالية عند المزود '+Number(d.service.rate).toFixed(6)+' USD لكل 1000 · الحد الأصلي '+d.service.min+'–'+d.service.max+'. سعرها للمستخدم سيبقى مجانياً.';costNote.style.color='#22c55e';}catch(e){costNote.textContent='تعذر التحقق: '+e.message;costNote.style.color='#f87171';}finally{verify.disabled=false;verify.innerHTML='<i class="fas fa-magnifying-glass"></i> التحقق من الخدمة'}});
-        providerId.addEventListener('input',()=>{});clear.addEventListener('click',clearForm);
+        provider.addEventListener('change',()=>{costNote.textContent='غيّرت المزود؛ تحقق من رقم الخدمة مجدداً.';providerCatalogRows=[];filteredProviderRows=[];selectedProviderServices.clear();pickerPanel.style.display='none';pickerRows.replaceChildren();pickerStatus.textContent='اختر المزود ثم اضغط «جلب الخدمات من المزود».';updatePickerState();});providerId.addEventListener('input',()=>{});clear.addEventListener('click',clearForm);
         save.addEventListener('click',async()=>{save.disabled=true;const old=save.innerHTML;save.textContent='جارٍ الحفظ والتحقق...';try{await api('/api/admin/free-services',{method:'POST',body:JSON.stringify({action:'save',key:editingKey||undefined,providerId:provider.value,providerServiceId:providerId.value.trim(),name:name.value.trim(),platform:platform.value,category:category.value,min:Number(min.value),max:Number(max.value),perAccountLimit:Number(limit.value),description:desc.value,enabled:true})});clearForm();await loadRows();notify('تم حفظ الخدمة المجانية. تم فصل سعر المستخدم عن تكلفة المزود.','ok')}catch(e){notify('لم تُحفظ الخدمة: '+e.message,'err')}finally{save.disabled=false;save.innerHTML=old;}});
         refresh.addEventListener('click',()=>loadRows().catch(e=>notify('تعذر تحديث القائمة: '+e.message,'err')));
         try{await loadRows()}catch(e){warning.textContent='تعذر تحميل بيانات الإدارة: '+e.message;warning.style.color='#f87171'}
