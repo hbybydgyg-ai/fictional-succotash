@@ -1,6 +1,6 @@
 {
   "name": "sadairaq-railway",
-  "version": "1.6.54",
+  "version": "1.6.55",
   "private": true,
   "description": "صدى العراق — Firebase-authoritative service catalog, server-authoritative wallet and orders",
   "scripts": {
@@ -10,7 +10,7 @@
   "engines": {
     "node": ">=22"
   },
-  "buildId": "SADA-1.6.54-SERVICE-DROPDOWN-VERTICAL-SCROLL-FIX-20261015",
+  "buildId": "SADA-1.6.55-SERVICE-OPTIONS-INNER-SCROLLER-FIX-20261015",
   "dependencies": {
     "google-auth-library": "^11.2.0",
     "firebase-admin": "^14.5.0"
