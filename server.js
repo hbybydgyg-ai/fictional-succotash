@@ -44,8 +44,8 @@ function purgeCatalogServiceSnapshots(){
 }
 purgeCatalogServiceSnapshots();
 const APP_NAME = 'صدى العراق';
-const APP_VERSION = '1.6.49';
-const BUILD_ID = 'SADA-1.6.49-FAST-IMPORT-SILENT-FIREBASE-PATCH-20261015';
+const APP_VERSION = '1.6.50';
+const BUILD_ID = 'SADA-1.6.50-CATEGORY-PIN-IMAGES-SIDEBAR-PERF-20261015';
 // Keep the owner's admin identity available after packaging, but store only a scrypt hash
 // in the project. Railway variables can still explicitly override this packaged credential.
 function loadBundledAdminAuth(){
@@ -339,7 +339,7 @@ function canonicalCatalogOrder(orderValue,metaRoot=readJSON('category_meta.json'
   const order=orderValue&&typeof orderValue==='object'&&!Array.isArray(orderValue)?{...orderValue}:{};
   const existing=Array.isArray(order.categories)?order.categories.map(x=>String(x??'').trim()).filter(Boolean):[];
   const byKey=new Map();for(const name of existing)if(!byKey.has(normalizeCatalogLabel(name)))byKey.set(normalizeCatalogLabel(name),name);
-  const pinned=[];for(const [key,value] of Object.entries(metaRoot&&typeof metaRoot==='object'&&!Array.isArray(metaRoot)?metaRoot:{})){const name=String(value?.name||key).trim();if(name&&value?.pinned===true&&!pinned.some(x=>normalizeCatalogLabel(x)===normalizeCatalogLabel(name)))pinned.push(name);}
+  const pinned=[];for(const [key,value] of Object.entries(metaRoot&&typeof metaRoot==='object'&&!Array.isArray(metaRoot)?metaRoot:{})){const name=String(value?.name||key).trim();if(name&&value?.pinned===true&&String(value?.pinScope||'all')!=='platform'&&!pinned.some(x=>normalizeCatalogLabel(x)===normalizeCatalogLabel(name)))pinned.push(name);}
   const pinKeys=new Set(pinned.map(normalizeCatalogLabel));const seen=new Set();const names=[];
   for(const name of [...pinned,...existing]){const k=normalizeCatalogLabel(name);if(!k||seen.has(k))continue;seen.add(k);names.push(name)}
   names.sort((a,b)=>{const ap=pinKeys.has(normalizeCatalogLabel(a)),bp=pinKeys.has(normalizeCatalogLabel(b));if(ap!==bp)return ap?-1:1;const ai=existing.findIndex(x=>normalizeCatalogLabel(x)===normalizeCatalogLabel(a)),bi=existing.findIndex(x=>normalizeCatalogLabel(x)===normalizeCatalogLabel(b));if(ai>=0&&bi>=0)return ai-bi;if(ai>=0)return -1;if(bi>=0)return 1;return String(a).localeCompare(String(b),'ar')});
@@ -4783,6 +4783,7 @@ async function routeAPI(req,res,urlObj){
     const labelKey=value=>normalizeCatalogLabel(String(value??'').normalize('NFKC').replace(/[\u200B-\u200F\uFEFF]/g,'').replace(/\s+/g,' '));
     const metaKeyFor=(root,name)=>Object.keys(root||{}).find(k=>labelKey(root[k]?.name||k)===labelKey(name))||'';
     const allowedPlatforms=new Set(['Instagram','Tiktok','Facebook','Youtube','Telegram','Twitter','Snapchat','Whatsapp','Linkedin','Other']);
+    const allowedImagePresets=new Set(['Instagram','Tiktok','Facebook','Youtube','Telegram','Twitter','Snapchat','Whatsapp','Linkedin','Other','Followers','Likes','Views','Comments','Growth','SMM','VIP']);
     const cleanPlatforms=value=>[...new Set((Array.isArray(value)?value:[value]).map(x=>String(x??'').trim()).filter(x=>allowedPlatforms.has(x)))].slice(0,10);
     const serviceName=(row)=>String(row?.name||row?.title||'').trim();
     const categoryName=String(b.name||'').replace(/[\u200B-\u200F\uFEFF]/g,'').replace(/\s+/g,' ').trim().slice(0,150);
@@ -4798,14 +4799,14 @@ async function routeAPI(req,res,urlObj){
           if(!name)return json(res,422,{ok:false,error:'يوجد اسم قسم فارغ؛ لم يتم حفظ أي تغيير.'});
           const n=labelKey(name);if(seen.has(n))continue;seen.add(n);
           const platforms=cleanPlatforms(item?.platforms??b.platforms);
-          requested.push({name,platforms,pinned:typeof item?.pinned==='boolean'?item.pinned:(typeof b.pinned==='boolean'?b.pinned:false),image:String(item?.image||'').trim().slice(0,2000)});
+          const imagePreset55=String(item?.imagePreset55||'').trim();if(imagePreset55&&!allowedImagePresets.has(imagePreset55))return json(res,422,{ok:false,error:'اختيار صورة القسم غير موجود في مكتبة المشروع.'});const pinScopeRaw=String(item?.pinScope||'').trim();const pinScope=pinScopeRaw==='platform'?'platform':pinScopeRaw==='all'?'all':'';const pinnedPlatform=String(item?.pinnedPlatform||'').trim();if(pinScope==='platform'&&item?.pinned===true&&!allowedPlatforms.has(pinnedPlatform))return json(res,422,{ok:false,error:'اختر منصة صحيحة لتثبيت القسم.'});requested.push({name,platforms,pinned:typeof item?.pinned==='boolean'?item.pinned:(typeof b.pinned==='boolean'?b.pinned:false),image:String(item?.image||'').trim().slice(0,2000),imagePreset55,pinScope,pinnedPlatform});
         }
         if(!requested.length)return json(res,422,{ok:false,error:'لا توجد أسماء أقسام فريدة للحفظ.'});
         for(const item of requested){
           let key=metaKeyFor(metaNext,item.name)||normalizeCatalogKey(item.name),suffix=1;
           while(Object.prototype.hasOwnProperty.call(metaNext,key)&&labelKey(metaNext[key]?.name||key)!==labelKey(item.name)){key=(normalizeCatalogKey(item.name)+'_'+suffix++).slice(0,100);}
           const old=metaNext[key]&&typeof metaNext[key]==='object'?metaNext[key]:{};
-          metaNext[key]={...old,name:item.name,platforms:item.platforms.length?item.platforms:(Array.isArray(old.platforms)?old.platforms:[]),...(item.image?{image:item.image}:{}),pinned:item.pinned===true||old.pinned===true,createdAt:old.createdAt||nowISO(),updatedAt:nowISO(),updatedBy:String(session(req)?.username||ADMIN_USER)};
+          metaNext[key]={...old,name:item.name,platforms:item.platforms.length?item.platforms:(Array.isArray(old.platforms)?old.platforms:[]),...(item.image?{image:item.image}:{}),...(item.imagePreset55?{imagePreset55:item.imagePreset55}:{}),pinned:item.pinned===true||old.pinned===true,pinScope:item.pinScope||old.pinScope||'all',pinnedPlatform:item.pinScope==='all'?'':(item.pinnedPlatform||old.pinnedPlatform||''),createdAt:old.createdAt||nowISO(),updatedAt:nowISO(),updatedBy:String(session(req)?.username||ADMIN_USER)};
           if(!Array.isArray(settingsNext.catalogOrder?.categories))settingsNext.catalogOrder={...(settingsNext.catalogOrder||{}),categories:[],services:settingsNext.catalogOrder?.services||{}};
           if(!settingsNext.catalogOrder.categories.some(x=>labelKey(x)===labelKey(item.name)))settingsNext.catalogOrder.categories.push(item.name);
         }
@@ -4820,7 +4821,7 @@ async function routeAPI(req,res,urlObj){
         const name=categoryName;if(!name)return json(res,422,{ok:false,error:'اسم القسم مطلوب.'});
         if(typeof b.pinned!=='boolean')return json(res,422,{ok:false,error:'حدد حالة التثبيت.'});
         let key=metaKeyFor(metaNext,name)||normalizeCatalogKey(name);const old=metaNext[key]&&typeof metaNext[key]==='object'?metaNext[key]:{};
-        metaNext[key]={...old,name:String(old.name||name),pinned:b.pinned,createdAt:old.createdAt||nowISO(),updatedAt:nowISO(),updatedBy:String(session(req)?.username||ADMIN_USER)};
+        const pinScope=b.pinScope===undefined?String(old.pinScope||'all'):(String(b.pinScope)==='platform'?'platform':'all');const pinnedPlatform=b.pinnedPlatform===undefined?String(old.pinnedPlatform||'') : String(b.pinnedPlatform||'');if(b.pinned===true&&pinScope==='platform'&&!allowedPlatforms.has(pinnedPlatform))return json(res,422,{ok:false,error:'اختر منصة صحيحة لتثبيت القسم.'});metaNext[key]={...old,name:String(old.name||name),pinned:b.pinned,pinScope,pinnedPlatform,createdAt:old.createdAt||nowISO(),updatedAt:nowISO(),updatedBy:String(session(req)?.username||ADMIN_USER)};
         const ord=settingsNext.catalogOrder&&typeof settingsNext.catalogOrder==='object'?settingsNext.catalogOrder:{categories:[],services:{}};
         if(!Array.isArray(ord.categories))ord.categories=[];if(!ord.categories.some(x=>labelKey(x)===labelKey(name)))ord.categories.push(name);
         settingsNext.catalogOrder=canonicalCatalogOrder(ord,metaNext);settingsNext.catalogUpdatedAt=nowISO();
@@ -4828,7 +4829,29 @@ async function routeAPI(req,res,urlObj){
         remotePatch['settings/catalogOrder']=settingsNext.catalogOrder;remotePatch['settings/svcsVersion']=String(Date.now());
         try{await persistFirebaseCatalogPatch(remotePatch,{verify:true,atomic:true,timeoutMs:30000});}catch(e){return json(res,503,{ok:false,error:'تعذر تثبيت القسم في Firebase؛ لم يتم تأكيد الحفظ: '+String(e.message||e).slice(0,150)});}
         writeJSON('category_meta.json',metaNext);writeJSON('catalog_settings.json',settingsNext);
-        return json(res,200,{ok:true,action,pinned:b.pinned,name,storage:'firebase',storageMode:'firebase',verified:true});
+        return json(res,200,{ok:true,action,pinned:b.pinned,pinScope,pinnedPlatform,name,storage:'firebase',storageMode:'firebase',verified:true});
+      }
+      if(action==='update'){
+        const name=categoryName;if(!name)return json(res,422,{ok:false,error:'اسم القسم مطلوب.'});
+        const imagePreset55=String(b.imagePreset55||'').trim();
+        if(!allowedImagePresets.has(imagePreset55))return json(res,422,{ok:false,error:'اختر صورة من مكتبة الصور الموجودة داخل المشروع.'});
+        const pinScope=String(b.pinScope||'all')==='platform'?'platform':'all';
+        const pinned=b.pinned===true;
+        const pinnedPlatform=String(b.pinnedPlatform||'').trim();
+        if(pinned&&pinScope==='platform'&&!allowedPlatforms.has(pinnedPlatform))return json(res,422,{ok:false,error:'اختر منصة صحيحة لتثبيت القسم.'});
+        const key=metaKeyFor(metaNext,name)||normalizeCatalogKey(name);const old=metaNext[key]&&typeof metaNext[key]==='object'?metaNext[key]:{};
+        metaNext[key]={...old,name:String(old.name||name),platforms:Array.isArray(b.platforms)?cleanPlatforms(b.platforms):(Array.isArray(old.platforms)?old.platforms:[]),image:'',imagePreset55,customImage:false,imageIsCustom:false,pinned,pinScope,pinnedPlatform:pinScope==='platform'?pinnedPlatform:'',createdAt:old.createdAt||nowISO(),updatedAt:nowISO(),updatedBy:String(session(req)?.username||ADMIN_USER)};
+        const ord=settingsNext.catalogOrder&&typeof settingsNext.catalogOrder==='object'?settingsNext.catalogOrder:{categories:[],services:{}};
+        if(!Array.isArray(ord.categories))ord.categories=[];
+        if(!ord.categories.some(x=>labelKey(x)===labelKey(name)))ord.categories.push(name);
+        // Platform-only pins must not remain at the global top from an older global-pin setting.
+        if(pinned&&pinScope==='platform'){ord.categories=ord.categories.filter(x=>labelKey(x)!==labelKey(name));ord.categories.push(name);}
+        settingsNext.catalogOrder=canonicalCatalogOrder(ord,metaNext);settingsNext.catalogUpdatedAt=nowISO();
+        const remotePatch={};for(const [metaKey,metaValue] of Object.entries(metaNext))if(!catalogValuesEqual(metaBefore[metaKey]??null,metaValue))remotePatch['categoryMeta/'+metaKey]=metaValue;
+        remotePatch['settings/catalogOrder']=settingsNext.catalogOrder;remotePatch['settings/svcsVersion']=String(Date.now());
+        try{await persistFirebaseCatalogPatch(remotePatch,{verify:true,atomic:true,timeoutMs:30000});}catch(e){return json(res,503,{ok:false,error:'تعذر حفظ صورة وتثبيت القسم في Firebase؛ لم يتم تأكيد التعديل: '+String(e.message||e).slice(0,150)});}
+        writeJSON('category_meta.json',metaNext);writeJSON('catalog_settings.json',settingsNext);
+        return json(res,200,{ok:true,action,name,imagePreset55,pinned,pinScope,pinnedPlatform:pinScope==='platform'?pinnedPlatform:'',storage:'firebase',storageMode:'firebase',verified:true});
       }
       if(action==='delete'){
         const name=categoryName;if(!name)return json(res,422,{ok:false,error:'اسم القسم مطلوب.'});
@@ -6595,7 +6618,7 @@ async function routeAPI(req,res,urlObj){
     try { buildFile=fs.readFileSync(path.join(ROOT,'BUILD_ID.txt'),'utf8').trim(); } catch(_) {}
     const deploymentConsistent=uiVersion===APP_VERSION && uiBuildId===BUILD_ID && versionFile===APP_VERSION && buildFile===BUILD_ID;
     const dbInfo=firebaseDatabaseDiagnosticInfo();
-    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.49',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
+    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.50',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
     // Keep operational configuration details private; only an authenticated admin can inspect them.
     if(isAdmin(req)){const credentialStatus=firebaseServiceAccountStatus();health.firebaseDatabase={host:dbInfo.host,source:dbInfo.source,databaseProjectHint:dbInfo.databaseProjectHint,serviceAccountProjectId:dbInfo.serviceAccountProjectId||null,configuredWebProjectId:dbInfo.configuredWebProjectId||null,serviceAccountProjectMatch:dbInfo.serviceAccountProjectMatch};health.securityConfig={sessionSecretConfigured:!!String(process.env.SESSION_SECRET||'').trim(),dedicatedEncryptionKeyConfigured:!!String(process.env.SADA_ENCRYPTION_KEY||'').trim(),stableEncryptionAvailable:telegramEncryptionReady(),firebaseConfigured:!!FIREBASE_DATABASE_URL,firebaseServiceAccountConfigured:credentialStatus.ok,firebaseCredentialStatus:{ok:credentialStatus.ok,code:credentialStatus.code,source:credentialStatus.source,message:credentialStatus.message},firebaseDatabaseSecretConfigured:!!String(process.env.FIREBASE_DATABASE_SECRET||'').trim(),firebaseAuthAvailable:firebaseAuthAvailable(),emailServiceConfigured:!!(String(process.env.RESEND_API_KEY||'').trim()&&String(process.env.RESEND_FROM_EMAIL||process.env.EMAIL_FROM||'').trim()),telegramTokenFromEnvironment:!!String(process.env.TELEGRAM_BOT_TOKEN||'').trim(),adminPasswordFromEnvironment:!!(String(process.env.ADMIN_PASSWORD||'').trim()||String(process.env.ADMIN_PASSWORD_HASH||'').trim()),adminPasswordConfigured:adminPasswordConfigured()};}
     return json(res,200,health);
