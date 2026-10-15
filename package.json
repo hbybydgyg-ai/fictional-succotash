@@ -1,16 +1,16 @@
 {
   "name": "sadairaq-railway",
-  "version": "1.6.50",
+  "version": "1.6.51",
   "private": true,
   "description": "صدى العراق — Firebase-authoritative service catalog, server-authoritative wallet and orders",
   "scripts": {
     "start": "node server.js",
-    "test": "node --check server.js && node --check tests/service-price-order.test.js && node tests/service-price-order.test.js && node --check tests/multi-category-picker.test.js && node tests/multi-category-picker.test.js && node --check tests/firebase-catalog-persistence.test.js && node tests/firebase-catalog-persistence.test.js && node --check tests/catalog-management.test.js && node tests/catalog-management.test.js && node --check tests/catalog-performance.test.js && node tests/catalog-performance.test.js && node --check tests/release-regression.test.js && node tests/release-regression.test.js && node --check tests/api-runtime.test.js && node tests/api-runtime.test.js && node --check tests/asiacell-runtime.test.js && node tests/asiacell-runtime.test.js && node tests/profit-percentage.test.js && node tests/profit-percentage-regression.test.js && node --check tests/service-platform-delete.test.js && node tests/service-platform-delete.test.js && node --check tests/category-customization-performance.test.js && node tests/category-customization-performance.test.js"
+    "test": "node --check server.js && node --check tests/service-price-order.test.js && node tests/service-price-order.test.js && node --check tests/multi-category-picker.test.js && node tests/multi-category-picker.test.js && node --check tests/firebase-catalog-persistence.test.js && node tests/firebase-catalog-persistence.test.js && node --check tests/catalog-management.test.js && node tests/catalog-management.test.js && node --check tests/catalog-performance.test.js && node tests/catalog-performance.test.js && node --check tests/release-regression.test.js && node tests/release-regression.test.js && node --check tests/api-runtime.test.js && node tests/api-runtime.test.js && node --check tests/asiacell-runtime.test.js && node tests/asiacell-runtime.test.js && node tests/profit-percentage.test.js && node tests/profit-percentage-regression.test.js && node --check tests/service-platform-delete.test.js && node tests/service-platform-delete.test.js && node --check tests/category-customization-performance.test.js && node tests/category-customization-performance.test.js && node --check tests/temporary-notification-catalog-ui.test.js && node tests/temporary-notification-catalog-ui.test.js"
   },
   "engines": {
     "node": ">=22"
   },
-  "buildId": "SADA-1.6.50-CATEGORY-PIN-IMAGES-SIDEBAR-PERF-20261015",
+  "buildId": "SADA-1.6.51-PLATFORM-CATALOG-TEMP-NOTICE-PERF-20261015",
   "dependencies": {
     "google-auth-library": "^11.2.0",
     "firebase-admin": "^14.5.0"
