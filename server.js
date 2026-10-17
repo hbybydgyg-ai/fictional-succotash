@@ -44,8 +44,8 @@ function purgeCatalogServiceSnapshots(){
 }
 purgeCatalogServiceSnapshots();
 const APP_NAME = 'صدى العراق';
-const APP_VERSION = '1.6.72';
-const BUILD_ID = 'SADA-1.6.72-FREE-SUPPORT-TELEGRAM-ACCEPTANCE-20261017';
+const APP_VERSION = '1.6.73';
+const BUILD_ID = 'SADA-1.6.73-FREE-SUPPORT-CAMPAIGN-TELEGRAM-20261017';
 // Keep the owner's admin identity available after packaging, but store only a scrypt hash
 // in the project. Railway variables can still explicitly override this packaged credential.
 function loadBundledAdminAuth(){
@@ -4659,7 +4659,7 @@ function freeSupportRequestPath(id){return FREE_SUPPORT_ROOT+'/requests/'+fireba
 function freeSupportEvidencePath(id){return FREE_SUPPORT_ROOT+'/evidence/'+firebaseSafeKey(id)}
 function freeSupportTaskPath(id){return FREE_SUPPORT_ROOT+'/tasks/'+firebaseSafeKey(id)}
 function freeSupportClaimPath(taskId,username){return FREE_SUPPORT_ROOT+'/claims/'+firebaseSafeKey(taskId)+'/'+firebaseSafeKey(username)}
-function freeSupportDefaultWallet(username){return {username:String(username||''),points:0,acceptedRules:false,blocked:false,warnings:0,warningHistory:[],awardedRequests:{},completedTasks:{},spentRequests:{},refundRequests:{},dailyGift:{streakDay:0,lastClaimDate:'',history:{}},updatedAt:nowISO()}}
+function freeSupportDefaultWallet(username){return {username:String(username||''),points:0,acceptedRules:false,blocked:false,warnings:0,warningHistory:[],awardedRequests:{},completedTasks:{},taskClaims:{},spentRequests:{},refundRequests:{},dailyGift:{streakDay:0,lastClaimDate:'',history:{}},updatedAt:nowISO()}}
 function freeSupportBaghdadDateKey(date=new Date()){
   const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Baghdad',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(date);
   const pick=type=>parts.find(p=>p.type===type)?.value||'';
@@ -4711,7 +4711,7 @@ function freeSupportPricePer100(settings,serviceType){const key=freeSupportPrice
 function freeSupportCampaignCost(settings,serviceType,quantity){return Math.ceil(Math.max(0,Number(quantity)||0)*freeSupportPricePer100(settings,serviceType)/100)}
 function freeSupportRewardPoints(settings,serviceType){const key=freeSupportPriceKey(serviceType),raw=Number(settings?.rewardPointsByType?.[key]??FREE_SUPPORT_DEFAULT_SETTINGS.rewardPointsByType[key]);return Number.isSafeInteger(raw)?Math.max(1,Math.min(1000000,raw)):FREE_SUPPORT_DEFAULT_SETTINGS.rewardPointsByType[key]}
 function freeSupportTaskTitle(serviceType,platformName){const names={followers:'متابعة حساب',likes:'إعجاب بمنشور',views:'مشاهدة محتوى'};return (names[String(serviceType||'followers')]||'تنفيذ مهمة')+' — '+String(platformName||'المنصة')}
-async function freeSupportReadWallet(username){const value=await firebaseGetJson(freeSupportWalletPath(username),7000);return {...freeSupportDefaultWallet(username),...freeSupportObject(value),username:String(username||''),points:Math.max(0,Math.floor(Number(value?.points)||0)),warnings:Math.max(0,Math.floor(Number(value?.warnings)||0)),warningHistory:Array.isArray(value?.warningHistory)?value.warningHistory:[],awardedRequests:freeSupportObject(value?.awardedRequests),completedTasks:freeSupportObject(value?.completedTasks),spentRequests:freeSupportObject(value?.spentRequests),refundRequests:freeSupportObject(value?.refundRequests),dailyGift:{...freeSupportDefaultWallet(username).dailyGift,...freeSupportObject(value?.dailyGift),history:freeSupportObject(value?.dailyGift?.history)}}}
+async function freeSupportReadWallet(username){const value=await firebaseGetJson(freeSupportWalletPath(username),7000);return {...freeSupportDefaultWallet(username),...freeSupportObject(value),username:String(username||''),points:Math.max(0,Math.floor(Number(value?.points)||0)),warnings:Math.max(0,Math.floor(Number(value?.warnings)||0)),warningHistory:Array.isArray(value?.warningHistory)?value.warningHistory:[],awardedRequests:freeSupportObject(value?.awardedRequests),completedTasks:freeSupportObject(value?.completedTasks),taskClaims:freeSupportObject(value?.taskClaims),spentRequests:freeSupportObject(value?.spentRequests),refundRequests:freeSupportObject(value?.refundRequests),dailyGift:{...freeSupportDefaultWallet(username).dailyGift,...freeSupportObject(value?.dailyGift),history:freeSupportObject(value?.dailyGift?.history)}}}
 async function freeSupportListData(){
   const [settingsRaw,tasksRaw,requestsRaw]=await Promise.all([firebaseGetJson(FREE_SUPPORT_ROOT+'/settings',7000),firebaseGetJson(FREE_SUPPORT_ROOT+'/tasks',10000),firebaseGetJson(FREE_SUPPORT_ROOT+'/requests',12000)]);
   const settings=freeSupportSafeSettings(settingsRaw||FREE_SUPPORT_DEFAULT_SETTINGS,FREE_SUPPORT_DEFAULT_SETTINGS);
@@ -4727,7 +4727,7 @@ async function freeSupportNotify(username,title,message,id,status){
 function freeSupportTelegramAlertPath(id){return FREE_SUPPORT_ROOT+'/telegramProofNotifications/'+firebaseSafeKey(id)}
 let FREE_SUPPORT_TELEGRAM_OUTBOX_RUNNING=false;
 function freeSupportProofTelegramCaption(row){
-  const id=String(row?.id||'غير متوفر').slice(0,90),user=String(row?.user||'غير معروف').slice(0,100),platform=String(row?.platformName||row?.platform||'غير محدد').slice(0,60),title=String(row?.title||freeSupportTaskTitle(row?.serviceType,platform)).slice(0,150),points=Math.max(0,Math.floor(Number(row?.rewardPoints)||0));
+  const id=String(row?.id||'غير متوفر').slice(0,70),user=String(row?.user||'غير معروف').slice(0,80),platform=String(row?.platformName||row?.platform||'غير محدد').slice(0,45),title=String(row?.title||freeSupportTaskTitle(row?.serviceType,platform)).slice(0,100),points=Math.max(0,Math.floor(Number(row?.rewardPoints)||0)),url=freeSupportValidLink(row?.targetLink).slice(0,330);
   let time='';try{time=new Intl.DateTimeFormat('ar-IQ',{timeZone:'Asia/Baghdad',dateStyle:'short',timeStyle:'short'}).format(new Date(row?.createdAt||Date.now()))}catch(_){time=String(row?.createdAt||'')}
   return `🆕 تم رفع مهمة جديدة تحتاج مراجعة
 
@@ -4735,11 +4735,11 @@ function freeSupportProofTelegramCaption(row){
 👤 المستخدم: ${user}
 🌐 المنصة: ${platform}
 📋 المهمة: ${title}
+🔗 رابط المهمة الأصلي: ${url||'غير مسجل'}
 ⭐ النقاط عند القبول: ${points}
 🕒 وقت الإرسال: ${time}
 
-يرجى الذهاب إلى لوحة الإدارة ← دعم حقيقي مجاني ← طلبات المستخدمين، لمراجعة صورة الإثبات ثم قبول المهمة أو رفضها.
-
+يرجى فتح لوحة الإدارة ← دعم حقيقي مجاني ← طلبات المستخدمين، ومراجعة صورة الإثبات ورابط المهمة قبل القبول أو الرفض.
 ✅ لا تُضاف النقاط إلا بعد قبول الإدارة.`.slice(0,1024);
 }
 async function freeSupportSendProofTelegram(row,evidence){
@@ -4773,6 +4773,54 @@ async function freeSupportSendProofTelegram(row,evidence){
   const error=fallback.description||fallback.error||photoError||'فشل إرسال إشعار المهمة إلى قناة Telegram';
   telegramLog({kind:'free_support_proof',ok:false,status:fallback.status||result?.status||null,messageId:null,orderId:String(row.id||''),targetChatId:chatId,media:'none',description:error});
   return {ok:false,retryable:!(Number(fallback.status)>=400&&Number(fallback.status)<500),error,chatId};
+}
+function freeSupportCampaignTelegramCaption(row){
+  const id=String(row?.publicOrderNo||row?.id||'غير متوفر').slice(0,90),user=String(row?.user||'غير معروف').slice(0,100),platform=String(row?.platformName||row?.platform||'غير محدد').slice(0,50),url=freeSupportValidLink(row?.targetLink),quantity=Math.max(0,Math.floor(Number(row?.quantity)||0)),cost=Math.max(0,Math.floor(Number(row?.costPoints)||0));
+  const typeLabels={followers:'متابعون',likes:'إعجابات',views:'مشاهدات'};
+  const type=typeLabels[String(row?.serviceType||'').toLowerCase()]||String(row?.serviceType||'دعم').slice(0,35);
+  let time='';try{time=new Intl.DateTimeFormat('ar-IQ',{timeZone:'Asia/Baghdad',dateStyle:'short',timeStyle:'short'}).format(new Date(row?.createdAt||Date.now()))}catch(_){time=String(row?.createdAt||'')}
+  return `🆕 طلب دعم حقيقي مجاني جديد — يحتاج مشاركين\n\n🆔 رقم الطلب: ${id}\n👤 المستخدم: ${user}\n🌐 المنصة: ${platform}\n📦 نوع الدعم: ${type}\n🔗 رابط الحساب أو المنشور: ${url||'غير مسجل'}\n🔢 الكمية المطلوبة: ${quantity}\n⭐ التكلفة: ${cost} نقطة\n📊 الحالة: بانتظار المشاركين\n🕒 وقت الطلب: ${time}\n\nيرجى متابعة الطلب من لوحة الإدارة ← دعم حقيقي مجاني ← طلبات المستخدمين.\n⏳ مدة التنفيذ تعتمد على مشاركة بقية مستخدمي التطبيق.`.slice(0,3900);
+}
+async function freeSupportDeliverCampaignTelegramAlert(id,{force=false}={}){
+  const requestId=String(id||'').trim();if(!requestId)return {ok:false,error:'رقم طلب الدعم مفقود'};
+  const path=freeSupportRequestPath(requestId),now=Date.now(),lockId=crypto.randomUUID();let lock;
+  try{
+    lock=await firebaseTransaction(path,current=>{
+      if(!current||current.type!=='campaign')return {write:false,result:{missing:true}};
+      if(String(current.telegramNotificationStatus||'')==='sent')return {write:false,result:{sent:true,messageId:current.telegramNotificationMessageId||null}};
+      if(!['queued','in_progress','completed','cancelled_by_admin','failed'].includes(String(current.status||'')))return {write:false,result:{notReady:true,status:current.status}};
+      if(String(current.telegramNotificationStatus||'')==='sending'&&now-Number(current.telegramNotificationLockedAtMs||0)<120000)return {write:false,result:{busy:true}};
+      if(!force&&Number(current.telegramNotificationNextAttemptAtMs||0)>now)return {write:false,result:{notDue:true}};
+      current.telegramNotificationStatus='sending';current.telegramNotificationAttempts=Math.max(0,Math.floor(Number(current.telegramNotificationAttempts)||0))+1;current.telegramNotificationLockedAtMs=now;current.telegramNotificationLockId=lockId;current.telegramNotificationUpdatedAt=nowISO();
+      return {write:true,value:current,result:{started:true,attempts:current.telegramNotificationAttempts}};
+    },10000,8);
+  }catch(error){return {ok:false,error:'تعذر تثبيت إشعار طلب الدعم في Firebase: '+String(error.message||error).slice(0,140)}}
+  if(lock.result?.sent)return {ok:true,alreadySent:true,messageId:lock.result.messageId||null};
+  if(!lock.result?.started)return {ok:false,skipped:true,...lock.result};
+  const row=lock.value||{};let result;
+  const cfg=telegramConfig(),chatId=String(cfg.freeSupportChat||FREE_SUPPORT_TELEGRAM_CHAT_DEFAULT).trim();
+  if(!cfg.enabled)result={ok:false,error:'إشعارات Telegram معطلة'};
+  else if(!cfg.token)result={ok:false,error:'Bot Token غير محفوظ'};
+  else if(!validTelegramChatTarget(chatId))result={ok:false,error:'معرّف قناة قبول الطلبات غير صالح'};
+  else result=await telegramApiRequest(cfg.token,'sendMessage',{chat_id:chatId,text:freeSupportCampaignTelegramCaption(row),disable_web_page_preview:false},9000);
+  if(result?.ok){
+    let persisted=false;
+    try{const tx=await firebaseTransaction(path,current=>{if(!current||current.type!=='campaign'||String(current.telegramNotificationLockId||'')!==lockId)return {write:false,result:{lostLock:true}};current.telegramNotificationStatus='sent';current.telegramNotificationMessageId=result.messageId||null;current.telegramNotificationTargetChatId=chatId;current.telegramNotificationSentAt=nowISO();current.telegramNotificationUpdatedAt=nowISO();current.telegramNotificationLastError='';delete current.telegramNotificationLockedAtMs;delete current.telegramNotificationLockId;delete current.telegramNotificationNextAttemptAtMs;return {write:true,value:current,result:{saved:true}}},9000,8);persisted=tx.result?.saved===true;}catch(error){console.warn('Campaign alert delivery state save delayed:',String(error.message||error).slice(0,140))}
+    telegramLog({kind:'free_support_campaign',ok:true,status:result.status||200,messageId:result.messageId||null,orderId:requestId,targetChatId:chatId,media:'text'});
+    return {ok:true,messageId:result.messageId||null,chatId,persisted};
+  }
+  const attempts=Math.max(1,Number(lock.value?.telegramNotificationAttempts)||1),delay=Math.min(15*60*1000,Math.max(60*1000,attempts*60*1000)),error=String(result?.description||result?.error||'لم يؤكد Telegram وصول إشعار طلب الدعم').slice(0,300);
+  try{await firebaseTransaction(path,current=>{if(!current||current.type!=='campaign'||String(current.telegramNotificationLockId||'')!==lockId)return {write:false,result:{lostLock:true}};current.telegramNotificationStatus='pending';current.telegramNotificationLastError=error;current.telegramNotificationNextAttemptAtMs=Date.now()+delay;current.telegramNotificationUpdatedAt=nowISO();delete current.telegramNotificationLockedAtMs;delete current.telegramNotificationLockId;return {write:true,value:current,result:{saved:true}}},9000,8)}catch(e){console.warn('Campaign alert retry state save delayed:',String(e.message||e).slice(0,140))}
+  telegramLog({kind:'free_support_campaign',ok:false,status:result?.status||null,messageId:null,orderId:requestId,targetChatId:chatId,media:'none',description:error});
+  return {ok:false,queued:true,error,chatId};
+}
+async function runFreeSupportTelegramCampaignOutbox(){
+  try{
+    const all=freeSupportObject(await firebaseGetJson(FREE_SUPPORT_ROOT+'/requests',10000));
+    const due=Object.entries(all).filter(([,row])=>row&&row.type==='campaign'&&['pending','sending'].includes(String(row.telegramNotificationStatus||''))&&(['queued','in_progress','completed','cancelled_by_admin','failed'].includes(String(row.status||''))&&(Number(row.telegramNotificationNextAttemptAtMs||0)<=Date.now()||(String(row.telegramNotificationStatus)==='sending'&&Date.now()-Number(row.telegramNotificationLockedAtMs||0)>120000)))).sort((a,b)=>(Date.parse(a[1].createdAt||0)||0)-(Date.parse(b[1].createdAt||0)||0)).slice(0,10);
+    for(const [id] of due){try{await freeSupportDeliverCampaignTelegramAlert(id)}catch(error){console.warn('free-support campaign Telegram retry deferred:',String(error.message||error).slice(0,120))}}
+    return {checked:due.length};
+  }catch(error){console.warn('free-support campaign Telegram outbox scan deferred:',String(error.message||error).slice(0,120));return {ok:false,error:String(error.message||error)}}
 }
 async function freeSupportDeliverProofTelegramAlert(id,{force=false}={}){
   const requestId=String(id||'').trim();if(!requestId)return {ok:false,error:'رقم طلب المراجعة مفقود'};
@@ -4843,13 +4891,13 @@ async function freeSupportAward(request){
   const tx=await firebaseTransaction(freeSupportWalletPath(username),current=>{
     const wallet={...freeSupportDefaultWallet(username),...freeSupportObject(current)};
     const awarded={...freeSupportObject(wallet.awardedRequests)};
-    const completedTasks={...freeSupportObject(wallet.completedTasks)};
+    const completedTasks={...freeSupportObject(wallet.completedTasks)},taskClaims={...freeSupportObject(wallet.taskClaims)};
     const taskKey=request.campaignId?'campaign_'+String(request.campaignId):request.taskId?'task_'+String(request.taskId):'';
-    if(taskKey){completedTasks[taskKey]={requestId:id,at:nowISO(),platform:String(request.platform||''),title:String(request.title||'')};const donePairs=Object.entries(completedTasks).sort((a,b)=>(Date.parse(a[1]?.at||0)||0)-(Date.parse(b[1]?.at||0)||0));while(donePairs.length>1500){const [k]=donePairs.shift();delete completedTasks[k]}}
-    if(awarded[id]){wallet.completedTasks=completedTasks;wallet.updatedAt=nowISO();return {write:!!taskKey,value:wallet,result:{alreadyAwarded:true,points:Math.max(0,Math.floor(Number(wallet.points)||0))}};}
+    if(taskKey){completedTasks[taskKey]={requestId:id,at:nowISO(),platform:String(request.platform||''),title:String(request.title||'')};if(taskClaims[taskKey]?.requestId===id)delete taskClaims[taskKey];const donePairs=Object.entries(completedTasks).sort((a,b)=>(Date.parse(a[1]?.at||0)||0)-(Date.parse(b[1]?.at||0)||0));while(donePairs.length>1500){const [k]=donePairs.shift();delete completedTasks[k]}}
+    if(awarded[id]){wallet.completedTasks=completedTasks;wallet.taskClaims=taskClaims;wallet.updatedAt=nowISO();return {write:!!taskKey,value:wallet,result:{alreadyAwarded:true,points:Math.max(0,Math.floor(Number(wallet.points)||0))}};}
     wallet.points=Math.max(0,Math.floor(Number(wallet.points)||0))+points;awarded[id]={points,at:nowISO()};
     const pairs=Object.entries(awarded).sort((a,b)=>(Date.parse(a[1]?.at||0)||0)-(Date.parse(b[1]?.at||0)||0));while(pairs.length>1200){const [k]=pairs.shift();delete awarded[k]}
-    wallet.awardedRequests=awarded;wallet.completedTasks=completedTasks;wallet.username=username;wallet.updatedAt=nowISO();return {write:true,value:wallet,result:{awarded:true,points:wallet.points}};
+    wallet.awardedRequests=awarded;wallet.completedTasks=completedTasks;wallet.taskClaims=taskClaims;wallet.username=username;wallet.updatedAt=nowISO();return {write:true,value:wallet,result:{awarded:true,points:wallet.points}};
   },12000,8);
   if(tx.result?.error)throw new Error('تعذر تحديث نقاط المستخدم.');
   return {points:Math.max(0,Math.floor(Number(tx.value?.points??tx.result?.points)||0)),alreadyAwarded:!!tx.result?.alreadyAwarded};
@@ -4920,11 +4968,13 @@ async function freeSupportRoute(req,res,urlObj){
       const finalizedProofsForUser=freeSupportRows(data.requests).filter(r=>r.type==='proof'&&String(r.user||'')===username&&['approved','rejected'].includes(String(r.status)));
       for(const finalized of finalizedProofsForUser){try{await freeSupportDeleteReviewedProof(finalized)}catch(e){console.warn('user-view finalized proof cleanup pending:',String(e?.message||e).slice(0,100));}}
       if(wallet.blocked&&!isAdm)return json(res,200,{ok:true,blocked:true,wallet:{points:wallet.points,warnings:wallet.warnings,acceptedRules:!!wallet.acceptedRules},dailyGift:freeSupportDailyGiftStatus(wallet),settings:data.settings,tasks:[],campaigns:[],myRequests:[]});
-      const tasks=freeSupportRows(data.tasks).filter(t=>t.deleted!==true&&t.enabled!==false&&freeSupportPlatform(data.settings,t.platform)).map(t=>({...t,title:t.autoTitle===true?freeSupportTaskTitle(t.serviceType,t.platformName||freeSupportPlatform(data.settings,t.platform)?.name||t.platform):t.title,rewardPoints:['followers','likes','views'].includes(String(t.serviceType||''))?freeSupportRewardPoints(data.settings,t.serviceType):Math.max(1,Math.floor(Number(t.rewardPoints)||1)),taskKind:'admin'}));
-      const campaigns=freeSupportRows(data.requests).filter(r=>r.type==='campaign'&&r.user!==username&&['queued','in_progress'].includes(String(r.status))&&Number(r.completedQuantity||0)+Number(r.reservedQuantity||0)<Number(r.quantity||0)).map(r=>({id:r.id,taskKind:'campaign',platform:r.platform,platformName:r.platformName,serviceType:r.serviceType,title:r.title||r.serviceType,targetLink:r.targetLink,quantity:Number(r.quantity||0),completedQuantity:Number(r.completedQuantity||0),reservedQuantity:Number(r.reservedQuantity||0),rewardPoints:Math.max(1,Math.floor(Number(r.rewardPoints||data.settings.pointsPerUnit)||1)),status:r.status,createdAt:r.createdAt}));
+      const completedTaskMap=freeSupportObject(wallet.completedTasks),taskClaimMap=freeSupportObject(wallet.taskClaims);
+      const isLockedForUser=key=>!!completedTaskMap[key]||['pending_review','reviewing','approved'].includes(String(taskClaimMap[key]?.status||''));
+      const tasks=freeSupportRows(data.tasks).filter(t=>t.deleted!==true&&t.enabled!==false&&freeSupportPlatform(data.settings,t.platform)&&!isLockedForUser('task_'+String(t.id||''))).map(t=>({...t,title:t.autoTitle===true?freeSupportTaskTitle(t.serviceType,t.platformName||freeSupportPlatform(data.settings,t.platform)?.name||t.platform):t.title,rewardPoints:['followers','likes','views'].includes(String(t.serviceType||''))?freeSupportRewardPoints(data.settings,t.serviceType):Math.max(1,Math.floor(Number(t.rewardPoints)||1)),taskKind:'admin'}));
+      const campaigns=freeSupportRows(data.requests).filter(r=>r.type==='campaign'&&r.user!==username&&['queued','in_progress'].includes(String(r.status))&&Number(r.completedQuantity||0)+Number(r.reservedQuantity||0)<Number(r.quantity||0)&&!isLockedForUser('campaign_'+String(r.id||''))).map(r=>({id:r.id,taskKind:'campaign',platform:r.platform,platformName:r.platformName,serviceType:r.serviceType,title:r.title||r.serviceType,targetLink:r.targetLink,quantity:Number(r.quantity||0),completedQuantity:Number(r.completedQuantity||0),reservedQuantity:Number(r.reservedQuantity||0),rewardPoints:Math.max(1,Math.floor(Number(r.rewardPoints||data.settings.pointsPerUnit)||1)),status:r.status,createdAt:r.createdAt}));
       const campaignsSorted=campaigns.filter(r=>r.adminDeleted!==true).sort((a,b)=>(a.pinned===true?-1:0)-(b.pinned===true?-1:0)||(Date.parse(b.createdAt||0)||0)-(Date.parse(a.createdAt||0)||0));
       const myRequests=freeSupportRows(data.requests).filter(r=>r.user===username&&r.adminDeleted!==true&&!(r.type==='proof'&&['approved','rejected'].includes(String(r.status)))).sort((a,b)=>(Date.parse(b.createdAt||0)||0)-(Date.parse(a.createdAt||0)||0)).slice(0,500).map(r=>({...freeSupportPublicRequest(r),...(r.type==='campaign'?{waitNotice:String(r.waitNotice||FREE_SUPPORT_WAIT_NOTICE)}:{})}));
-      return json(res,200,{ok:true,blocked:false,settings:data.settings,wallet:{points:wallet.points,warnings:wallet.warnings,acceptedRules:!!wallet.acceptedRules,completedTasks:freeSupportObject(wallet.completedTasks)},dailyGift:freeSupportDailyGiftStatus(wallet),tasks,campaigns:campaignsSorted,myRequests});
+      return json(res,200,{ok:true,blocked:false,settings:data.settings,wallet:{points:wallet.points,warnings:wallet.warnings,acceptedRules:!!wallet.acceptedRules,completedTasks:freeSupportObject(wallet.completedTasks),taskClaims:freeSupportObject(wallet.taskClaims)},dailyGift:freeSupportDailyGiftStatus(wallet),tasks,campaigns:campaignsSorted,myRequests});
     }
     if(req.method==='POST'){
       if(!s)return json(res,401,{ok:false,error:'سجّل الدخول أولاً.'});
@@ -4958,8 +5008,17 @@ async function freeSupportRoute(req,res,urlObj){
         const id='fsp_'+crypto.randomUUID().replace(/-/g,''),effectiveTaskId=campaignId?'campaign_'+campaignId:taskId;let task=null,campaign=null,rewardPoints=0,targetLink='';
         if(campaignId){campaign=await firebaseGetJson(freeSupportRequestPath(campaignId),7000);if(!campaign||campaign.type!=='campaign'||!['queued','in_progress'].includes(String(campaign.status)))return json(res,404,{ok:false,error:'طلب الدعم غير متاح أو اكتمل العدد المطلوب.'});if(String(campaign.user)===username)return json(res,403,{ok:false,error:'لا يمكنك تنفيذ طلب الدعم الذي أنشأته بنفسك.'});if(Number(campaign.completedQuantity||0)+Number(campaign.reservedQuantity||0)>=Number(campaign.quantity||0))return json(res,409,{ok:false,error:'اكتمل عدد المشاركين المطلوب لهذه الحملة.'});targetLink=String(campaign.targetLink||'');rewardPoints=Math.max(1,Math.floor(Number(campaign.rewardPoints||settings.pointsPerUnit)||1));}
         else{task=freeSupportObject(tasksRaw)[firebaseSafeKey(taskId)];if(!task||task.deleted===true||task.enabled===false||!freeSupportPlatform(settings,task.platform))return json(res,404,{ok:false,error:'المهمة غير موجودة أو متوقفة.'});rewardPoints=['followers','likes','views'].includes(String(task.serviceType||''))?freeSupportRewardPoints(settings,task.serviceType):Math.max(1,Math.floor(Number(task.rewardPoints)||1));targetLink=String(task.targetLink||'');}
-        const claimPath=freeSupportClaimPath(effectiveTaskId,username);const claimTx=await firebaseTransaction(claimPath,current=>{if(current&&['pending_review','approved'].includes(String(current.status)))return {write:false,result:{duplicate:true,status:current.status}};return {write:true,value:{taskId:effectiveTaskId,requestId:id,status:'pending_review',user:username,createdAt:at},result:{claimed:true}}},9000,8);
-        if(claimTx.result?.duplicate)return json(res,409,{ok:false,error:claimTx.result.status==='approved'?'سبق أن أكملت هذه المهمة وتم اعتمادها.':'لديك إثبات قيد المراجعة لهذه المهمة بالفعل.'});
+        const claimPath=freeSupportClaimPath(effectiveTaskId,username),walletTaskKey=campaignId?'campaign_'+campaignId:'task_'+taskId;
+        const existingTaskWallet=await freeSupportReadWallet(username);
+        if(existingTaskWallet.completedTasks?.[walletTaskKey])return json(res,409,{ok:false,error:'هذه المهمة مكتملة ومعتمدة بالفعل؛ أزلناها من قائمة المهام المتاحة. أكمل بقية المهام.'});
+        const indexedClaim=existingTaskWallet.taskClaims?.[walletTaskKey];
+        if(indexedClaim&&['pending_review','reviewing'].includes(String(indexedClaim.status||'')))return json(res,409,{ok:false,error:'تم رفع إثبات هذه المهمة مسبقاً. طلبك قيد مراجعة الإدارة؛ أكمل بقية المهام.'});
+        const claimTx=await firebaseTransaction(claimPath,current=>{if(current&&['pending_review','approved'].includes(String(current.status)))return {write:false,result:{duplicate:true,status:current.status}};return {write:true,value:{taskId:effectiveTaskId,requestId:id,status:'pending_review',user:username,createdAt:at},result:{claimed:true}}},9000,8);
+        if(claimTx.result?.duplicate){
+          if(claimTx.result.status==='approved')await firebaseTransaction(freeSupportWalletPath(username),current=>{const wallet={...freeSupportDefaultWallet(username),...freeSupportObject(current)},completed={...freeSupportObject(wallet.completedTasks)},claims={...freeSupportObject(wallet.taskClaims)};completed[walletTaskKey]={requestId:String(freeSupportObject(claimTx.value).requestId||''),at:nowISO(),platform:String(campaign?.platform||task?.platform||''),title:String(campaign?.title||task?.title||'')};delete claims[walletTaskKey];wallet.completedTasks=completed;wallet.taskClaims=claims;wallet.updatedAt=nowISO();return {write:true,value:wallet,result:{healed:true}}},9000,8).catch(()=>{});
+          else await firebaseTransaction(freeSupportWalletPath(username),current=>{const wallet={...freeSupportDefaultWallet(username),...freeSupportObject(current)},claims={...freeSupportObject(wallet.taskClaims)};claims[walletTaskKey]={requestId:String(freeSupportObject(claimTx.value).requestId||''),status:'pending_review',platform:String(campaign?.platform||task?.platform||''),title:String(campaign?.title||task?.title||''),updatedAt:nowISO()};wallet.taskClaims=claims;wallet.updatedAt=nowISO();return {write:true,value:wallet,result:{healed:true}}},9000,8).catch(()=>{});
+          return json(res,409,{ok:false,error:claimTx.result.status==='approved'?'هذه المهمة مكتملة ومعتمدة بالفعل؛ تم تحديث قائمتك. أكمل بقية المهام.':'تم رفع إثبات هذه المهمة مسبقاً وطلبك قيد المراجعة؛ أكمل بقية المهام.'});
+        }
         let reservedCampaign=false;
         if(campaignId){const reserve=await firebaseTransaction(freeSupportRequestPath(campaignId),current=>{if(!current||current.type!=='campaign'||!['queued','in_progress'].includes(String(current.status)))return {write:false,result:{unavailable:true}};const qty=Math.max(1,Math.floor(Number(current.quantity)||1)),completed=Math.max(0,Math.floor(Number(current.completedQuantity)||0)),reserved=Math.max(0,Math.floor(Number(current.reservedQuantity)||0));if(completed+reserved>=qty)return {write:false,result:{full:true}};current.reservedQuantity=reserved+1;current.status='in_progress';current.updatedAt=at;return {write:true,value:current,result:{reserved:true}}},9000,8);if(!reserve.result?.reserved){await firebaseDeleteJson(claimPath,5000).catch(()=>{});return json(res,409,{ok:false,error:'وصل طلب الدعم إلى العدد المطلوب؛ اختر مهمة أخرى.'});}reservedCampaign=true;}
         const reqRow={id,type:'proof',user:username,taskId:campaignId?'':taskId,campaignId:campaignId||'',taskKind:campaignId?'campaign':'admin',platform:campaign?.platform||task?.platform||'',platformName:campaign?.platformName||task?.platformName||'',serviceType:campaign?.serviceType||task?.serviceType||'متابعة',title:campaign?.title||task?.title||'تنفيذ مهمة',targetLink,rewardPoints,status:'pending_review',createdAt:at,updatedAt:at};
@@ -4968,10 +5027,13 @@ async function freeSupportRoute(req,res,urlObj){
           await firebaseWriteJson(freeSupportEvidencePath(id),{dataUrl:imageData,mimeType:'image/'+imageMatch[1].toLowerCase().replace('jpg','jpeg'),uploadedBy:username,uploadedAt:at},9000);
           await firebaseWriteJson(freeSupportRequestPath(id),reqRow,10000);
           await firebaseWriteJson(alertPath,{requestId:id,status:'pending',attempts:0,createdAt:at,updatedAt:at,targetChatId:String(telegramConfig().freeSupportChat||FREE_SUPPORT_TELEGRAM_CHAT_DEFAULT)},8000);
+          const claimIndex=await firebaseTransaction(freeSupportWalletPath(username),current=>{const wallet={...freeSupportDefaultWallet(username),...freeSupportObject(current)},completed=freeSupportObject(wallet.completedTasks),claims={...freeSupportObject(wallet.taskClaims)};if(completed[walletTaskKey])return {write:false,result:{completed:true}};const old=claims[walletTaskKey];if(old&&old.requestId!==id&&['pending_review','reviewing'].includes(String(old.status||'')))return {write:false,result:{duplicate:true}};claims[walletTaskKey]={requestId:id,status:'pending_review',taskId:taskId||'',campaignId:campaignId||'',platform:reqRow.platform,title:reqRow.title,updatedAt:at};wallet.taskClaims=claims;wallet.updatedAt=at;return {write:true,value:wallet,result:{saved:true}}},10000,8);
+          if(!claimIndex.result?.saved)throw new Error(claimIndex.result?.completed?'المهمة مكتملة ومعتمدة بالفعل.':'لديك إثبات لهذه المهمة قيد المراجعة بالفعل.');
         }
-        catch(e){await firebaseDeleteJson(alertPath,4000).catch(()=>{});await firebaseDeleteJson(freeSupportRequestPath(id),5000).catch(()=>{});await firebaseDeleteJson(freeSupportEvidencePath(id),5000).catch(()=>{});await firebaseDeleteJson(claimPath,5000).catch(()=>{});if(reservedCampaign)await firebaseTransaction(freeSupportRequestPath(campaignId),cur=>{if(!cur)return {write:false};cur.reservedQuantity=Math.max(0,Number(cur.reservedQuantity||0)-1);cur.updatedAt=nowISO();return {write:true,value:cur,result:{released:true}}},8000,8).catch(()=>{});return json(res,503,{ok:false,error:'تعذر حفظ الطلب والصورة وتجهيز إشعار القناة بصورة دائمة؛ لم نؤكد إرسال الطلب. حاول مرة أخرى.'});}
+        catch(e){await firebaseDeleteJson(alertPath,4000).catch(()=>{});await firebaseDeleteJson(freeSupportRequestPath(id),5000).catch(()=>{});await firebaseDeleteJson(freeSupportEvidencePath(id),5000).catch(()=>{});await firebaseDeleteJson(claimPath,5000).catch(()=>{});await firebaseTransaction(freeSupportWalletPath(username),current=>{if(!current)return {write:false};const wallet={...current},claims={...freeSupportObject(wallet.taskClaims)};if(claims[walletTaskKey]?.requestId===id)delete claims[walletTaskKey];wallet.taskClaims=claims;wallet.updatedAt=nowISO();return {write:true,value:wallet,result:{cleaned:true}}},6000,4).catch(()=>{});if(reservedCampaign)await firebaseTransaction(freeSupportRequestPath(campaignId),cur=>{if(!cur)return {write:false};cur.reservedQuantity=Math.max(0,Number(cur.reservedQuantity||0)-1);cur.updatedAt=nowISO();return {write:true,value:cur,result:{released:true}}},8000,8).catch(()=>{});return json(res,503,{ok:false,error:'تعذر حفظ الطلب والصورة وتجهيز إشعار القناة بصورة دائمة؛ لم نؤكد إرسال الطلب. حاول مرة أخرى.'});}
         const telegramDelivery=await freeSupportDeliverProofTelegramAlert(id,{force:true}).catch(error=>({ok:false,queued:true,error:String(error.message||error)}));
-        return json(res,201,{ok:true,request:freeSupportPublicRequest(reqRow),telegramNotification:telegramDelivery.ok?'sent':'queued',telegramTarget:String(telegramConfig().freeSupportChat||FREE_SUPPORT_TELEGRAM_CHAT_DEFAULT),message:telegramDelivery.ok?'تم إرسال إثبات المهمة إلى الإدارة وأُرسل إشعار قناة قبول المهمات. ستضاف النقاط بعد قبول الإثبات.':'تم إرسال إثبات المهمة إلى الإدارة، ووُضع إشعار قناة القبول في قائمة إعادة المحاولة تلقائياً. ستضاف النقاط بعد قبول الإثبات، ولا يمكن إلغاء الطلب بعد الإرسال.'});
+        const proofMessage='✅ تم رفع إثباتك بنجاح. يرجى الانتظار حتى تراجع الإدارة طلبك وتوافق عليه؛ ستُضاف النقاط إلى رصيد الدعم المجاني بعد القبول. يمكنك إكمال بقية المهام أثناء الانتظار. شكراً لاستخدامك صدى العراق.';
+        return json(res,201,{ok:true,request:freeSupportPublicRequest(reqRow),telegramNotification:telegramDelivery.ok?'sent':'queued',telegramTarget:String(telegramConfig().freeSupportChat||FREE_SUPPORT_TELEGRAM_CHAT_DEFAULT),message:proofMessage});
       }
       if(action==='create_campaign'&&!isAdminAction){
         const data=await freeSupportListData();if(data.settings.enabled===false)return json(res,503,{ok:false,error:'قسم الدعم المجاني متوقف حالياً من الإدارة.'});
@@ -4980,12 +5042,14 @@ async function freeSupportRoute(req,res,urlObj){
         if(!Number.isFinite(quantity)||quantity<data.settings.minQuantity||quantity>data.settings.maxQuantity)return json(res,422,{ok:false,error:'الكمية المطلوبة خارج الحدود المتاحة: '+data.settings.minQuantity+'–'+data.settings.maxQuantity+'.'});
         const pricePer100=freeSupportPricePer100(data.settings,serviceType),costPoints=freeSupportCampaignCost(data.settings,serviceType,quantity);if(!Number.isSafeInteger(costPoints)||costPoints<1||costPoints>1000000000)return json(res,422,{ok:false,error:'تكلفة الطلب كبيرة جداً.'});const id='fsc_'+crypto.randomUUID().replace(/-/g,''),createdAt=nowISO();
         const typeLabels={followers:'متابعون',likes:'إعجابات',views:'مشاهدات',subscribers:'مشتركون',channel_members:'أعضاء قناة'};
-        const row={id,type:'campaign',user:username,platform:platform.id,platformName:platform.name,serviceType,title:typeLabels[serviceType]+' · '+platform.name,targetLink,quantity,completedQuantity:0,reservedQuantity:0,costPoints,pricePer100,rewardPoints:freeSupportRewardPoints(data.settings,serviceType),waitNotice:FREE_SUPPORT_WAIT_NOTICE,status:'creating',createdAt,updatedAt:createdAt};
+        const row={id,type:'campaign',user:username,platform:platform.id,platformName:platform.name,serviceType,title:typeLabels[serviceType]+' · '+platform.name,targetLink,quantity,completedQuantity:0,reservedQuantity:0,costPoints,pricePer100,rewardPoints:freeSupportRewardPoints(data.settings,serviceType),waitNotice:FREE_SUPPORT_WAIT_NOTICE,status:'creating',telegramNotificationStatus:'pending',telegramNotificationAttempts:0,createdAt,updatedAt:createdAt};
         await firebaseWriteJson(freeSupportRequestPath(id),row,9000);
         let debit;try{debit=await firebaseTransaction(freeSupportWalletPath(username),current=>{const wallet={...freeSupportDefaultWallet(username),...freeSupportObject(current)},spent={...freeSupportObject(wallet.spentRequests)};if(spent[id])return {write:false,result:{alreadyDebited:true,points:Math.max(0,Number(wallet.points)||0)}};const points=Math.max(0,Math.floor(Number(wallet.points)||0));if(points<costPoints)return {write:false,result:{insufficient:true,points}};wallet.points=points-costPoints;spent[id]={points:costPoints,at:createdAt};wallet.spentRequests=spent;wallet.updatedAt=createdAt;return {write:true,value:wallet,result:{debited:true,points:wallet.points}}},12000,8)}catch(e){await firebaseDeleteJson(freeSupportRequestPath(id),4000).catch(()=>{});return json(res,503,{ok:false,error:'تعذر خصم النقاط بصورة آمنة؛ لم يتم إنشاء طلب الدعم.'})}
         if(debit.result?.insufficient){await firebaseDeleteJson(freeSupportRequestPath(id),5000).catch(()=>{});return json(res,402,{ok:false,error:'رصيد نقاطك غير كافٍ. تحتاج '+costPoints+' نقطة.',requiredPoints:costPoints,availablePoints:debit.result.points})}
         try{row.status='queued';row.updatedAt=nowISO();await firebaseWriteJson(freeSupportRequestPath(id),row,9000)}catch(e){await freeSupportRefund(id,username,costPoints).catch(()=>{});await firebaseDeleteJson(freeSupportRequestPath(id),5000).catch(()=>{});return json(res,503,{ok:false,error:'تعذر تثبيت طلب الدعم؛ أُعيدت محاولة إرجاع النقاط تلقائياً، افحص رصيد النقاط قبل المحاولة مجدداً.'})}
-        return json(res,201,{ok:true,request:freeSupportPublicRequest(row),costPoints,points:Math.max(0,Number(debit.value?.points??debit.result?.points)||0),message:FREE_SUPPORT_WAIT_NOTICE});
+        const campaignTelegram=await freeSupportDeliverCampaignTelegramAlert(id,{force:true}).catch(error=>({ok:false,queued:true,error:String(error.message||error)}));
+        const notice=FREE_SUPPORT_WAIT_NOTICE;
+        return json(res,201,{ok:true,request:freeSupportPublicRequest(row),costPoints,points:Math.max(0,Number(debit.value?.points??debit.result?.points)||0),telegramNotification:campaignTelegram.ok?'sent':'queued',telegramTarget:String(telegramConfig().freeSupportChat||FREE_SUPPORT_TELEGRAM_CHAT_DEFAULT),telegramError:campaignTelegram.ok?'':String(campaignTelegram.error||''),message:notice});
       }
       if(isAdminAction){
         const actionAdmin=action;
@@ -5045,7 +5109,7 @@ async function freeSupportRoute(req,res,urlObj){
           await firebaseWriteJson(path,row,9000);
           if(actionAdmin==='approve')await freeSupportNotify(String(row.user||''),'تم قبول إثبات المهمة','تم قبول إثباتك وإضافة '+Number(row.rewardPoints)+' نقطة إلى رصيد الدعم المجاني.',id,'approved');
           const claimPath=freeSupportClaimPath(row.campaignId?'campaign_'+row.campaignId:row.taskId||'',String(row.user||''));
-          if(actionAdmin==='approve'){await firebaseTransaction(claimPath,current=>{if(!current)return {write:false};return {write:true,value:{...current,status:'approved',reviewedAt:nowISO()},result:{updated:true}}},5000,4).catch(()=>{})}else await firebaseDeleteJson(claimPath,5000).catch(()=>{});
+          if(actionAdmin==='approve'){await firebaseTransaction(claimPath,current=>{if(!current)return {write:false};return {write:true,value:{...current,status:'approved',reviewedAt:nowISO()},result:{updated:true}}},5000,4).catch(()=>{})}else{await firebaseDeleteJson(claimPath,5000).catch(()=>{});const rejectedTaskKey=row.campaignId?'campaign_'+String(row.campaignId):row.taskId?'task_'+String(row.taskId):'';if(rejectedTaskKey)await firebaseTransaction(freeSupportWalletPath(String(row.user||'')),current=>{if(!current)return {write:false};const wallet={...current},claims={...freeSupportObject(wallet.taskClaims)};if(claims[rejectedTaskKey]?.requestId!==id)return {write:false};delete claims[rejectedTaskKey];wallet.taskClaims=claims;wallet.updatedAt=nowISO();return {write:true,value:wallet,result:{released:true}}},7000,5).catch(()=>{});} 
           try{
             const cleanup=await freeSupportDeleteReviewedProof(row);
             return json(res,200,{ok:true,status:row.status,points:awardedWallet?.points,imageDeleted:cleanup.imageDeleted,requestDeleted:cleanup.requestDeleted,alreadyProcessed:false,message:actionAdmin==='approve'?'تم قبول الإثبات وإضافة النقاط وحذف طلب المراجعة وصورته.':'تم رفض الإثبات وحذف طلب المراجعة وصورته دون إضافة نقاط.'});
@@ -7459,7 +7523,7 @@ async function routeAPI(req,res,urlObj){
     try { buildFile=fs.readFileSync(path.join(ROOT,'BUILD_ID.txt'),'utf8').trim(); } catch(_) {}
     const deploymentConsistent=uiVersion===APP_VERSION && uiBuildId===BUILD_ID && versionFile===APP_VERSION && buildFile===BUILD_ID;
     const dbInfo=firebaseDatabaseDiagnosticInfo();
-    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.72',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
+    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.73',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
     // Keep operational configuration details private; only an authenticated admin can inspect them.
     if(isAdmin(req)){const credentialStatus=firebaseServiceAccountStatus();health.firebaseDatabase={host:dbInfo.host,source:dbInfo.source,databaseProjectHint:dbInfo.databaseProjectHint,serviceAccountProjectId:dbInfo.serviceAccountProjectId||null,configuredWebProjectId:dbInfo.configuredWebProjectId||null,serviceAccountProjectMatch:dbInfo.serviceAccountProjectMatch};health.securityConfig={sessionSecretConfigured:!!String(process.env.SESSION_SECRET||'').trim(),dedicatedEncryptionKeyConfigured:!!String(process.env.SADA_ENCRYPTION_KEY||'').trim(),stableEncryptionAvailable:telegramEncryptionReady(),firebaseConfigured:!!FIREBASE_DATABASE_URL,firebaseServiceAccountConfigured:credentialStatus.ok,firebaseCredentialStatus:{ok:credentialStatus.ok,code:credentialStatus.code,source:credentialStatus.source,message:credentialStatus.message},firebaseDatabaseSecretConfigured:!!String(process.env.FIREBASE_DATABASE_SECRET||'').trim(),firebaseAuthAvailable:firebaseAuthAvailable(),emailServiceConfigured:!!(String(process.env.RESEND_API_KEY||'').trim()&&String(process.env.RESEND_FROM_EMAIL||process.env.EMAIL_FROM||'').trim()),telegramTokenFromEnvironment:!!String(process.env.TELEGRAM_BOT_TOKEN||'').trim(),adminPasswordFromEnvironment:!!(String(process.env.ADMIN_PASSWORD||'').trim()||String(process.env.ADMIN_PASSWORD_HASH||'').trim()),adminPasswordConfigured:adminPasswordConfigured()};}
     return json(res,200,health);
@@ -7712,7 +7776,7 @@ server.listen(PORT,'0.0.0.0',()=>{
   // Bind HTTP before any remote Firebase hydration so saved sessions respond immediately.
   Promise.allSettled([hydrateProviderRuntimeFromFirebase(),hydrateTelegramChannelsFromFirebase(),hydrateApiServicesFromFirebase()]).then(()=>{
     // The bundled Base44 dump was removed from this release. Only the explicitly configured Firebase is used.
-    setTimeout(()=>{runOrderAuditMonitor().catch(()=>{});runTelegramNewOrdersMonitor().catch(()=>{});runRefundReconciliationMonitor().catch(()=>{});runFreeSupportTelegramProofOutbox().catch(()=>{});},3000).unref();
-    setInterval(()=>{runOrderAuditMonitor().catch(()=>{});runTelegramNewOrdersMonitor().catch(()=>{});runRefundReconciliationMonitor().catch(()=>{});runFreeSupportTelegramProofOutbox().catch(()=>{});},60*1000).unref();
+    setTimeout(()=>{runOrderAuditMonitor().catch(()=>{});runTelegramNewOrdersMonitor().catch(()=>{});runRefundReconciliationMonitor().catch(()=>{});runFreeSupportTelegramProofOutbox().catch(()=>{});runFreeSupportTelegramCampaignOutbox().catch(()=>{});},3000).unref();
+    setInterval(()=>{runOrderAuditMonitor().catch(()=>{});runTelegramNewOrdersMonitor().catch(()=>{});runRefundReconciliationMonitor().catch(()=>{});runFreeSupportTelegramProofOutbox().catch(()=>{});runFreeSupportTelegramCampaignOutbox().catch(()=>{});},60*1000).unref();
   });
 });
