@@ -44,8 +44,8 @@ function purgeCatalogServiceSnapshots(){
 }
 purgeCatalogServiceSnapshots();
 const APP_NAME = 'صدى العراق';
-const APP_VERSION = '1.6.61';
-const BUILD_ID = 'SADA-1.6.61-FREE-SUPPORT-QUEUE-20261016';
+const APP_VERSION = '1.6.62';
+const BUILD_ID = 'SADA-1.6.62-FREE-SUPPORT-PRICING-20261017';
 // Keep the owner's admin identity available after packaging, but store only a scrypt hash
 // in the project. Railway variables can still explicitly override this packaged credential.
 function loadBundledAdminAuth(){
@@ -4476,7 +4476,7 @@ async function handleManualSupportOrder(req,res,b,username,orderSession){
 
 // Free Support Exchange v1: isolated from the money wallet and provider-backed catalog.
 const FREE_SUPPORT_ROOT='freeSupport';
-const FREE_SUPPORT_DEFAULT_SETTINGS={enabled:true,pointsPerUnit:10,minQuantity:10,maxQuantity:1000,platforms:[
+const FREE_SUPPORT_DEFAULT_SETTINGS={enabled:true,pointsPerUnit:10,pricesPer100:{followers:250,likes:150,views:100},minQuantity:10,maxQuantity:1000,platforms:[
   {id:'instagram',name:'إنستغرام',enabled:true},
   {id:'tiktok',name:'تيك توك',enabled:true},
   {id:'telegram',name:'تيليجرام',enabled:true},
@@ -4499,8 +4499,19 @@ function freeSupportSafeSettings(input,old={}){
   const platforms=raw.map((p)=>({id:String(p?.id||'').trim().toLowerCase().replace(/[^a-z0-9_-]/g,'').slice(0,32),name:String(p?.name||'').trim().slice(0,40),enabled:p?.enabled!==false})).filter(p=>p.id&&p.name).slice(0,12);
   const minQuantity=Math.max(1,Math.min(100000,Math.floor(Number(src.minQuantity??base.minQuantity??10)||10)));
   const maxQuantity=Math.max(minQuantity,Math.min(100000,Math.floor(Number(src.maxQuantity??base.maxQuantity??1000)||1000)));
-  return {enabled:src.enabled===undefined?base.enabled!==false:src.enabled===true,pointsPerUnit:Math.max(1,Math.min(10000,Math.floor(Number(src.pointsPerUnit??base.pointsPerUnit??FREE_SUPPORT_DEFAULT_SETTINGS.pointsPerUnit)||10))),minQuantity,maxQuantity,platforms:platforms.length?platforms:FREE_SUPPORT_DEFAULT_SETTINGS.platforms};
+  const priceInput=freeSupportObject(src.pricesPer100??base.pricesPer100??FREE_SUPPORT_DEFAULT_SETTINGS.pricesPer100);
+  const pricesPer100={};
+  for(const key of ['followers','likes','views']){
+    const raw=Number(priceInput[key]??FREE_SUPPORT_DEFAULT_SETTINGS.pricesPer100[key]);
+    pricesPer100[key]=Number.isFinite(raw)?Math.max(1,Math.min(10000000,Math.floor(raw))):FREE_SUPPORT_DEFAULT_SETTINGS.pricesPer100[key];
+  }
+  return {enabled:src.enabled===undefined?base.enabled!==false:src.enabled===true,pointsPerUnit:Math.max(1,Math.min(10000,Math.floor(Number(src.pointsPerUnit??base.pointsPerUnit??FREE_SUPPORT_DEFAULT_SETTINGS.pointsPerUnit)||10))),pricesPer100,minQuantity,maxQuantity,platforms:platforms.length?platforms:FREE_SUPPORT_DEFAULT_SETTINGS.platforms};
 }
+function freeSupportPriceKey(serviceType){const type=String(serviceType||'').toLowerCase();return type==='likes'?'likes':type==='views'?'views':'followers'}
+function freeSupportPricePer100(settings,serviceType){const key=freeSupportPriceKey(serviceType);const raw=Number(settings?.pricesPer100?.[key]);return Number.isFinite(raw)&&raw>0?Math.floor(raw):FREE_SUPPORT_DEFAULT_SETTINGS.pricesPer100[key]}
+function freeSupportCampaignCost(settings,serviceType,quantity){return Math.ceil(Math.max(0,Number(quantity)||0)*freeSupportPricePer100(settings,serviceType)/100)}
+function freeSupportRewardPoints(settings,serviceType){return Math.max(1,Math.floor(freeSupportPricePer100(settings,serviceType)/100))}
+function freeSupportTaskTitle(serviceType,platformName){const names={followers:'متابعة حساب',likes:'إعجاب بمنشور',views:'مشاهدة محتوى'};return (names[String(serviceType||'followers')]||'تنفيذ مهمة')+' — '+String(platformName||'المنصة')}
 async function freeSupportReadWallet(username){const value=await firebaseGetJson(freeSupportWalletPath(username),7000);return {...freeSupportDefaultWallet(username),...freeSupportObject(value),username:String(username||''),points:Math.max(0,Math.floor(Number(value?.points)||0)),warnings:Math.max(0,Math.floor(Number(value?.warnings)||0)),warningHistory:Array.isArray(value?.warningHistory)?value.warningHistory:[],awardedRequests:freeSupportObject(value?.awardedRequests),spentRequests:freeSupportObject(value?.spentRequests),refundRequests:freeSupportObject(value?.refundRequests)}}
 async function freeSupportListData(){
   const [settingsRaw,tasksRaw,requestsRaw]=await Promise.all([firebaseGetJson(FREE_SUPPORT_ROOT+'/settings',7000),firebaseGetJson(FREE_SUPPORT_ROOT+'/tasks',10000),firebaseGetJson(FREE_SUPPORT_ROOT+'/requests',12000)]);
@@ -4569,12 +4580,12 @@ async function freeSupportRoute(req,res,urlObj){
         const data=await freeSupportListData(),rows=freeSupportRows(data.requests).sort((a,b)=>(Date.parse(b.createdAt||0)||0)-(Date.parse(a.createdAt||0)||0));
         for(const finalized of rows.filter(x=>x.type==='proof'&&['approved','rejected'].includes(String(x.status))&&x.imageDeleted!==true).slice(0,30)){await freeSupportCleanupReviewedEvidence(finalized).catch(()=>{});}
         const pending=rows.filter(x=>x.type==='proof'&&['pending_review','reviewing'].includes(String(x.status))).length;
-        return json(res,200,{ok:true,settings:data.settings,tasks:freeSupportRows(data.tasks).sort((a,b)=>(Date.parse(b.createdAt||0)||0)-(Date.parse(a.createdAt||0)||0)),requests:rows.slice(0,500).map(freeSupportPublicRequest),stats:{all:rows.length,pending,approved:rows.filter(x=>x.status==='approved').length,rejected:rows.filter(x=>x.status==='rejected').length,campaigns:rows.filter(x=>x.type==='campaign'&&!['completed','rejected','failed'].includes(x.status)).length}});
+        return json(res,200,{ok:true,settings:data.settings,tasks:freeSupportRows(data.tasks).map(t=>({...t,title:t.autoTitle===true?freeSupportTaskTitle(t.serviceType,t.platformName||freeSupportPlatform(data.settings,t.platform)?.name||t.platform):t.title,rewardPoints:['followers','likes','views'].includes(String(t.serviceType||''))?freeSupportRewardPoints(data.settings,t.serviceType):Math.max(1,Math.floor(Number(t.rewardPoints)||1))})).sort((a,b)=>(Date.parse(b.createdAt||0)||0)-(Date.parse(a.createdAt||0)||0)),requests:rows.slice(0,500).map(freeSupportPublicRequest),stats:{all:rows.length,pending,approved:rows.filter(x=>x.status==='approved').length,rejected:rows.filter(x=>x.status==='rejected').length,campaigns:rows.filter(x=>x.type==='campaign'&&!['completed','rejected','failed'].includes(x.status)).length}});
       }
       if(!s)return json(res,401,{ok:false,error:'سجّل الدخول حتى تستخدم الدعم المجاني.'});
       const data=await freeSupportListData(),wallet=await freeSupportReadWallet(s.username);
       if(wallet.blocked&&!isAdm)return json(res,200,{ok:true,blocked:true,wallet:{points:wallet.points,warnings:wallet.warnings,acceptedRules:!!wallet.acceptedRules},settings:data.settings,tasks:[],campaigns:[],myRequests:[]});
-      const username=String(s.username),tasks=freeSupportRows(data.tasks).filter(t=>t.enabled!==false&&freeSupportPlatform(data.settings,t.platform)).map(t=>({...t,taskKind:'admin'}));
+      const username=String(s.username),tasks=freeSupportRows(data.tasks).filter(t=>t.enabled!==false&&freeSupportPlatform(data.settings,t.platform)).map(t=>({...t,title:t.autoTitle===true?freeSupportTaskTitle(t.serviceType,t.platformName||freeSupportPlatform(data.settings,t.platform)?.name||t.platform):t.title,rewardPoints:['followers','likes','views'].includes(String(t.serviceType||''))?freeSupportRewardPoints(data.settings,t.serviceType):Math.max(1,Math.floor(Number(t.rewardPoints)||1)),taskKind:'admin'}));
       const campaigns=freeSupportRows(data.requests).filter(r=>r.type==='campaign'&&r.user!==username&&['queued','in_progress'].includes(String(r.status))&&Number(r.completedQuantity||0)+Number(r.reservedQuantity||0)<Number(r.quantity||0)).map(r=>({id:r.id,taskKind:'campaign',platform:r.platform,platformName:r.platformName,serviceType:r.serviceType,title:r.title||r.serviceType,targetLink:r.targetLink,quantity:Number(r.quantity||0),completedQuantity:Number(r.completedQuantity||0),reservedQuantity:Number(r.reservedQuantity||0),rewardPoints:Math.max(1,Math.floor(Number(r.rewardPoints||data.settings.pointsPerUnit)||1)),status:r.status,createdAt:r.createdAt}));
       const myRequests=freeSupportRows(data.requests).filter(r=>r.user===username).sort((a,b)=>(Date.parse(b.createdAt||0)||0)-(Date.parse(a.createdAt||0)||0)).slice(0,120).map(freeSupportPublicRequest);
       return json(res,200,{ok:true,blocked:false,settings:data.settings,wallet:{points:wallet.points,warnings:wallet.warnings,acceptedRules:!!wallet.acceptedRules},tasks,campaigns,myRequests});
@@ -4594,7 +4605,7 @@ async function freeSupportRoute(req,res,urlObj){
         const imageBytes=Buffer.from(imageMatch[2],'base64');if(!imageBytes.length||imageBytes.length>900*1024)return json(res,413,{ok:false,error:'حجم صورة الإثبات بعد الضغط يجب ألا يتجاوز 900 كيلوبايت.'});
         const id='fsp_'+crypto.randomUUID().replace(/-/g,''),effectiveTaskId=campaignId?'campaign_'+campaignId:taskId;let task=null,campaign=null,rewardPoints=0,targetLink='';
         if(campaignId){campaign=await firebaseGetJson(freeSupportRequestPath(campaignId),7000);if(!campaign||campaign.type!=='campaign'||!['queued','in_progress'].includes(String(campaign.status)))return json(res,404,{ok:false,error:'طلب الدعم غير متاح أو اكتمل العدد المطلوب.'});if(String(campaign.user)===username)return json(res,403,{ok:false,error:'لا يمكنك تنفيذ طلب الدعم الذي أنشأته بنفسك.'});if(Number(campaign.completedQuantity||0)+Number(campaign.reservedQuantity||0)>=Number(campaign.quantity||0))return json(res,409,{ok:false,error:'اكتمل عدد المشاركين المطلوب لهذه الحملة.'});targetLink=String(campaign.targetLink||'');rewardPoints=Math.max(1,Math.floor(Number(campaign.rewardPoints||settings.pointsPerUnit)||1));}
-        else{task=freeSupportObject(tasksRaw)[firebaseSafeKey(taskId)];if(!task||task.enabled===false||!freeSupportPlatform(settings,task.platform))return json(res,404,{ok:false,error:'المهمة غير موجودة أو متوقفة.'});rewardPoints=Math.max(1,Math.floor(Number(task.rewardPoints)||1));targetLink=String(task.targetLink||'');}
+        else{task=freeSupportObject(tasksRaw)[firebaseSafeKey(taskId)];if(!task||task.enabled===false||!freeSupportPlatform(settings,task.platform))return json(res,404,{ok:false,error:'المهمة غير موجودة أو متوقفة.'});rewardPoints=['followers','likes','views'].includes(String(task.serviceType||''))?freeSupportRewardPoints(settings,task.serviceType):Math.max(1,Math.floor(Number(task.rewardPoints)||1));targetLink=String(task.targetLink||'');}
         const claimPath=freeSupportClaimPath(effectiveTaskId,username);const claimTx=await firebaseTransaction(claimPath,current=>{if(current&&['pending_review','approved'].includes(String(current.status)))return {write:false,result:{duplicate:true,status:current.status}};return {write:true,value:{taskId:effectiveTaskId,requestId:id,status:'pending_review',user:username,createdAt:at},result:{claimed:true}}},9000,8);
         if(claimTx.result?.duplicate)return json(res,409,{ok:false,error:claimTx.result.status==='approved'?'سبق أن أكملت هذه المهمة وتم اعتمادها.':'لديك إثبات قيد المراجعة لهذه المهمة بالفعل.'});
         let reservedCampaign=false;
@@ -4607,11 +4618,11 @@ async function freeSupportRoute(req,res,urlObj){
       if(action==='create_campaign'&&!isAdminAction){
         const data=await freeSupportListData();if(data.settings.enabled===false)return json(res,503,{ok:false,error:'قسم الدعم المجاني متوقف حالياً من الإدارة.'});
         const platformId=String(b.platform||'').trim().toLowerCase(),platform=freeSupportPlatform(data.settings,platformId),serviceType=String(b.serviceType||'').trim().toLowerCase(),targetLink=freeSupportValidLink(b.targetLink),quantity=Math.floor(Number(b.quantity));
-        const allowedTypes=new Set(['followers','likes','views','subscribers','channel_members']);if(!platform)return json(res,422,{ok:false,error:'اختر منصة مفعّلة.'});if(!allowedTypes.has(serviceType))return json(res,422,{ok:false,error:'اختر نوع دعم صالحاً.'});if(!targetLink)return json(res,422,{ok:false,error:'أدخل رابطاً صحيحاً يبدأ بـ https:// أو http://.'});
+        const allowedTypes=new Set(['followers','likes','views']);if(!platform)return json(res,422,{ok:false,error:'اختر منصة مفعّلة.'});if(!allowedTypes.has(serviceType))return json(res,422,{ok:false,error:'اختر نوع دعم صالحاً.'});if(!targetLink)return json(res,422,{ok:false,error:'أدخل رابطاً صحيحاً يبدأ بـ https:// أو http://.'});
         if(!Number.isFinite(quantity)||quantity<data.settings.minQuantity||quantity>data.settings.maxQuantity)return json(res,422,{ok:false,error:'الكمية المطلوبة خارج الحدود المتاحة: '+data.settings.minQuantity+'–'+data.settings.maxQuantity+'.'});
-        const costPoints=quantity*data.settings.pointsPerUnit;if(!Number.isSafeInteger(costPoints)||costPoints>1000000000)return json(res,422,{ok:false,error:'تكلفة الطلب كبيرة جداً.'});const id='fsc_'+crypto.randomUUID().replace(/-/g,''),createdAt=nowISO();
+        const pricePer100=freeSupportPricePer100(data.settings,serviceType),costPoints=freeSupportCampaignCost(data.settings,serviceType,quantity);if(!Number.isSafeInteger(costPoints)||costPoints<1||costPoints>1000000000)return json(res,422,{ok:false,error:'تكلفة الطلب كبيرة جداً.'});const id='fsc_'+crypto.randomUUID().replace(/-/g,''),createdAt=nowISO();
         const typeLabels={followers:'متابعون',likes:'إعجابات',views:'مشاهدات',subscribers:'مشتركون',channel_members:'أعضاء قناة'};
-        const row={id,type:'campaign',user:username,platform:platform.id,platformName:platform.name,serviceType,title:typeLabels[serviceType]+' · '+platform.name,targetLink,quantity,completedQuantity:0,reservedQuantity:0,costPoints,rewardPoints:data.settings.pointsPerUnit,status:'creating',createdAt,updatedAt:createdAt};
+        const row={id,type:'campaign',user:username,platform:platform.id,platformName:platform.name,serviceType,title:typeLabels[serviceType]+' · '+platform.name,targetLink,quantity,completedQuantity:0,reservedQuantity:0,costPoints,pricePer100,rewardPoints:freeSupportRewardPoints(data.settings,serviceType),status:'creating',createdAt,updatedAt:createdAt};
         await firebaseWriteJson(freeSupportRequestPath(id),row,9000);
         let debit;try{debit=await firebaseTransaction(freeSupportWalletPath(username),current=>{const wallet={...freeSupportDefaultWallet(username),...freeSupportObject(current)},spent={...freeSupportObject(wallet.spentRequests)};if(spent[id])return {write:false,result:{alreadyDebited:true,points:Math.max(0,Number(wallet.points)||0)}};const points=Math.max(0,Math.floor(Number(wallet.points)||0));if(points<costPoints)return {write:false,result:{insufficient:true,points}};wallet.points=points-costPoints;spent[id]={points:costPoints,at:createdAt};wallet.spentRequests=spent;wallet.updatedAt=createdAt;return {write:true,value:wallet,result:{debited:true,points:wallet.points}}},12000,8)}catch(e){await firebaseDeleteJson(freeSupportRequestPath(id),4000).catch(()=>{});return json(res,503,{ok:false,error:'تعذر خصم النقاط بصورة آمنة؛ لم يتم إنشاء طلب الدعم.'})}
         if(debit.result?.insufficient){await firebaseDeleteJson(freeSupportRequestPath(id),5000).catch(()=>{});return json(res,402,{ok:false,error:'رصيد نقاطك غير كافٍ. تحتاج '+costPoints+' نقطة.',requiredPoints:costPoints,availablePoints:debit.result.points})}
@@ -4624,9 +4635,9 @@ async function freeSupportRoute(req,res,urlObj){
           const old=await firebaseGetJson(FREE_SUPPORT_ROOT+'/settings',7000),settings=freeSupportSafeSettings(b.settings||b,old||FREE_SUPPORT_DEFAULT_SETTINGS);settings.updatedAt=at;settings.updatedBy=actor;await firebaseWriteJson(FREE_SUPPORT_ROOT+'/settings',settings,9000);return json(res,200,{ok:true,settings});
         }
         if(actionAdmin==='save_task'){
-          const id=String(b.id||('fst_'+crypto.randomUUID().replace(/-/g,''))).trim(),platformId=String(b.platform||'').trim().toLowerCase(),settings=freeSupportSafeSettings(await firebaseGetJson(FREE_SUPPORT_ROOT+'/settings',7000)||FREE_SUPPORT_DEFAULT_SETTINGS,FREE_SUPPORT_DEFAULT_SETTINGS),platform=freeSupportPlatform(settings,platformId),title=String(b.title||'').trim().slice(0,140),targetLink=freeSupportValidLink(b.targetLink),serviceType=String(b.serviceType||'followers');const rewardPoints=Math.floor(Number(b.rewardPoints));
-          if(!/^[a-zA-Z0-9_-]{5,90}$/.test(id)||!platform||!title||!targetLink||!Number.isInteger(rewardPoints)||rewardPoints<1||rewardPoints>100000)return json(res,422,{ok:false,error:'تحقق من اسم المهمة والمنصة والرابط وعدد النقاط.'});
-          const old=await firebaseGetJson(freeSupportTaskPath(id),6000),row={id,title,platform:platform.id,platformName:platform.name,serviceType,targetLink,rewardPoints,enabled:b.enabled===undefined?(old?.enabled!==false):b.enabled===true,createdAt:old?.createdAt||at,updatedAt:at,createdBy:old?.createdBy||actor,updatedBy:actor};await firebaseWriteJson(freeSupportTaskPath(id),row,9000);return json(res,200,{ok:true,task:row});
+          const id=String(b.id||('fst_'+crypto.randomUUID().replace(/-/g,''))).trim(),platformId=String(b.platform||'').trim().toLowerCase(),settings=freeSupportSafeSettings(await firebaseGetJson(FREE_SUPPORT_ROOT+'/settings',7000)||FREE_SUPPORT_DEFAULT_SETTINGS,FREE_SUPPORT_DEFAULT_SETTINGS),platform=freeSupportPlatform(settings,platformId),targetLink=freeSupportValidLink(b.targetLink),serviceType=String(b.serviceType||'followers').toLowerCase();
+          if(!/^[a-zA-Z0-9_-]{5,90}$/.test(id)||!platform||!targetLink||!['followers','likes','views'].includes(serviceType))return json(res,422,{ok:false,error:'اختر منصة ونوع مهمة صحيحاً، وأدخل رابطاً صالحاً.'});
+          const old=await firebaseGetJson(freeSupportTaskPath(id),6000),title=freeSupportTaskTitle(serviceType,platform.name),rewardPoints=freeSupportRewardPoints(settings,serviceType),row={id,title,platform:platform.id,platformName:platform.name,serviceType,targetLink,rewardPoints,pricingLinked:true,autoTitle:true,enabled:b.enabled===undefined?(old?.enabled!==false):b.enabled===true,createdAt:old?.createdAt||at,updatedAt:at,createdBy:old?.createdBy||actor,updatedBy:actor};await firebaseWriteJson(freeSupportTaskPath(id),row,9000);return json(res,200,{ok:true,task:row});
         }
         if(actionAdmin==='toggle_task'||actionAdmin==='delete_task'){
           const id=String(b.id||'').trim();if(!id)return json(res,422,{ok:false,error:'رقم المهمة مطلوب.'});let row=await firebaseGetJson(freeSupportTaskPath(id),6000);if(!row)return json(res,404,{ok:false,error:'المهمة غير موجودة.'});if(actionAdmin==='delete_task'){row={...row,enabled:false,deleted:true,updatedAt:at,updatedBy:actor};}else row={...row,enabled:b.enabled===true,updatedAt:at,updatedBy:actor};await firebaseWriteJson(freeSupportTaskPath(id),row,8000);return json(res,200,{ok:true,task:row});
@@ -4655,6 +4666,27 @@ async function freeSupportRoute(req,res,urlObj){
           const claimPath=freeSupportClaimPath(row.campaignId?'campaign_'+row.campaignId:row.taskId||'',String(row.user||''));
           if(actionAdmin==='approve'){await firebaseTransaction(claimPath,current=>{if(!current)return {write:false};return {write:true,value:{...current,status:'approved',reviewedAt:nowISO()},result:{updated:true}}},5000,4).catch(()=>{})}else await firebaseDeleteJson(claimPath,5000).catch(()=>{});
           return json(res,200,{ok:true,request:freeSupportPublicRequest(row),points:awardedWallet?.points,imageDeleted:row.imageDeleted===true,cleanupPending:row.imageCleanupPending===true});
+        }
+        if(actionAdmin==='charge_points'){
+          const target=String(b.username||'').trim(),amount=Math.floor(Number(b.amount)),reason=String(b.reason||'').trim().slice(0,400);
+          if(!target||!/^[\p{L}\p{N}_.@-]{2,80}$/u.test(target))return json(res,422,{ok:false,error:'أدخل اسم مستخدم صحيحاً.'});
+          if(!Number.isSafeInteger(amount)||amount<1||amount>10000000)return json(res,422,{ok:false,error:'عدد النقاط يجب أن يكون من 1 إلى 10,000,000.'});
+          if(reason.length<3)return json(res,422,{ok:false,error:'أدخل سبب شحن واضحاً من 3 أحرف على الأقل.'});
+          let profile=null;try{profile=await firebaseGetJson('users/'+firebaseSafeKey(target),7000)}catch(_){}
+          if(!profile||typeof profile!=='object'){
+            const localUsers=readJSON('users.json',{users:{}}).users||{};profile=localUsers[target]||Object.values(localUsers).find(x=>String(x?.username||x?.userName||x?.u||'')===target)||null;
+          }
+          if(!profile)return json(res,404,{ok:false,error:'لم يتم العثور على مستخدم مطابق في قاعدة البيانات؛ لم تُضف نقاط.'});
+          const adjustmentId='fspc_'+crypto.randomUUID().replace(/-/g,'');
+          const tx=await firebaseTransaction(freeSupportWalletPath(target),current=>{
+            const wallet={...freeSupportDefaultWallet(target),...freeSupportObject(current)},before=Math.max(0,Math.floor(Number(current?.points)||0));
+            if(before+amount>1000000000)return {write:false,result:{tooLarge:true,points:before}};
+            const history=Array.isArray(wallet.adminPointsHistory)?wallet.adminPointsHistory.slice():[];history.push({id:adjustmentId,amount,reason,admin:actor,createdAt:at});wallet.adminPointsHistory=history.slice(-100);wallet.points=before+amount;wallet.username=target;wallet.updatedAt=at;
+            return {write:true,value:wallet,result:{before,points:wallet.points,charged:amount}};
+          },12000,8);
+          if(tx.result?.tooLarge)return json(res,422,{ok:false,error:'الرصيد الناتج يتجاوز الحد المسموح.'});
+          await freeSupportNotify(target,'تم شحن نقاط الدعم المجاني','أضافت الإدارة '+amount.toLocaleString('en-US')+' نقطة إلى رصيد الدعم المجاني. السبب: '+reason,adjustmentId,'points_charged');
+          return json(res,200,{ok:true,username:target,amount,points:Math.max(0,Math.floor(Number(tx.value?.points??tx.result?.points)||0)),balanceBefore:Math.max(0,Math.floor(Number(tx.result?.before)||0)),adjustmentId,message:'تم شحن نقاط الدعم المجاني فقط. لم يتغير رصيد الدولارات.'});
         }
         if(['warn','block','unblock'].includes(actionAdmin)){
           const target=String(b.username||'').trim();if(!target)return json(res,422,{ok:false,error:'اسم المستخدم مطلوب.'});const penalty=Math.max(0,Math.min(1000000,Math.floor(Number(b.penaltyPoints)||0))),reason=String(b.reason||'مخالفة تعليمات الدعم المجاني').trim().slice(0,400);let out;
@@ -6918,7 +6950,7 @@ async function routeAPI(req,res,urlObj){
     try { buildFile=fs.readFileSync(path.join(ROOT,'BUILD_ID.txt'),'utf8').trim(); } catch(_) {}
     const deploymentConsistent=uiVersion===APP_VERSION && uiBuildId===BUILD_ID && versionFile===APP_VERSION && buildFile===BUILD_ID;
     const dbInfo=firebaseDatabaseDiagnosticInfo();
-    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.61',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
+    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.62',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
     // Keep operational configuration details private; only an authenticated admin can inspect them.
     if(isAdmin(req)){const credentialStatus=firebaseServiceAccountStatus();health.firebaseDatabase={host:dbInfo.host,source:dbInfo.source,databaseProjectHint:dbInfo.databaseProjectHint,serviceAccountProjectId:dbInfo.serviceAccountProjectId||null,configuredWebProjectId:dbInfo.configuredWebProjectId||null,serviceAccountProjectMatch:dbInfo.serviceAccountProjectMatch};health.securityConfig={sessionSecretConfigured:!!String(process.env.SESSION_SECRET||'').trim(),dedicatedEncryptionKeyConfigured:!!String(process.env.SADA_ENCRYPTION_KEY||'').trim(),stableEncryptionAvailable:telegramEncryptionReady(),firebaseConfigured:!!FIREBASE_DATABASE_URL,firebaseServiceAccountConfigured:credentialStatus.ok,firebaseCredentialStatus:{ok:credentialStatus.ok,code:credentialStatus.code,source:credentialStatus.source,message:credentialStatus.message},firebaseDatabaseSecretConfigured:!!String(process.env.FIREBASE_DATABASE_SECRET||'').trim(),firebaseAuthAvailable:firebaseAuthAvailable(),emailServiceConfigured:!!(String(process.env.RESEND_API_KEY||'').trim()&&String(process.env.RESEND_FROM_EMAIL||process.env.EMAIL_FROM||'').trim()),telegramTokenFromEnvironment:!!String(process.env.TELEGRAM_BOT_TOKEN||'').trim(),adminPasswordFromEnvironment:!!(String(process.env.ADMIN_PASSWORD||'').trim()||String(process.env.ADMIN_PASSWORD_HASH||'').trim()),adminPasswordConfigured:adminPasswordConfigured()};}
     return json(res,200,health);
