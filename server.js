@@ -44,8 +44,8 @@ function purgeCatalogServiceSnapshots(){
 }
 purgeCatalogServiceSnapshots();
 const APP_NAME = 'صدى العراق';
-const APP_VERSION = '1.6.73';
-const BUILD_ID = 'SADA-1.6.73-FREE-SUPPORT-CAMPAIGN-TELEGRAM-20261017';
+const APP_VERSION = '1.6.74';
+const BUILD_ID = 'SADA-1.6.74-FREE-SUPPORT-TASK-LOCK-FIX-20261017';
 // Keep the owner's admin identity available after packaging, but store only a scrypt hash
 // in the project. Railway variables can still explicitly override this packaged credential.
 function loadBundledAdminAuth(){
@@ -4717,6 +4717,131 @@ async function freeSupportListData(){
   const settings=freeSupportSafeSettings(settingsRaw||FREE_SUPPORT_DEFAULT_SETTINGS,FREE_SUPPORT_DEFAULT_SETTINGS);
   return {settings,tasks:freeSupportObject(tasksRaw),requests:freeSupportObject(requestsRaw)};
 }
+
+// Reconcile old task claims with the authoritative claim index. Releases before 2.48 could
+// leave claims/<task>/<user>.status='approved' while wallet.completedTasks was missing or stale.
+// This caused an already-approved task to remain visible until the user clicked it again.
+// Migration runs once per wallet and thereafter only checks tasks/campaigns changed since the
+// last scan. Read failures fail closed (hide the task) and do not advance the migration cursor.
+async function freeSupportReconcileTaskLocks(username,data,wallet,scanStartedAt=Date.now()){
+  const user=String(username||'').trim();
+  const originalCompleted=freeSupportObject(wallet.completedTasks),originalClaims=freeSupportObject(wallet.taskClaims);
+  const completed={...originalCompleted},claims={...originalClaims};
+  const requestRows=freeSupportRows(data.requests);
+  const proofById=new Map(requestRows.filter(r=>r.type==='proof'&&String(r.user||'')===user).map(r=>[String(r.id||''),r]));
+  const itemByWalletKey=new Map();
+  const candidates=[];
+  const migrationVersion=Number(wallet.taskLockMigrationVersion||0);
+  const migrationAt=Date.parse(String(wallet.taskLockMigrationAt||''))||0;
+  const fullScan=migrationVersion<1||!migrationAt;
+  const unverifiedKeys=new Set();
+  const completedPatches=new Map(),pendingPatches=new Map(),clearPatches=new Map(),deleteClaimPaths=new Set();
+  const now=nowISO();
+  const isPendingStatus=status=>['pending_review','reviewing'].includes(String(status||''));
+  const requestKeyForProof=r=>r?.campaignId?'campaign_'+String(r.campaignId):r?.taskId?'task_'+String(r.taskId):'';
+  const validPendingProof=(claim,key)=>{
+    const r=proofById.get(String(claim?.requestId||''));
+    return r&&isPendingStatus(r.status)&&requestKeyForProof(r)===key?r:null;
+  };
+  const addComplete=(key,claim,meta={})=>{
+    if(!key)return;
+    const row={requestId:String(claim?.requestId||claim?.id||''),at:String(claim?.reviewedAt||claim?.approvedAt||claim?.createdAt||now),platform:String(claim?.platform||meta.platform||''),title:String(claim?.title||meta.title||'')};
+    completedPatches.set(key,row);completed[key]=row;delete claims[key];
+  };
+  const addPending=(key,claim,meta={})=>{
+    const row={requestId:String(claim?.requestId||''),status:String(claim?.status||'pending_review'),taskId:String(meta.kind==='task'?meta.id:claim?.taskId||''),campaignId:String(meta.kind==='campaign'?meta.id:claim?.campaignId||''),platform:String(claim?.platform||meta.platform||''),title:String(claim?.title||meta.title||''),updatedAt:String(claim?.updatedAt||claim?.createdAt||now)};
+    pendingPatches.set(key,row);claims[key]=row;
+  };
+  const staleClaim=(key,claim)=>{
+    if(claims[key]&&(!claim?.requestId||String(claims[key].requestId||'')===String(claim.requestId||'')))delete claims[key];
+    clearPatches.set(key,String(claim?.requestId||''));
+    const campaign=String(key).startsWith('campaign_'),rawId=String(key).replace(/^(?:campaign_|task_)/,'');
+    if(rawId)deleteClaimPaths.add(freeSupportClaimPath(campaign?'campaign_'+rawId:rawId,user));
+  };
+
+  // Repair the wallet index itself first. A stale pending entry with no live review request
+  // must not hide a task forever. An approved entry is migrated to a permanent completion lock.
+  for(const [key,claim] of Object.entries(originalClaims)){
+    if(!key.startsWith('task_')&&!key.startsWith('campaign_'))continue;
+    if(completed[key]){if(claims[key]){delete claims[key];clearPatches.set(key,String(claim?.requestId||''));}continue;}
+    if(String(claim?.status||'')==='approved'){addComplete(key,claim,itemByWalletKey.get(key)||{});continue;}
+    if(isPendingStatus(claim?.status)){
+      const proof=validPendingProof(claim,key);
+      if(proof){const meta=key.startsWith('campaign_')?{kind:'campaign',id:String(proof.campaignId||key.slice(9)),platform:proof.platform,title:proof.title}:{kind:'task',id:String(proof.taskId||key.slice(5)),platform:proof.platform,title:proof.title};itemByWalletKey.set(key,meta);continue;}
+      staleClaim(key,claim);
+    }else if(String(claim?.status||'')==='rejected')staleClaim(key,claim);
+  }
+
+  const tasks=freeSupportRows(data.tasks);
+  for(const task of tasks){
+    const id=String(task.id||'').trim();if(!id)continue;
+    const key='task_'+id;itemByWalletKey.set(key,{kind:'task',id,platform:String(task.platform||''),title:String(task.title||'')});
+    if(completed[key]||isPendingStatus(claims[key]?.status))continue;
+    const updated=Date.parse(String(task.updatedAt||task.createdAt||''))||0;
+    if(!fullScan&&updated&&updated<=migrationAt)continue;
+    if(!fullScan&&!updated)continue;
+    candidates.push({kind:'task',id,key,claimId:id,platform:String(task.platform||''),title:String(task.title||''),updatedAt:task.updatedAt||task.createdAt||''});
+  }
+  const campaigns=requestRows.filter(r=>r.type==='campaign'&&String(r.user||'')!==user&&['queued','in_progress'].includes(String(r.status||'')));
+  for(const camp of campaigns){
+    const id=String(camp.id||'').trim();if(!id)continue;
+    const key='campaign_'+id;itemByWalletKey.set(key,{kind:'campaign',id,platform:String(camp.platform||''),title:String(camp.title||'')});
+    if(completed[key]||isPendingStatus(claims[key]?.status))continue;
+    const updated=Date.parse(String(camp.updatedAt||camp.createdAt||''))||0;
+    if(!fullScan&&updated&&updated<=migrationAt)continue;
+    if(!fullScan&&!updated)continue;
+    candidates.push({kind:'campaign',id,key,claimId:'campaign_'+id,platform:String(camp.platform||''),title:String(camp.title||''),updatedAt:camp.updatedAt||camp.createdAt||''});
+  }
+
+  let readFailed=false;
+  for(let i=0;i<candidates.length;i+=25){
+    const group=candidates.slice(i,i+25);
+    const results=await Promise.all(group.map(async item=>{try{return {item,claim:await firebaseGetJson(freeSupportClaimPath(item.claimId,user),4500),ok:true};}catch(error){return {item,ok:false,error};}}));
+    for(const result of results){
+      const item=result.item;
+      if(!result.ok){unverifiedKeys.add(item.key);readFailed=true;continue;}
+      const claim=result.claim;
+      if(!claim||typeof claim!=='object')continue;
+      if(String(claim.status||'')==='approved'){
+        addComplete(item.key,{...claim,platform:claim.platform||item.platform,title:claim.title||item.title},item);
+      }else if(isPendingStatus(claim.status)){
+        const proof=validPendingProof(claim,item.key);
+        if(proof)addPending(item.key,{...claim,platform:claim.platform||proof.platform,title:claim.title||proof.title},{...item,taskId:proof.taskId,campaignId:proof.campaignId});
+        else staleClaim(item.key,claim);
+      }else if(String(claim.status||'')==='rejected')staleClaim(item.key,claim);
+    }
+  }
+
+  // Merge only lock/index fields inside a transaction so point balances or concurrent gift/charge
+  // operations can never be overwritten by this reconciliation pass.
+  const markerCanAdvance=!readFailed&&(fullScan||candidates.length>0);
+  const markerValue=new Date(Math.max(0,Number(scanStartedAt)||Date.now())).toISOString();
+  const mapsChanged=completedPatches.size>0||pendingPatches.size>0||clearPatches.size>0;
+  if(mapsChanged||markerCanAdvance){
+    try{
+      const tx=await firebaseTransaction(freeSupportWalletPath(user),current=>{
+        const w={...freeSupportDefaultWallet(user),...freeSupportObject(current)},liveCompleted={...freeSupportObject(w.completedTasks)},liveClaims={...freeSupportObject(w.taskClaims)};
+        for(const [key,value] of completedPatches){if(!liveCompleted[key])liveCompleted[key]=value;delete liveClaims[key];}
+        for(const [key,requestId] of clearPatches){if(!requestId||String(liveClaims[key]?.requestId||'')===requestId)delete liveClaims[key];}
+        for(const [key,value] of pendingPatches){if(liveCompleted[key])continue;const old=liveClaims[key];if(!old||String(old.requestId||'')===String(value.requestId||''))liveClaims[key]=value;}
+        w.completedTasks=liveCompleted;w.taskClaims=liveClaims;
+        if(markerCanAdvance){w.taskLockMigrationVersion=1;w.taskLockMigrationAt=markerValue;}
+        w.updatedAt=nowISO();return {write:true,value:w,result:{synced:true}};
+      },10000,8);
+      wallet.completedTasks=freeSupportObject(tx.value?.completedTasks||completed);wallet.taskClaims=freeSupportObject(tx.value?.taskClaims||claims);
+      if(tx.value)Object.assign(wallet,tx.value);
+    }catch(error){
+      console.warn('Free-support legacy task lock reconciliation deferred:',String(error?.message||error).slice(0,140));
+      // Fail closed for this response; the next read retries because the marker was not advanced.
+      for(const key of completedPatches.keys())unverifiedKeys.add(key);
+      for(const key of pendingPatches.keys())unverifiedKeys.add(key);
+    }
+  }else{
+    wallet.completedTasks=completed;wallet.taskClaims=claims;
+  }
+  for(const pathName of deleteClaimPaths){try{await firebaseDeleteJson(pathName,3500);}catch(_){} }
+  return {wallet,unverifiedKeys};
+}
 async function freeSupportNotify(username,title,message,id,status){
   try{createUserNotification(username,{type:'free_support',orderId:String(id||''),status:String(status||''),title,message})}catch(_){}
 }
@@ -4893,7 +5018,7 @@ async function freeSupportAward(request){
     const awarded={...freeSupportObject(wallet.awardedRequests)};
     const completedTasks={...freeSupportObject(wallet.completedTasks)},taskClaims={...freeSupportObject(wallet.taskClaims)};
     const taskKey=request.campaignId?'campaign_'+String(request.campaignId):request.taskId?'task_'+String(request.taskId):'';
-    if(taskKey){completedTasks[taskKey]={requestId:id,at:nowISO(),platform:String(request.platform||''),title:String(request.title||'')};if(taskClaims[taskKey]?.requestId===id)delete taskClaims[taskKey];const donePairs=Object.entries(completedTasks).sort((a,b)=>(Date.parse(a[1]?.at||0)||0)-(Date.parse(b[1]?.at||0)||0));while(donePairs.length>1500){const [k]=donePairs.shift();delete completedTasks[k]}}
+    if(taskKey){completedTasks[taskKey]={requestId:id,at:nowISO(),platform:String(request.platform||''),title:String(request.title||'')};if(taskClaims[taskKey]?.requestId===id)delete taskClaims[taskKey]}
     if(awarded[id]){wallet.completedTasks=completedTasks;wallet.taskClaims=taskClaims;wallet.updatedAt=nowISO();return {write:!!taskKey,value:wallet,result:{alreadyAwarded:true,points:Math.max(0,Math.floor(Number(wallet.points)||0))}};}
     wallet.points=Math.max(0,Math.floor(Number(wallet.points)||0))+points;awarded[id]={points,at:nowISO()};
     const pairs=Object.entries(awarded).sort((a,b)=>(Date.parse(a[1]?.at||0)||0)-(Date.parse(b[1]?.at||0)||0));while(pairs.length>1200){const [k]=pairs.shift();delete awarded[k]}
@@ -4962,16 +5087,18 @@ async function freeSupportRoute(req,res,urlObj){
       if(!s)return json(res,401,{ok:false,error:'سجّل الدخول حتى تستخدم الدعم المجاني.'});
       let username=String(s.username||'').trim();
       if(isAdm&&normalizeEmail(username)===normalizeEmail(ADMIN_USER)){try{username=await freeSupportSessionUsername(s)}catch(e){return json(res,503,{ok:false,error:'تعذر ربط محفظة الدعم بسجل حساب الإدارة في Firebase: '+String(e.message||e).slice(0,120)})}}
-      const data=await freeSupportListData(),wallet=await freeSupportReadWallet(username);
+      const taskLockScanStartedAt=Date.now();
+      const data=await freeSupportListData();let wallet=await freeSupportReadWallet(username);
       // Retry a prior cleanup failure opportunistically, but never show a decided proof
       // request to the user again. The accepted points and claim lock remain in the wallet/claim nodes.
       const finalizedProofsForUser=freeSupportRows(data.requests).filter(r=>r.type==='proof'&&String(r.user||'')===username&&['approved','rejected'].includes(String(r.status)));
       for(const finalized of finalizedProofsForUser){try{await freeSupportDeleteReviewedProof(finalized)}catch(e){console.warn('user-view finalized proof cleanup pending:',String(e?.message||e).slice(0,100));}}
       if(wallet.blocked&&!isAdm)return json(res,200,{ok:true,blocked:true,wallet:{points:wallet.points,warnings:wallet.warnings,acceptedRules:!!wallet.acceptedRules},dailyGift:freeSupportDailyGiftStatus(wallet),settings:data.settings,tasks:[],campaigns:[],myRequests:[]});
-      const completedTaskMap=freeSupportObject(wallet.completedTasks),taskClaimMap=freeSupportObject(wallet.taskClaims);
+      const lockSync=await freeSupportReconcileTaskLocks(username,data,wallet,taskLockScanStartedAt);wallet=lockSync.wallet;
+      const completedTaskMap=freeSupportObject(wallet.completedTasks),taskClaimMap=freeSupportObject(wallet.taskClaims),unverifiedTaskKeys=lockSync.unverifiedKeys||new Set();
       const isLockedForUser=key=>!!completedTaskMap[key]||['pending_review','reviewing','approved'].includes(String(taskClaimMap[key]?.status||''));
-      const tasks=freeSupportRows(data.tasks).filter(t=>t.deleted!==true&&t.enabled!==false&&freeSupportPlatform(data.settings,t.platform)&&!isLockedForUser('task_'+String(t.id||''))).map(t=>({...t,title:t.autoTitle===true?freeSupportTaskTitle(t.serviceType,t.platformName||freeSupportPlatform(data.settings,t.platform)?.name||t.platform):t.title,rewardPoints:['followers','likes','views'].includes(String(t.serviceType||''))?freeSupportRewardPoints(data.settings,t.serviceType):Math.max(1,Math.floor(Number(t.rewardPoints)||1)),taskKind:'admin'}));
-      const campaigns=freeSupportRows(data.requests).filter(r=>r.type==='campaign'&&r.user!==username&&['queued','in_progress'].includes(String(r.status))&&Number(r.completedQuantity||0)+Number(r.reservedQuantity||0)<Number(r.quantity||0)&&!isLockedForUser('campaign_'+String(r.id||''))).map(r=>({id:r.id,taskKind:'campaign',platform:r.platform,platformName:r.platformName,serviceType:r.serviceType,title:r.title||r.serviceType,targetLink:r.targetLink,quantity:Number(r.quantity||0),completedQuantity:Number(r.completedQuantity||0),reservedQuantity:Number(r.reservedQuantity||0),rewardPoints:Math.max(1,Math.floor(Number(r.rewardPoints||data.settings.pointsPerUnit)||1)),status:r.status,createdAt:r.createdAt}));
+      const tasks=freeSupportRows(data.tasks).filter(t=>t.deleted!==true&&t.enabled!==false&&freeSupportPlatform(data.settings,t.platform)&&!isLockedForUser('task_'+String(t.id||''))&&!unverifiedTaskKeys.has('task_'+String(t.id||''))).map(t=>({...t,title:t.autoTitle===true?freeSupportTaskTitle(t.serviceType,t.platformName||freeSupportPlatform(data.settings,t.platform)?.name||t.platform):t.title,rewardPoints:['followers','likes','views'].includes(String(t.serviceType||''))?freeSupportRewardPoints(data.settings,t.serviceType):Math.max(1,Math.floor(Number(t.rewardPoints)||1)),taskKind:'admin'}));
+      const campaigns=freeSupportRows(data.requests).filter(r=>r.type==='campaign'&&r.user!==username&&['queued','in_progress'].includes(String(r.status))&&Number(r.completedQuantity||0)+Number(r.reservedQuantity||0)<Number(r.quantity||0)&&!isLockedForUser('campaign_'+String(r.id||''))&&!unverifiedTaskKeys.has('campaign_'+String(r.id||''))).map(r=>({id:r.id,taskKind:'campaign',platform:r.platform,platformName:r.platformName,serviceType:r.serviceType,title:r.title||r.serviceType,targetLink:r.targetLink,quantity:Number(r.quantity||0),completedQuantity:Number(r.completedQuantity||0),reservedQuantity:Number(r.reservedQuantity||0),rewardPoints:Math.max(1,Math.floor(Number(r.rewardPoints||data.settings.pointsPerUnit)||1)),status:r.status,createdAt:r.createdAt}));
       const campaignsSorted=campaigns.filter(r=>r.adminDeleted!==true).sort((a,b)=>(a.pinned===true?-1:0)-(b.pinned===true?-1:0)||(Date.parse(b.createdAt||0)||0)-(Date.parse(a.createdAt||0)||0));
       const myRequests=freeSupportRows(data.requests).filter(r=>r.user===username&&r.adminDeleted!==true&&!(r.type==='proof'&&['approved','rejected'].includes(String(r.status)))).sort((a,b)=>(Date.parse(b.createdAt||0)||0)-(Date.parse(a.createdAt||0)||0)).slice(0,500).map(r=>({...freeSupportPublicRequest(r),...(r.type==='campaign'?{waitNotice:String(r.waitNotice||FREE_SUPPORT_WAIT_NOTICE)}:{})}));
       return json(res,200,{ok:true,blocked:false,settings:data.settings,wallet:{points:wallet.points,warnings:wallet.warnings,acceptedRules:!!wallet.acceptedRules,completedTasks:freeSupportObject(wallet.completedTasks),taskClaims:freeSupportObject(wallet.taskClaims)},dailyGift:freeSupportDailyGiftStatus(wallet),tasks,campaigns:campaignsSorted,myRequests});
@@ -7523,7 +7650,7 @@ async function routeAPI(req,res,urlObj){
     try { buildFile=fs.readFileSync(path.join(ROOT,'BUILD_ID.txt'),'utf8').trim(); } catch(_) {}
     const deploymentConsistent=uiVersion===APP_VERSION && uiBuildId===BUILD_ID && versionFile===APP_VERSION && buildFile===BUILD_ID;
     const dbInfo=firebaseDatabaseDiagnosticInfo();
-    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.73',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
+    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.74',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
     // Keep operational configuration details private; only an authenticated admin can inspect them.
     if(isAdmin(req)){const credentialStatus=firebaseServiceAccountStatus();health.firebaseDatabase={host:dbInfo.host,source:dbInfo.source,databaseProjectHint:dbInfo.databaseProjectHint,serviceAccountProjectId:dbInfo.serviceAccountProjectId||null,configuredWebProjectId:dbInfo.configuredWebProjectId||null,serviceAccountProjectMatch:dbInfo.serviceAccountProjectMatch};health.securityConfig={sessionSecretConfigured:!!String(process.env.SESSION_SECRET||'').trim(),dedicatedEncryptionKeyConfigured:!!String(process.env.SADA_ENCRYPTION_KEY||'').trim(),stableEncryptionAvailable:telegramEncryptionReady(),firebaseConfigured:!!FIREBASE_DATABASE_URL,firebaseServiceAccountConfigured:credentialStatus.ok,firebaseCredentialStatus:{ok:credentialStatus.ok,code:credentialStatus.code,source:credentialStatus.source,message:credentialStatus.message},firebaseDatabaseSecretConfigured:!!String(process.env.FIREBASE_DATABASE_SECRET||'').trim(),firebaseAuthAvailable:firebaseAuthAvailable(),emailServiceConfigured:!!(String(process.env.RESEND_API_KEY||'').trim()&&String(process.env.RESEND_FROM_EMAIL||process.env.EMAIL_FROM||'').trim()),telegramTokenFromEnvironment:!!String(process.env.TELEGRAM_BOT_TOKEN||'').trim(),adminPasswordFromEnvironment:!!(String(process.env.ADMIN_PASSWORD||'').trim()||String(process.env.ADMIN_PASSWORD_HASH||'').trim()),adminPasswordConfigured:adminPasswordConfigured()};}
     return json(res,200,health);
