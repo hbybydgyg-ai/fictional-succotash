@@ -44,8 +44,8 @@ function purgeCatalogServiceSnapshots(){
 }
 purgeCatalogServiceSnapshots();
 const APP_NAME = 'صدى العراق';
-const APP_VERSION = '1.6.69';
-const BUILD_ID = 'SADA-1.6.69-FREE-SUPPORT-TASK-COMPLETION-BALANCE-AUDIT-20261017';
+const APP_VERSION = '1.6.72';
+const BUILD_ID = 'SADA-1.6.72-FREE-SUPPORT-TELEGRAM-ACCEPTANCE-20261017';
 // Keep the owner's admin identity available after packaging, but store only a scrypt hash
 // in the project. Railway variables can still explicitly override this packaged credential.
 function loadBundledAdminAuth(){
@@ -3105,6 +3105,7 @@ function redactSecretObject(value,depth=0){
 safeProviderResponse = function(d){ return redactSecretObject(d); };
 function providerAuthErrorText(t){ return /invalid|incorrect|wrong|unauthori[sz]ed|authentication|api\s*key|access\s*denied|expired|login|sign\s*in/i.test(String(t||'')); }
 let TELEGRAM_CHANNELS_REMOTE={};
+const FREE_SUPPORT_TELEGRAM_CHAT_DEFAULT='-1003824777608';
 function validTelegramBotToken(value){return /^\d{5,}:[A-Za-z0-9_-]{20,}$/.test(String(value||'').trim());}
 function normalizeTelegramChatTarget(value){
   let v=String(value||'').trim();if(!v)return '';
@@ -3141,20 +3142,22 @@ function telegramConfig(){
   const activationEnv=String(process.env.TELEGRAM_ACTIVATION_CHAT_ID||'-1004403189762').trim();
   const overdueEnv=String(process.env.TELEGRAM_OVERDUE_CHAT_ID||'-1003800848795').trim();
   const adminEnv=String(process.env.TELEGRAM_ADMIN_CHAT_ID||'').trim();
+  const freeSupportEnv=String(process.env.TELEGRAM_FREE_SUPPORT_CHAT_ID||'').trim();
   const legacyChannel=/^@[A-Za-z0-9_]{3,}$/i.test(legacyChat)||/^-100\d{5,}$/.test(legacyChat)?legacyChat:'';
   const activationChat=String(activationEnv||cfg.activationChat||TELEGRAM_CHANNELS_REMOTE.activationChat||legacyChannel).trim();
   const overdueChat=String(overdueEnv||cfg.overdueChat||TELEGRAM_CHANNELS_REMOTE.overdueChat||'').trim();
   const adminChat=String(adminEnv||cfg.adminChat||TELEGRAM_CHANNELS_REMOTE.adminChat||'').trim();
+  const freeSupportChat=String(freeSupportEnv||cfg.freeSupportChat||TELEGRAM_CHANNELS_REMOTE.freeSupportChat||FREE_SUPPORT_TELEGRAM_CHAT_DEFAULT).trim();
   const envToggle=String(process.env.TELEGRAM_NOTIFICATIONS_ENABLED||'').trim();
   const enabled=envToggle ? envToggle.toLowerCase()!=='false' : (TELEGRAM_CHANNELS_REMOTE.enabled!==undefined?TELEGRAM_CHANNELS_REMOTE.enabled!==false:cfg.enabled!==false);
   const extraEnv=(String(process.env.TELEGRAM_EXTRA_CHAT_IDS||'').trim()||'').split(',').map(x=>x.trim()).filter(Boolean);
   const extraCfg=Array.isArray(cfg.extraChats)?cfg.extraChats.map(x=>String(x||'').trim()).filter(Boolean):[];
   const extra=[...new Set([...extraEnv,...extraCfg])].filter(x=>x!==activationChat&&x!==overdueChat&&x!==adminChat);
-  return {enabled,token,tokenSource:envToken?'railway-variable':storedToken?'admin-panel':hasStoredCipher?'stored-unreadable':'none',tokenEncryptionError:!envToken&&hasStoredCipher&&!storedToken,chat:activationChat,activationChat,overdueChat,adminChat,activationEnvLocked:!!activationEnv,overdueEnvLocked:!!overdueEnv,adminEnvLocked:!!adminEnv,extraChats:extra};
+  return {enabled,token,tokenSource:envToken?'railway-variable':storedToken?'admin-panel':hasStoredCipher?'stored-unreadable':'none',tokenEncryptionError:!envToken&&hasStoredCipher&&!storedToken,chat:activationChat,activationChat,overdueChat,adminChat,freeSupportChat,activationEnvLocked:!!activationEnv,overdueEnvLocked:!!overdueEnv,adminEnvLocked:!!adminEnv,freeSupportEnvLocked:!!freeSupportEnv,extraChats:extra};
 }
 async function hydrateTelegramChannelsFromFirebase(){
   let any=false;
-  try{const remote=await firebaseGetJson('config/telegramChannels',3500);if(remote&&typeof remote==='object'&&!Array.isArray(remote)){TELEGRAM_CHANNELS_REMOTE={activationChat:String(remote.activationChat||''),overdueChat:String(remote.overdueChat||''),adminChat:String(remote.adminChat||''),enabled:remote.enabled!==undefined?remote.enabled:undefined,updatedAt:remote.updatedAt||null};const settings=readJSON('settings.json',{});settings.telegram=settings.telegram||{};if(!process.env.TELEGRAM_ACTIVATION_CHAT_ID&&TELEGRAM_CHANNELS_REMOTE.activationChat&&!settings.telegram.activationChat)settings.telegram.activationChat=TELEGRAM_CHANNELS_REMOTE.activationChat;if(!process.env.TELEGRAM_OVERDUE_CHAT_ID&&TELEGRAM_CHANNELS_REMOTE.overdueChat&&!settings.telegram.overdueChat)settings.telegram.overdueChat=TELEGRAM_CHANNELS_REMOTE.overdueChat;if(!process.env.TELEGRAM_ADMIN_CHAT_ID&&TELEGRAM_CHANNELS_REMOTE.adminChat&&!settings.telegram.adminChat)settings.telegram.adminChat=TELEGRAM_CHANNELS_REMOTE.adminChat;if(process.env.TELEGRAM_NOTIFICATIONS_ENABLED===undefined&&TELEGRAM_CHANNELS_REMOTE.enabled!==undefined)settings.telegram.enabled=TELEGRAM_CHANNELS_REMOTE.enabled;writeJSON('settings.json',settings);any=true}}catch(e){console.warn('Telegram channel hydration skipped:',String(e.message||e).slice(0,120))}
+  try{const remote=await firebaseGetJson('config/telegramChannels',3500);if(remote&&typeof remote==='object'&&!Array.isArray(remote)){TELEGRAM_CHANNELS_REMOTE={activationChat:String(remote.activationChat||''),overdueChat:String(remote.overdueChat||''),adminChat:String(remote.adminChat||''),freeSupportChat:String(remote.freeSupportChat||''),enabled:remote.enabled!==undefined?remote.enabled:undefined,updatedAt:remote.updatedAt||null};const settings=readJSON('settings.json',{});settings.telegram=settings.telegram||{};if(!process.env.TELEGRAM_ACTIVATION_CHAT_ID&&TELEGRAM_CHANNELS_REMOTE.activationChat&&!settings.telegram.activationChat)settings.telegram.activationChat=TELEGRAM_CHANNELS_REMOTE.activationChat;if(!process.env.TELEGRAM_OVERDUE_CHAT_ID&&TELEGRAM_CHANNELS_REMOTE.overdueChat&&!settings.telegram.overdueChat)settings.telegram.overdueChat=TELEGRAM_CHANNELS_REMOTE.overdueChat;if(!process.env.TELEGRAM_ADMIN_CHAT_ID&&TELEGRAM_CHANNELS_REMOTE.adminChat&&!settings.telegram.adminChat)settings.telegram.adminChat=TELEGRAM_CHANNELS_REMOTE.adminChat;if(!process.env.TELEGRAM_FREE_SUPPORT_CHAT_ID&&TELEGRAM_CHANNELS_REMOTE.freeSupportChat&&!settings.telegram.freeSupportChat)settings.telegram.freeSupportChat=TELEGRAM_CHANNELS_REMOTE.freeSupportChat;if(process.env.TELEGRAM_NOTIFICATIONS_ENABLED===undefined&&TELEGRAM_CHANNELS_REMOTE.enabled!==undefined)settings.telegram.enabled=TELEGRAM_CHANNELS_REMOTE.enabled;writeJSON('settings.json',settings);any=true}}catch(e){console.warn('Telegram channel hydration skipped:',String(e.message||e).slice(0,120))}
   try{const secret=await firebaseGetJson('config/telegramSecret',3500);if(secret&&typeof secret.tokenEncrypted==='string'&&secret.tokenEncrypted){const settings=readJSON('settings.json',{});settings.telegram=settings.telegram||{};const localCipher=String(settings.telegram.tokenEncrypted||'');const localPlain=localCipher?decryptSecret(localCipher):'';const remotePlain=decryptSecret(secret.tokenEncrypted);if(remotePlain&&(!localCipher||!localPlain)){settings.telegram.tokenEncrypted=secret.tokenEncrypted;delete settings.telegram.token;writeJSON('settings.json',settings);}any=true;}}catch(e){console.warn('Telegram encrypted secret hydration skipped:',String(e.message||e).slice(0,120))}
   return any;
 }
@@ -4717,6 +4720,103 @@ async function freeSupportListData(){
 async function freeSupportNotify(username,title,message,id,status){
   try{createUserNotification(username,{type:'free_support',orderId:String(id||''),status:String(status||''),title,message})}catch(_){}
 }
+
+// Durable Telegram outbox for screenshot submissions. This is a notification-delivery ledger,
+// not the moderator review request itself: the evidence and review request can still be deleted
+// immediately after the administrator accepts/rejects them.
+function freeSupportTelegramAlertPath(id){return FREE_SUPPORT_ROOT+'/telegramProofNotifications/'+firebaseSafeKey(id)}
+let FREE_SUPPORT_TELEGRAM_OUTBOX_RUNNING=false;
+function freeSupportProofTelegramCaption(row){
+  const id=String(row?.id||'غير متوفر').slice(0,90),user=String(row?.user||'غير معروف').slice(0,100),platform=String(row?.platformName||row?.platform||'غير محدد').slice(0,60),title=String(row?.title||freeSupportTaskTitle(row?.serviceType,platform)).slice(0,150),points=Math.max(0,Math.floor(Number(row?.rewardPoints)||0));
+  let time='';try{time=new Intl.DateTimeFormat('ar-IQ',{timeZone:'Asia/Baghdad',dateStyle:'short',timeStyle:'short'}).format(new Date(row?.createdAt||Date.now()))}catch(_){time=String(row?.createdAt||'')}
+  return `🆕 تم رفع مهمة جديدة تحتاج مراجعة
+
+🆔 رقم طلب المراجعة: ${id}
+👤 المستخدم: ${user}
+🌐 المنصة: ${platform}
+📋 المهمة: ${title}
+⭐ النقاط عند القبول: ${points}
+🕒 وقت الإرسال: ${time}
+
+يرجى الذهاب إلى لوحة الإدارة ← دعم حقيقي مجاني ← طلبات المستخدمين، لمراجعة صورة الإثبات ثم قبول المهمة أو رفضها.
+
+✅ لا تُضاف النقاط إلا بعد قبول الإدارة.`.slice(0,1024);
+}
+async function freeSupportSendProofTelegram(row,evidence){
+  const cfg=telegramConfig(),chatId=String(cfg.freeSupportChat||FREE_SUPPORT_TELEGRAM_CHAT_DEFAULT).trim();
+  if(!cfg.enabled)return {ok:false,retryable:true,error:'إشعارات Telegram معطلة'};
+  if(!cfg.token)return {ok:false,retryable:true,error:'Bot Token غير محفوظ'};
+  if(!validTelegramChatTarget(chatId))return {ok:false,retryable:false,error:'معرّف قناة قبول المهام غير صالح'};
+  const caption=freeSupportProofTelegramCaption(row);let result=null,photoError='';
+  const dataUrl=String(evidence?.dataUrl||'');
+  const match=dataUrl.match(/^data:image\/(png|jpe?g|webp);base64,([A-Za-z0-9+/=]+)$/i);
+  if(match){
+    const bytes=Buffer.from(match[2],'base64');
+    if(bytes.length>0&&bytes.length<=900*1024){
+      const apiBase=String(process.env.TELEGRAM_API_BASE||'https://api.telegram.org').replace(/\/+$/,'');
+      const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),10000);
+      try{
+        const fd=new FormData();fd.append('chat_id',chatId);fd.append('photo',new Blob([bytes],{type:'image/'+match[1].toLowerCase().replace('jpg','jpeg')}),'proof-'+String(row.id||'task').replace(/[^a-zA-Z0-9_-]/g,'').slice(0,70)+'.'+(match[1].toLowerCase()==='jpeg'?'jpg':match[1].toLowerCase()));fd.append('caption',caption);
+        const response=await fetch(`${apiBase}/bot${cfg.token}/sendPhoto`,{method:'POST',body:fd,signal:controller.signal});const bodyText=await response.text();let body={};try{body=bodyText?JSON.parse(bodyText):{}}catch(_){body={description:bodyText}};
+        result={ok:!!(response.ok&&body.ok===true),status:response.status,description:String(body.description||''),messageId:body.result?.message_id||null,resultInfo:telegramResultSummary('sendPhoto',body.result)};
+        if(!result.ok)photoError=result.description||'Telegram لم يقبل صورة الإثبات.';
+      }catch(error){return {ok:false,retryable:true,error:error?.name==='AbortError'?'انتهت مهلة إرسال صورة المهمة إلى Telegram':String(error?.message||error)}}
+      finally{clearTimeout(timer)}
+      // A definite Telegram rejection means the photo was not delivered; send the alert as text.
+      // A network timeout above is treated as uncertain and retried by the outbox to avoid
+      // immediately duplicating a message that Telegram may already have accepted.
+      if(result?.ok){telegramLog({kind:'free_support_proof',ok:true,status:result.status,messageId:result.messageId||null,orderId:String(row.id||''),targetChatId:chatId,media:'proof-photo'});return {...result,chatId,media:'proof-photo'};}
+    }
+  }
+  const fallback=await telegramApiRequest(cfg.token,'sendMessage',{chat_id:chatId,text:caption,disable_web_page_preview:true},8000);
+  if(fallback.ok){telegramLog({kind:'free_support_proof',ok:true,status:fallback.status,messageId:fallback.messageId||null,orderId:String(row.id||''),targetChatId:chatId,media:'text-fallback',description:photoError});return {...fallback,chatId,media:'text-fallback'};}
+  const error=fallback.description||fallback.error||photoError||'فشل إرسال إشعار المهمة إلى قناة Telegram';
+  telegramLog({kind:'free_support_proof',ok:false,status:fallback.status||result?.status||null,messageId:null,orderId:String(row.id||''),targetChatId:chatId,media:'none',description:error});
+  return {ok:false,retryable:!(Number(fallback.status)>=400&&Number(fallback.status)<500),error,chatId};
+}
+async function freeSupportDeliverProofTelegramAlert(id,{force=false}={}){
+  const requestId=String(id||'').trim();if(!requestId)return {ok:false,error:'رقم طلب المراجعة مفقود'};
+  const path=freeSupportTelegramAlertPath(requestId),now=Date.now();let lock;
+  try{
+    lock=await firebaseTransaction(path,current=>{
+      if(!current||typeof current!=='object')return {write:false,result:{missing:true}};
+      if(String(current.status)==='sent')return {write:false,result:{sent:true,messageId:current.messageId||null}};
+      if(String(current.status)==='sending'&&now-Number(current.lockedAtMs||0)<120000)return {write:false,result:{busy:true}};
+      if(!force&&Number(current.nextAttemptAtMs||0)>now)return {write:false,result:{notDue:true}};
+      current.status='sending';current.attempts=Math.max(0,Math.floor(Number(current.attempts)||0))+1;current.lockedAtMs=now;current.updatedAt=nowISO();return {write:true,value:current,result:{started:true,attempts:current.attempts}};
+    },9000,8);
+  }catch(error){return {ok:false,error:'تعذر قفل إشعار المهمة في Firebase: '+String(error.message||error).slice(0,130)}}
+  if(lock.result?.sent)return {ok:true,alreadySent:true,messageId:lock.result.messageId};
+  if(!lock.result?.started)return {ok:false,skipped:true,...lock.result};
+  const attempts=Math.max(1,Number(lock.value?.attempts)||1);
+  try{
+    const row=await firebaseGetJson(freeSupportRequestPath(requestId),8000);
+    if(!row||row.type!=='proof'||!['pending_review','reviewing'].includes(String(row.status))){await firebaseWriteJson(path,{...lock.value,status:'skipped',lastError:'طلب المراجعة لم يعد موجوداً أو لم يعد بانتظار المراجعة.',updatedAt:nowISO()},7000).catch(()=>{});return {ok:false,skipped:true,error:'طلب المراجعة لم يعد ينتظر المراجعة'};}
+    const evidence=await firebaseGetJson(freeSupportEvidencePath(requestId),8000);
+    if(!evidence?.dataUrl)throw new Error('صورة الإثبات غير متوفرة في Firebase بعد حفظ الطلب.');
+    const sent=await freeSupportSendProofTelegram(row,evidence);
+    if(sent.ok){
+      await firebaseWriteJson(path,{...lock.value,status:'sent',targetChatId:sent.chatId||telegramConfig().freeSupportChat,messageId:sent.messageId||null,media:sent.media||'text',sentAt:nowISO(),updatedAt:nowISO(),lastError:''},8000);
+      return {ok:true,messageId:sent.messageId||null,chatId:sent.chatId,media:sent.media};
+    }
+    const delay=Math.min(15*60*1000,Math.max(60*1000,attempts*60*1000));
+    await firebaseWriteJson(path,{...lock.value,status:'pending',lastError:String(sent.error||'لم يؤكد Telegram وصول الإشعار').slice(0,300),nextAttemptAtMs:Date.now()+delay,updatedAt:nowISO()},8000);
+    return {ok:false,queued:true,error:sent.error||'سيعاد إرسال الإشعار تلقائياً'};
+  }catch(error){
+    const delay=Math.min(15*60*1000,Math.max(60*1000,attempts*60*1000));
+    await firebaseWriteJson(path,{...lock.value,status:'pending',lastError:String(error.message||error).slice(0,300),nextAttemptAtMs:Date.now()+delay,updatedAt:nowISO()},8000).catch(()=>{});
+    return {ok:false,queued:true,error:String(error.message||error).slice(0,180)};
+  }
+}
+async function runFreeSupportTelegramProofOutbox(){
+  if(FREE_SUPPORT_TELEGRAM_OUTBOX_RUNNING)return {skipped:true};FREE_SUPPORT_TELEGRAM_OUTBOX_RUNNING=true;
+  try{
+    const all=freeSupportObject(await firebaseGetJson(FREE_SUPPORT_ROOT+'/telegramProofNotifications',10000));const due=Object.entries(all).filter(([,x])=>x&&typeof x==='object'&&['pending','sending'].includes(String(x.status))&&(Number(x.nextAttemptAtMs||0)<=Date.now()||(String(x.status)==='sending'&&Date.now()-Number(x.lockedAtMs||0)>120000))).sort((a,b)=>(Date.parse(a[1].createdAt||0)||0)-(Date.parse(b[1].createdAt||0)||0)).slice(0,10);
+    for(const [id] of due){try{await freeSupportDeliverProofTelegramAlert(id)}catch(error){console.warn('free-support Telegram alert retry deferred:',String(error.message||error).slice(0,120))}}
+    return {checked:due.length};
+  }catch(error){console.warn('free-support Telegram outbox scan deferred:',String(error.message||error).slice(0,120));return {ok:false,error:String(error.message||error)}}
+  finally{FREE_SUPPORT_TELEGRAM_OUTBOX_RUNNING=false}
+}
 // Finalized proof-review requests are intentionally ephemeral: the wallet keeps the
 // points/idempotency record, the claim keeps the task completion lock, and the
 // user notification carries the decision. The proof image AND review request row
@@ -4731,7 +4831,11 @@ async function freeSupportDeleteReviewedProof(requestRow){
   await firebaseDeleteJson(freeSupportRequestPath(id),9000);
   const remainingRequest=await firebaseGetJson(freeSupportRequestPath(id),7000);
   if(remainingRequest!==null&&remainingRequest!==undefined)throw new Error('تعذر التحقق من حذف طلب المراجعة من Firebase.');
-  return {deleted:true,imageDeleted:true,requestDeleted:true,status:String(requestRow.status)};
+  // Drop the delivery ledger too after review is finalized, so finalized proof submissions leave
+  // no per-request queue item behind. The notification log already records the sent message.
+  let notificationDeleted=false;
+  try{const alertPath=freeSupportTelegramAlertPath(id);await firebaseDeleteJson(alertPath,5000);const remainingAlert=await firebaseGetJson(alertPath,4000);notificationDeleted=remainingAlert===null||remainingAlert===undefined;}catch(_){notificationDeleted=false;}
+  return {deleted:true,imageDeleted:true,requestDeleted:true,notificationDeleted,status:String(requestRow.status)};
 }
 async function freeSupportAward(request){
   const username=String(request?.user||'').trim(),id=String(request?.id||'').trim(),points=Math.max(0,Math.floor(Number(request?.rewardPoints)||0));
@@ -4788,7 +4892,24 @@ async function freeSupportRoute(req,res,urlObj){
         const cleanupPendingCount=allRows.filter(x=>x.type==='proof'&&['approved','rejected'].includes(String(x.status))).length;
         const rows=allRows.filter(x=>!(x.type==='proof'&&['approved','rejected'].includes(String(x.status))));
         const pending=rows.filter(x=>x.type==='proof'&&['pending_review','reviewing'].includes(String(x.status))).length;
-        return json(res,200,{ok:true,adminProfile,cleanupPendingCount,settings:data.settings,tasks:freeSupportRows(data.tasks).map(t=>({...t,title:t.autoTitle===true?freeSupportTaskTitle(t.serviceType,t.platformName||freeSupportPlatform(data.settings,t.platform)?.name||t.platform):t.title,rewardPoints:['followers','likes','views'].includes(String(t.serviceType||''))?freeSupportRewardPoints(data.settings,t.serviceType):Math.max(1,Math.floor(Number(t.rewardPoints)||1))})).sort((a,b)=>(Date.parse(b.createdAt||0)||0)-(Date.parse(a.createdAt||0)||0)),requests:rows.slice(0,2000).map(freeSupportPublicRequest),stats:{all:rows.filter(x=>x.adminDeleted!==true).length,pending,approved:0,rejected:0,campaigns:rows.filter(x=>x.type==='campaign'&&x.adminDeleted!==true&&!['completed','rejected','failed','cancelled_by_admin'].includes(x.status)).length,completedCampaigns:rows.filter(x=>x.type==='campaign'&&x.status==='completed'&&x.adminDeleted!==true).length,inProgressCampaigns:rows.filter(x=>x.type==='campaign'&&x.status==='in_progress'&&x.adminDeleted!==true).length,deleted:rows.filter(x=>x.adminDeleted===true).length}});
+        const taskRows=freeSupportRows(data.tasks).map(t=>({...t,title:t.autoTitle===true?freeSupportTaskTitle(t.serviceType,t.platformName||freeSupportPlatform(data.settings,t.platform)?.name||t.platform):t.title,rewardPoints:['followers','likes','views'].includes(String(t.serviceType||''))?freeSupportRewardPoints(data.settings,t.serviceType):Math.max(1,Math.floor(Number(t.rewardPoints)||1)),platformEnabled:!!freeSupportPlatform(data.settings,t.platform)})).sort((a,b)=>(Date.parse(b.createdAt||0)||0)-(Date.parse(a.createdAt||0)||0));
+        const visibleRequests=rows.filter(x=>x.adminDeleted!==true);
+        const campaignRows=visibleRequests.filter(x=>x.type==='campaign');
+        const tasksTotal=taskRows.length;
+        const tasksActive=taskRows.filter(t=>t.deleted!==true&&t.enabled!==false&&t.platformEnabled).length;
+        const tasksArchived=taskRows.filter(t=>t.deleted===true).length;
+        const tasksPaused=Math.max(0,tasksTotal-tasksActive-tasksArchived);
+        const stats={
+          // `all` means request records that still exist; resolved proof requests are deleted by design.
+          all:visibleRequests.length,requestsCurrent:visibleRequests.length,
+          pending:visibleRequests.filter(x=>x.type==='proof'&&['pending_review','reviewing'].includes(String(x.status))).length,
+          campaigns:campaignRows.filter(x=>['creating','queued','in_progress'].includes(String(x.status))).length,
+          queuedCampaigns:campaignRows.filter(x=>['creating','queued'].includes(String(x.status))).length,
+          inProgressCampaigns:campaignRows.filter(x=>x.status==='in_progress').length,
+          completedCampaigns:campaignRows.filter(x=>x.status==='completed').length,
+          tasksTotal,tasksActive,tasksPaused,tasksArchived
+        };
+        return json(res,200,{ok:true,adminProfile,cleanupPendingCount,settings:data.settings,tasks:taskRows,requests:rows.slice(0,2000).map(freeSupportPublicRequest),stats});
       }
       if(!s)return json(res,401,{ok:false,error:'سجّل الدخول حتى تستخدم الدعم المجاني.'});
       let username=String(s.username||'').trim();
@@ -4799,7 +4920,7 @@ async function freeSupportRoute(req,res,urlObj){
       const finalizedProofsForUser=freeSupportRows(data.requests).filter(r=>r.type==='proof'&&String(r.user||'')===username&&['approved','rejected'].includes(String(r.status)));
       for(const finalized of finalizedProofsForUser){try{await freeSupportDeleteReviewedProof(finalized)}catch(e){console.warn('user-view finalized proof cleanup pending:',String(e?.message||e).slice(0,100));}}
       if(wallet.blocked&&!isAdm)return json(res,200,{ok:true,blocked:true,wallet:{points:wallet.points,warnings:wallet.warnings,acceptedRules:!!wallet.acceptedRules},dailyGift:freeSupportDailyGiftStatus(wallet),settings:data.settings,tasks:[],campaigns:[],myRequests:[]});
-      const tasks=freeSupportRows(data.tasks).filter(t=>t.enabled!==false&&freeSupportPlatform(data.settings,t.platform)).map(t=>({...t,title:t.autoTitle===true?freeSupportTaskTitle(t.serviceType,t.platformName||freeSupportPlatform(data.settings,t.platform)?.name||t.platform):t.title,rewardPoints:['followers','likes','views'].includes(String(t.serviceType||''))?freeSupportRewardPoints(data.settings,t.serviceType):Math.max(1,Math.floor(Number(t.rewardPoints)||1)),taskKind:'admin'}));
+      const tasks=freeSupportRows(data.tasks).filter(t=>t.deleted!==true&&t.enabled!==false&&freeSupportPlatform(data.settings,t.platform)).map(t=>({...t,title:t.autoTitle===true?freeSupportTaskTitle(t.serviceType,t.platformName||freeSupportPlatform(data.settings,t.platform)?.name||t.platform):t.title,rewardPoints:['followers','likes','views'].includes(String(t.serviceType||''))?freeSupportRewardPoints(data.settings,t.serviceType):Math.max(1,Math.floor(Number(t.rewardPoints)||1)),taskKind:'admin'}));
       const campaigns=freeSupportRows(data.requests).filter(r=>r.type==='campaign'&&r.user!==username&&['queued','in_progress'].includes(String(r.status))&&Number(r.completedQuantity||0)+Number(r.reservedQuantity||0)<Number(r.quantity||0)).map(r=>({id:r.id,taskKind:'campaign',platform:r.platform,platformName:r.platformName,serviceType:r.serviceType,title:r.title||r.serviceType,targetLink:r.targetLink,quantity:Number(r.quantity||0),completedQuantity:Number(r.completedQuantity||0),reservedQuantity:Number(r.reservedQuantity||0),rewardPoints:Math.max(1,Math.floor(Number(r.rewardPoints||data.settings.pointsPerUnit)||1)),status:r.status,createdAt:r.createdAt}));
       const campaignsSorted=campaigns.filter(r=>r.adminDeleted!==true).sort((a,b)=>(a.pinned===true?-1:0)-(b.pinned===true?-1:0)||(Date.parse(b.createdAt||0)||0)-(Date.parse(a.createdAt||0)||0));
       const myRequests=freeSupportRows(data.requests).filter(r=>r.user===username&&r.adminDeleted!==true&&!(r.type==='proof'&&['approved','rejected'].includes(String(r.status)))).sort((a,b)=>(Date.parse(b.createdAt||0)||0)-(Date.parse(a.createdAt||0)||0)).slice(0,500).map(r=>({...freeSupportPublicRequest(r),...(r.type==='campaign'?{waitNotice:String(r.waitNotice||FREE_SUPPORT_WAIT_NOTICE)}:{})}));
@@ -4836,15 +4957,21 @@ async function freeSupportRoute(req,res,urlObj){
         const imageBytes=Buffer.from(imageMatch[2],'base64');if(!imageBytes.length||imageBytes.length>900*1024)return json(res,413,{ok:false,error:'حجم صورة الإثبات بعد الضغط يجب ألا يتجاوز 900 كيلوبايت.'});
         const id='fsp_'+crypto.randomUUID().replace(/-/g,''),effectiveTaskId=campaignId?'campaign_'+campaignId:taskId;let task=null,campaign=null,rewardPoints=0,targetLink='';
         if(campaignId){campaign=await firebaseGetJson(freeSupportRequestPath(campaignId),7000);if(!campaign||campaign.type!=='campaign'||!['queued','in_progress'].includes(String(campaign.status)))return json(res,404,{ok:false,error:'طلب الدعم غير متاح أو اكتمل العدد المطلوب.'});if(String(campaign.user)===username)return json(res,403,{ok:false,error:'لا يمكنك تنفيذ طلب الدعم الذي أنشأته بنفسك.'});if(Number(campaign.completedQuantity||0)+Number(campaign.reservedQuantity||0)>=Number(campaign.quantity||0))return json(res,409,{ok:false,error:'اكتمل عدد المشاركين المطلوب لهذه الحملة.'});targetLink=String(campaign.targetLink||'');rewardPoints=Math.max(1,Math.floor(Number(campaign.rewardPoints||settings.pointsPerUnit)||1));}
-        else{task=freeSupportObject(tasksRaw)[firebaseSafeKey(taskId)];if(!task||task.enabled===false||!freeSupportPlatform(settings,task.platform))return json(res,404,{ok:false,error:'المهمة غير موجودة أو متوقفة.'});rewardPoints=['followers','likes','views'].includes(String(task.serviceType||''))?freeSupportRewardPoints(settings,task.serviceType):Math.max(1,Math.floor(Number(task.rewardPoints)||1));targetLink=String(task.targetLink||'');}
+        else{task=freeSupportObject(tasksRaw)[firebaseSafeKey(taskId)];if(!task||task.deleted===true||task.enabled===false||!freeSupportPlatform(settings,task.platform))return json(res,404,{ok:false,error:'المهمة غير موجودة أو متوقفة.'});rewardPoints=['followers','likes','views'].includes(String(task.serviceType||''))?freeSupportRewardPoints(settings,task.serviceType):Math.max(1,Math.floor(Number(task.rewardPoints)||1));targetLink=String(task.targetLink||'');}
         const claimPath=freeSupportClaimPath(effectiveTaskId,username);const claimTx=await firebaseTransaction(claimPath,current=>{if(current&&['pending_review','approved'].includes(String(current.status)))return {write:false,result:{duplicate:true,status:current.status}};return {write:true,value:{taskId:effectiveTaskId,requestId:id,status:'pending_review',user:username,createdAt:at},result:{claimed:true}}},9000,8);
         if(claimTx.result?.duplicate)return json(res,409,{ok:false,error:claimTx.result.status==='approved'?'سبق أن أكملت هذه المهمة وتم اعتمادها.':'لديك إثبات قيد المراجعة لهذه المهمة بالفعل.'});
         let reservedCampaign=false;
         if(campaignId){const reserve=await firebaseTransaction(freeSupportRequestPath(campaignId),current=>{if(!current||current.type!=='campaign'||!['queued','in_progress'].includes(String(current.status)))return {write:false,result:{unavailable:true}};const qty=Math.max(1,Math.floor(Number(current.quantity)||1)),completed=Math.max(0,Math.floor(Number(current.completedQuantity)||0)),reserved=Math.max(0,Math.floor(Number(current.reservedQuantity)||0));if(completed+reserved>=qty)return {write:false,result:{full:true}};current.reservedQuantity=reserved+1;current.status='in_progress';current.updatedAt=at;return {write:true,value:current,result:{reserved:true}}},9000,8);if(!reserve.result?.reserved){await firebaseDeleteJson(claimPath,5000).catch(()=>{});return json(res,409,{ok:false,error:'وصل طلب الدعم إلى العدد المطلوب؛ اختر مهمة أخرى.'});}reservedCampaign=true;}
         const reqRow={id,type:'proof',user:username,taskId:campaignId?'':taskId,campaignId:campaignId||'',taskKind:campaignId?'campaign':'admin',platform:campaign?.platform||task?.platform||'',platformName:campaign?.platformName||task?.platformName||'',serviceType:campaign?.serviceType||task?.serviceType||'متابعة',title:campaign?.title||task?.title||'تنفيذ مهمة',targetLink,rewardPoints,status:'pending_review',createdAt:at,updatedAt:at};
-        try{await firebaseWriteJson(freeSupportEvidencePath(id),{dataUrl:imageData,mimeType:'image/'+imageMatch[1].toLowerCase().replace('jpg','jpeg'),uploadedBy:username,uploadedAt:at},9000);await firebaseWriteJson(freeSupportRequestPath(id),reqRow,10000);}
-        catch(e){await firebaseDeleteJson(freeSupportEvidencePath(id),5000).catch(()=>{});await firebaseDeleteJson(claimPath,5000).catch(()=>{});if(reservedCampaign)await firebaseTransaction(freeSupportRequestPath(campaignId),cur=>{if(!cur)return {write:false};cur.reservedQuantity=Math.max(0,Number(cur.reservedQuantity||0)-1);cur.updatedAt=nowISO();return {write:true,value:cur,result:{released:true}}},8000,8).catch(()=>{});return json(res,503,{ok:false,error:'تعذر حفظ الطلب والصورة في قاعدة البيانات؛ لم نؤكد إرسال الطلب. حاول مرة أخرى.'});}
-        return json(res,201,{ok:true,request:freeSupportPublicRequest(reqRow),message:'تم إرسال إثبات المهمة إلى الإدارة. ستضاف النقاط بعد قبول الإثبات، ولا يمكن إلغاء الطلب بعد الإرسال.'});
+        const alertPath=freeSupportTelegramAlertPath(id);
+        try{
+          await firebaseWriteJson(freeSupportEvidencePath(id),{dataUrl:imageData,mimeType:'image/'+imageMatch[1].toLowerCase().replace('jpg','jpeg'),uploadedBy:username,uploadedAt:at},9000);
+          await firebaseWriteJson(freeSupportRequestPath(id),reqRow,10000);
+          await firebaseWriteJson(alertPath,{requestId:id,status:'pending',attempts:0,createdAt:at,updatedAt:at,targetChatId:String(telegramConfig().freeSupportChat||FREE_SUPPORT_TELEGRAM_CHAT_DEFAULT)},8000);
+        }
+        catch(e){await firebaseDeleteJson(alertPath,4000).catch(()=>{});await firebaseDeleteJson(freeSupportRequestPath(id),5000).catch(()=>{});await firebaseDeleteJson(freeSupportEvidencePath(id),5000).catch(()=>{});await firebaseDeleteJson(claimPath,5000).catch(()=>{});if(reservedCampaign)await firebaseTransaction(freeSupportRequestPath(campaignId),cur=>{if(!cur)return {write:false};cur.reservedQuantity=Math.max(0,Number(cur.reservedQuantity||0)-1);cur.updatedAt=nowISO();return {write:true,value:cur,result:{released:true}}},8000,8).catch(()=>{});return json(res,503,{ok:false,error:'تعذر حفظ الطلب والصورة وتجهيز إشعار القناة بصورة دائمة؛ لم نؤكد إرسال الطلب. حاول مرة أخرى.'});}
+        const telegramDelivery=await freeSupportDeliverProofTelegramAlert(id,{force:true}).catch(error=>({ok:false,queued:true,error:String(error.message||error)}));
+        return json(res,201,{ok:true,request:freeSupportPublicRequest(reqRow),telegramNotification:telegramDelivery.ok?'sent':'queued',telegramTarget:String(telegramConfig().freeSupportChat||FREE_SUPPORT_TELEGRAM_CHAT_DEFAULT),message:telegramDelivery.ok?'تم إرسال إثبات المهمة إلى الإدارة وأُرسل إشعار قناة قبول المهمات. ستضاف النقاط بعد قبول الإثبات.':'تم إرسال إثبات المهمة إلى الإدارة، ووُضع إشعار قناة القبول في قائمة إعادة المحاولة تلقائياً. ستضاف النقاط بعد قبول الإثبات، ولا يمكن إلغاء الطلب بعد الإرسال.'});
       }
       if(action==='create_campaign'&&!isAdminAction){
         const data=await freeSupportListData();if(data.settings.enabled===false)return json(res,503,{ok:false,error:'قسم الدعم المجاني متوقف حالياً من الإدارة.'});
@@ -4888,10 +5015,10 @@ async function freeSupportRoute(req,res,urlObj){
         if(actionAdmin==='save_task'){
           const id=String(b.id||('fst_'+crypto.randomUUID().replace(/-/g,''))).trim(),platformId=String(b.platform||'').trim().toLowerCase(),settings=freeSupportSafeSettings(await firebaseGetJson(FREE_SUPPORT_ROOT+'/settings',7000)||FREE_SUPPORT_DEFAULT_SETTINGS,FREE_SUPPORT_DEFAULT_SETTINGS),platform=freeSupportPlatform(settings,platformId),targetLink=freeSupportValidLink(b.targetLink),serviceType=String(b.serviceType||'followers').toLowerCase();
           if(!/^[a-zA-Z0-9_-]{5,90}$/.test(id)||!platform||!targetLink||!['followers','likes','views'].includes(serviceType))return json(res,422,{ok:false,error:'اختر منصة ونوع مهمة صحيحاً، وأدخل رابطاً صالحاً.'});
-          const old=await firebaseGetJson(freeSupportTaskPath(id),6000),title=freeSupportTaskTitle(serviceType,platform.name),rewardPoints=freeSupportRewardPoints(settings,serviceType),row={id,title,platform:platform.id,platformName:platform.name,serviceType,targetLink,rewardPoints,pricingLinked:true,autoTitle:true,enabled:b.enabled===undefined?(old?.enabled!==false):b.enabled===true,createdAt:old?.createdAt||at,updatedAt:at,createdBy:old?.createdBy||actor,updatedBy:actor};await firebaseWriteJson(freeSupportTaskPath(id),row,9000);return json(res,200,{ok:true,task:row});
+          const old=await firebaseGetJson(freeSupportTaskPath(id),6000),isArchived=old?.deleted===true&&b.restore!==true,title=freeSupportTaskTitle(serviceType,platform.name),rewardPoints=freeSupportRewardPoints(settings,serviceType),row={id,title,platform:platform.id,platformName:platform.name,serviceType,targetLink,rewardPoints,pricingLinked:true,autoTitle:true,enabled:b.enabled===undefined?(old?.enabled!==false&&!isArchived):b.enabled===true,deleted:isArchived,createdAt:old?.createdAt||at,updatedAt:at,createdBy:old?.createdBy||actor,updatedBy:actor};await firebaseWriteJson(freeSupportTaskPath(id),row,9000);return json(res,200,{ok:true,task:row});
         }
         if(actionAdmin==='toggle_task'||actionAdmin==='delete_task'){
-          const id=String(b.id||'').trim();if(!id)return json(res,422,{ok:false,error:'رقم المهمة مطلوب.'});let row=await firebaseGetJson(freeSupportTaskPath(id),6000);if(!row)return json(res,404,{ok:false,error:'المهمة غير موجودة.'});if(actionAdmin==='delete_task'){row={...row,enabled:false,deleted:true,updatedAt:at,updatedBy:actor};}else row={...row,enabled:b.enabled===true,updatedAt:at,updatedBy:actor};await firebaseWriteJson(freeSupportTaskPath(id),row,8000);return json(res,200,{ok:true,task:row});
+          const id=String(b.id||'').trim();if(!id)return json(res,422,{ok:false,error:'رقم المهمة مطلوب.'});let row=await firebaseGetJson(freeSupportTaskPath(id),6000);if(!row)return json(res,404,{ok:false,error:'المهمة غير موجودة.'});if(actionAdmin==='delete_task'){row={...row,enabled:false,deleted:true,updatedAt:at,updatedBy:actor};}else if(b.enabled===true){row={...row,enabled:true,deleted:false,updatedAt:at,updatedBy:actor};}else{row={...row,enabled:false,deleted:row.deleted===true,updatedAt:at,updatedBy:actor};}await firebaseWriteJson(freeSupportTaskPath(id),row,8000);return json(res,200,{ok:true,task:row,archived:row.deleted===true,message:row.deleted?'أُزيلت المهمة من قائمة المستخدمين وبقي سجلها محفوظاً.':row.enabled?'تم تفعيل المهمة وإعادتها للقائمة.':'تم إيقاف المهمة مؤقتاً.'});
         }
         if(actionAdmin==='approve'||actionAdmin==='reject'){
           const id=String(b.id||'').trim(),reason=String(b.reason||'').trim().slice(0,500);if(!id)return json(res,422,{ok:false,error:'رقم الطلب مطلوب.'});const path=freeSupportRequestPath(id);let row=await firebaseGetJson(path,7000);if(!row||row.type!=='proof')return json(res,404,{ok:false,error:'طلب إثبات المهمة غير موجود.'});
@@ -6365,7 +6492,7 @@ async function routeAPI(req,res,urlObj){
     if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
     await hydrateTelegramChannelsFromFirebase().catch(()=>{});
     const cfg=telegramConfig(),storedCfg=readJSON('settings.json',{}).telegram||{};
-    return json(res,200,{ok:true,telegram:{enabled:cfg.enabled,tokenSet:!!cfg.token,tokenSource:cfg.tokenSource,tokenProblem:cfg.tokenEncryptionError?'التوكن المحفوظ مشفّر لكن تعذّر فك تشفيره. تحقق من ثبات SADA_ENCRYPTION_KEY أو SESSION_SECRET نفسه المستخدم عند الحفظ.':'',encryptionReady:telegramEncryptionReady(),durableStorage:DATA_IS_EXTERNAL,tokenFromEnvironment:!!String(process.env.TELEGRAM_BOT_TOKEN||'').trim(),tokenStoredEncrypted:!!storedCfg.tokenEncrypted,chat:cfg.chat||'',activationChat:cfg.activationChat||'',overdueChat:cfg.overdueChat||'',adminChat:cfg.adminChat||'',activationEnvLocked:cfg.activationEnvLocked,overdueEnvLocked:cfg.overdueEnvLocked,adminEnvLocked:cfg.adminEnvLocked,extraChatsCount:(cfg.extraChats||[]).length}});
+    return json(res,200,{ok:true,telegram:{enabled:cfg.enabled,tokenSet:!!cfg.token,tokenSource:cfg.tokenSource,tokenProblem:cfg.tokenEncryptionError?'التوكن المحفوظ مشفّر لكن تعذّر فك تشفيره. تحقق من ثبات SADA_ENCRYPTION_KEY أو SESSION_SECRET نفسه المستخدم عند الحفظ.':'',encryptionReady:telegramEncryptionReady(),durableStorage:DATA_IS_EXTERNAL,tokenFromEnvironment:!!String(process.env.TELEGRAM_BOT_TOKEN||'').trim(),tokenStoredEncrypted:!!storedCfg.tokenEncrypted,chat:cfg.chat||'',activationChat:cfg.activationChat||'',overdueChat:cfg.overdueChat||'',adminChat:cfg.adminChat||'',freeSupportChat:cfg.freeSupportChat||FREE_SUPPORT_TELEGRAM_CHAT_DEFAULT,activationEnvLocked:cfg.activationEnvLocked,overdueEnvLocked:cfg.overdueEnvLocked,adminEnvLocked:cfg.adminEnvLocked,freeSupportEnvLocked:cfg.freeSupportEnvLocked,extraChatsCount:(cfg.extraChats||[]).length}});
   }
   if(p==='/api/admin/telegram' && req.method==='POST'){
     if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
@@ -6379,17 +6506,17 @@ async function routeAPI(req,res,urlObj){
       if(!check.ok){const status=Number(check.status||0);return json(res,status===401||status===404?422:503,{ok:false,error:status===401||status===404?'Telegram رفض التوكن. ألغِ التوكن المكشوف وأنشئ توكناً جديداً من BotFather.':'تعذر التحقق من التوكن عبر Telegram؛ لم يتم حفظه. '+String(check.description||check.error||'تحقق من اتصال الخادم وحاول مجدداً.'),telegramStatus:status||null});}
       verifiedBot=check.resultInfo||null;tg.tokenEncrypted=encryptSecret(newToken);delete tg.token;
     }
-    const chatUpdates=[['adminChat','adminEnvLocked'],['activationChat','activationEnvLocked'],['overdueChat','overdueEnvLocked']];
+    const chatUpdates=[['adminChat','adminEnvLocked'],['activationChat','activationEnvLocked'],['overdueChat','overdueEnvLocked'],['freeSupportChat','freeSupportEnvLocked']];
     if(b.chat!==undefined&&!telegramConfig().activationEnvLocked){const v=normalizeTelegramChatTarget(b.chat);if(!validTelegramChatTarget(v))return json(res,422,{ok:false,error:'معرّف الوجهة غير صالح. استخدم @اسم_قناة أو رقم Chat ID.'});tg.chat=v;tg.activationChat=v;}
     for(const [field,lock] of chatUpdates){if(b[field]===undefined)continue;const current=telegramConfig();if(current[lock])continue;const value=normalizeTelegramChatTarget(b[field]);if(!validTelegramChatTarget(value))return json(res,422,{ok:false,error:field==='adminChat'?'معرّف حساب الأدمن غير صالح.':'معرّف القناة غير صالح. استخدم @اسم_قناة أو رقم Chat ID.'});tg[field]=value;if(field==='activationChat')tg.chat=value;}
     if(tg.token&&!tg.tokenEncrypted){if(!telegramEncryptionReady())return json(res,503,{ok:false,error:'التوكن القديم لم يمكن تشفيره بأمان. اضبط مفتاح تشفير ثابتاً في Railway قبل الحفظ.'});tg.tokenEncrypted=encryptSecret(tg.token);delete tg.token;}
     cfg.telegram=tg;writeJSON('settings.json',cfg);
     let firebaseChannelsSaved=false,firebaseSecretSaved=false;
-    try{const channelData={activationChat:tg.activationChat||tg.chat||'',overdueChat:tg.overdueChat||'',adminChat:tg.adminChat||'',enabled:tg.enabled!==false,updatedAt:nowISO()};await firebaseWriteJson('config/telegramChannels',channelData,6000);TELEGRAM_CHANNELS_REMOTE=channelData;firebaseChannelsSaved=true;}catch(e){console.warn('Telegram channel persistence Firebase failed:',String(e.message||e).slice(0,100));}
+    try{const channelData={activationChat:tg.activationChat||tg.chat||'',overdueChat:tg.overdueChat||'',adminChat:tg.adminChat||'',freeSupportChat:tg.freeSupportChat||telegramConfig().freeSupportChat||FREE_SUPPORT_TELEGRAM_CHAT_DEFAULT,enabled:tg.enabled!==false,updatedAt:nowISO()};await firebaseWriteJson('config/telegramChannels',channelData,6000);TELEGRAM_CHANNELS_REMOTE=channelData;firebaseChannelsSaved=true;}catch(e){console.warn('Telegram channel persistence Firebase failed:',String(e.message||e).slice(0,100));}
     if(tg.tokenEncrypted){try{await firebaseWriteJson('config/telegramSecret',{tokenEncrypted:tg.tokenEncrypted,updatedAt:nowISO()},6000);firebaseSecretSaved=true;}catch(e){console.warn('Encrypted Telegram secret Firebase persistence failed:',String(e.message||e).slice(0,100));}}
     const durable=DATA_IS_EXTERNAL||firebaseChannelsSaved&&(!tg.tokenEncrypted||firebaseSecretSaved);
     if(!durable)return json(res,503,{ok:false,error:'لم يتأكد الحفظ الدائم. تم رفض اعتبار الإعدادات محفوظة؛ اربط Railway Volume على /data مع SADA_DATA_DIR=/data أو أصلح صلاحيات الكتابة في Firebase ثم أعد الحفظ.',persistent:false});
-    return json(res,200,{ok:true,persistent:true,storageMode:firebaseChannelsSaved?'firebase+local':'external-volume',verifiedBot,warning:tg.tokenEncrypted&&!firebaseSecretSaved?'تم تشفير التوكن وحفظه على مساحة دائمة، لكن النسخة المشفرة في Firebase لم تتحدث.':undefined,telegram:{enabled:tg.enabled!==false,tokenSet:!!(tg.tokenEncrypted||process.env.TELEGRAM_BOT_TOKEN),tokenSource:tg.tokenEncrypted?'admin-panel':process.env.TELEGRAM_BOT_TOKEN?'railway-variable':'none',chat:tg.activationChat||tg.chat||'',activationChat:tg.activationChat||tg.chat||'',adminChat:tg.adminChat||'',overdueChat:tg.overdueChat||''}});
+    return json(res,200,{ok:true,persistent:true,storageMode:firebaseChannelsSaved?'firebase+local':'external-volume',verifiedBot,warning:tg.tokenEncrypted&&!firebaseSecretSaved?'تم تشفير التوكن وحفظه على مساحة دائمة، لكن النسخة المشفرة في Firebase لم تتحدث.':undefined,telegram:{enabled:tg.enabled!==false,tokenSet:!!(tg.tokenEncrypted||process.env.TELEGRAM_BOT_TOKEN),tokenSource:tg.tokenEncrypted?'admin-panel':process.env.TELEGRAM_BOT_TOKEN?'railway-variable':'none',chat:tg.activationChat||tg.chat||'',activationChat:tg.activationChat||tg.chat||'',adminChat:tg.adminChat||'',overdueChat:tg.overdueChat||'',freeSupportChat:tg.freeSupportChat||telegramConfig().freeSupportChat||FREE_SUPPORT_TELEGRAM_CHAT_DEFAULT}});
   }
   if(p==='/api/admin/telegram/test' && req.method==='POST'){
     if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
@@ -6408,7 +6535,14 @@ async function routeAPI(req,res,urlObj){
     return json(res,r.ok?200:502,{ok:r.ok,error:r.ok?'أكد Telegram إرسال إشعار الطلب التجريبي':(r.description||r.error||'فشل إرسال إشعار الطلب'),status:r.status||null,messageId:r.messageId||null,chat:r.resultInfo?.chat||null});
   }
   if(p==='/api/admin/telegram/test-channel' && req.method==='POST'){
-    if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});const b=await bodyJSON(req);const channel=['overdue','admin'].includes(b.channel)?b.channel:'activation';const r=await notifyTelegramRecipients(String(b.text||('🧪 اختبار '+(channel==='overdue'?'قناة الطلبات المتأخرة':channel==='admin'?'حساب مدير صدى العراق':'قناة التفعيلات')+' — صدى العراق')),{channel,kind:'manual_channel_test'});
+    if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});const b=await bodyJSON(req);const requestedChannel=String(b.channel||'activation');
+    if(['free-support','free_support','freeSupport'].includes(requestedChannel)){
+      const tg=telegramConfig(),target=String(tg.freeSupportChat||FREE_SUPPORT_TELEGRAM_CHAT_DEFAULT).trim();
+      const text=String(b.text||('🧪 اختبار قناة قبول مهام الدعم الحقيقي المجاني — صدى العراق\nالوجهة: '+target+'\n'+new Date().toLocaleString('ar-IQ'))).slice(0,1024);
+      const r=await sendTelegramDetailed(text,{kind:'free_support_channel_test',chatId:target,attachPhoto:false});
+      return json(res,r.ok?200:502,{ok:!!r.ok,primaryOk:!!r.ok,delivered:!!r.ok,target:'free-support',chatId:target,messageId:r.messageId||null,chat:r.resultInfo?.chat||null,error:r.ok?'✅ نجح اختبار قناة قبول المهمات ووصلت رسالة فعلية. أرسل إثباتاً تجريبياً داخل الموقع للتأكد من وصول صور الإثبات أيضاً.':'❌ فشل اختبار قناة قبول المهمات: '+String(r.error||r.description||'لم يؤكد Telegram الاستلام'),description:r.description||r.error||''});
+    }
+    const channel=['overdue','admin'].includes(requestedChannel)?requestedChannel:'activation';const r=await notifyTelegramRecipients(String(b.text||('🧪 اختبار '+(channel==='overdue'?'قناة الطلبات المتأخرة':channel==='admin'?'حساب مدير صدى العراق':'قناة التفعيلات')+' — صدى العراق')),{channel,kind:'manual_channel_test'});
     const perTarget=(r.results||[]).map(x=>(x.ok?'✅ نجح ':'❌ فشل ')+String(x.chatId||'وجهة')+(x.messageId?' · رسالة #'+x.messageId:'')+(x.error?' — '+String(x.error):'')).join(' | ');const summary=r.primaryOk?'أكد Telegram الإرسال إلى الوجهة المطلوبة.':r.fallbackSent?'تنبيه: لم تصل الرسالة إلى الوجهة المطلوبة، لكن وصلت إلى الوجهة الاحتياطية. أضف البوت إلى قناة التفعيلات بصلاحية نشر الرسائل حتى تصل هناك.':'لم تصل الرسالة إلى الوجهة المطلوبة ولا توجد وجهة احتياطية أكدت الاستلام.';return json(res,r.ok?200:502,{ok:r.ok,primaryOk:!!r.primaryOk,delivered:!!r.delivered,fallbackSent:!!r.fallbackSent,deliveredTo:r.deliveredTo||[],error:summary,description:r.description||'',results:r.results||[],target:channel});
   }
   if(p==='/api/admin/telegram/logs' && req.method==='GET'){if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});return json(res,200,{ok:true,logs:readJSON('telegram_notifications.json',[]).slice(-50).reverse()});}
@@ -6424,7 +6558,7 @@ async function routeAPI(req,res,urlObj){
     if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
     const settings=readJSON('settings.json',{});let remote=null;try{remote=await firebaseGetJson('config/welcomePopup',5000)}catch(_){}
     const localWelcome=settings.welcomePopup&&typeof settings.welcomePopup==='object'?settings.welcomePopup:{};const remoteWelcome=remote&&typeof remote==='object'?remote:{};const welcome=(Date.parse(remoteWelcome.updatedAt||'')||0)>=(Date.parse(localWelcome.updatedAt||'')||0)?{...localWelcome,...remoteWelcome}:{...remoteWelcome,...localWelcome};const tg=telegramConfig();
-    return json(res,200,{ok:true,welcome:{enabled:welcome.enabled!==false,showEveryEntry:welcome.showEveryEntry!==false,splashEnabled:welcome.splashEnabled!==false,title:welcome.title||'مرحباً بكم في صدى العراق!',subtitle:welcome.subtitle||'مرحباً بك، يسعدنا حضورك. نحن إلى جانبك في كل وقت.',tutorialTitle:welcome.tutorialTitle||'شرح التطبيق',tutorialSubtitle:welcome.tutorialSubtitle||'شاهد شرح الاستخدام بالتفصيل',tutorialUrl:welcome.tutorialUrl||settings.tutorialUrl||settings.youtubeUrl||'https://youtu.be/vVZv3xv8LnU?si=cvSbqCAgwSB1VLJE',whatsappTitle:welcome.whatsappTitle||'دعم الواتساب',whatsappSubtitle:welcome.whatsappSubtitle||'تحدث معنا على واتساب',whatsappUrl:welcome.whatsappUrl||settings.waUrl||'https://wa.me/9647762267959',telegramTitle:welcome.telegramTitle||'قناة التليجرام',telegramSubtitle:welcome.telegramSubtitle||'تابع آخر الأخبار والتحديثات',telegramUrl:(()=>{const u=String(welcome.telegramUrl||'https://t.me/jbhbhg58');return /^https:\/\/t\.me\/hddjh55\/?$/i.test(u)?'https://t.me/jbhbhg58':u})()},channels:{activationChat:tg.activationChat||'',overdueChat:tg.overdueChat||'',activationEnvLocked:tg.activationEnvLocked,overdueEnvLocked:tg.overdueEnvLocked},telegram:{enabled:tg.enabled,tokenSet:!!tg.token}});
+    return json(res,200,{ok:true,welcome:{enabled:welcome.enabled!==false,showEveryEntry:welcome.showEveryEntry!==false,splashEnabled:welcome.splashEnabled!==false,title:welcome.title||'مرحباً بكم في صدى العراق!',subtitle:welcome.subtitle||'مرحباً بك، يسعدنا حضورك. نحن إلى جانبك في كل وقت.',tutorialTitle:welcome.tutorialTitle||'شرح التطبيق',tutorialSubtitle:welcome.tutorialSubtitle||'شاهد شرح الاستخدام بالتفصيل',tutorialUrl:welcome.tutorialUrl||settings.tutorialUrl||settings.youtubeUrl||'https://youtu.be/vVZv3xv8LnU?si=cvSbqCAgwSB1VLJE',whatsappTitle:welcome.whatsappTitle||'دعم الواتساب',whatsappSubtitle:welcome.whatsappSubtitle||'تحدث معنا على واتساب',whatsappUrl:welcome.whatsappUrl||settings.waUrl||'https://wa.me/9647762267959',telegramTitle:welcome.telegramTitle||'قناة التليجرام',telegramSubtitle:welcome.telegramSubtitle||'تابع آخر الأخبار والتحديثات',telegramUrl:(()=>{const u=String(welcome.telegramUrl||'https://t.me/jbhbhg58');return /^https:\/\/t\.me\/hddjh55\/?$/i.test(u)?'https://t.me/jbhbhg58':u})()},channels:{activationChat:tg.activationChat||'',overdueChat:tg.overdueChat||'',freeSupportChat:tg.freeSupportChat||FREE_SUPPORT_TELEGRAM_CHAT_DEFAULT,activationEnvLocked:tg.activationEnvLocked,overdueEnvLocked:tg.overdueEnvLocked,freeSupportEnvLocked:tg.freeSupportEnvLocked},telegram:{enabled:tg.enabled,tokenSet:!!tg.token}});
   }
   if(p==='/api/admin/welcome-settings' && req.method==='POST'){
     if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
@@ -6435,16 +6569,17 @@ async function routeAPI(req,res,urlObj){
     const tg={...(old.telegram||{})};if(b.telegramEnabled!==undefined)tg.enabled=b.telegramEnabled===true;const validateChat=(x)=>{const v=normalizeTelegramChatTarget(x);return !v||validTelegramChatTarget(v)};
     if(channels.activationChat!==undefined&&!telegramConfig().activationEnvLocked){if(!validateChat(channels.activationChat))return json(res,422,{ok:false,error:'اسم قناة التفعيلات غير صالح'});tg.activationChat=normalizeTelegramChatTarget(channels.activationChat);tg.chat=tg.activationChat||tg.chat||'';}
     if(channels.overdueChat!==undefined&&!telegramConfig().overdueEnvLocked){if(!validateChat(channels.overdueChat))return json(res,422,{ok:false,error:'اسم قناة الطلبات المتأخرة غير صالح'});tg.overdueChat=normalizeTelegramChatTarget(channels.overdueChat);}
+    if(channels.freeSupportChat!==undefined&&!telegramConfig().freeSupportEnvLocked){if(!validateChat(channels.freeSupportChat))return json(res,422,{ok:false,error:'اسم قناة قبول مهام الدعم المجاني غير صالح'});tg.freeSupportChat=normalizeTelegramChatTarget(channels.freeSupportChat)||FREE_SUPPORT_TELEGRAM_CHAT_DEFAULT;}
     old.welcomePopup=welcome;old.telegram=tg;writeJSON('settings.json',old);
     let firebaseWelcome=false,firebaseChannels=false,errors=[];
     try{await firebaseWriteJson('config/welcomePopup',welcome,7000);firebaseWelcome=true}catch(e){errors.push('welcome: '+String(e.message||e).slice(0,120))}
-    if(wantsChannelUpdate){try{const channelData={activationChat:tg.activationChat||'',overdueChat:tg.overdueChat||'',enabled:tg.enabled!==false,updatedAt:nowISO()};await firebaseWriteJson('config/telegramChannels',channelData,7000);TELEGRAM_CHANNELS_REMOTE=channelData;firebaseChannels=true}catch(e){errors.push('channels: '+String(e.message||e).slice(0,120))}}
+    if(wantsChannelUpdate){try{const liveTelegram=telegramConfig();const channelData={activationChat:tg.activationChat||liveTelegram.activationChat||'',overdueChat:tg.overdueChat||liveTelegram.overdueChat||'',adminChat:tg.adminChat||liveTelegram.adminChat||'',freeSupportChat:tg.freeSupportChat||liveTelegram.freeSupportChat||FREE_SUPPORT_TELEGRAM_CHAT_DEFAULT,enabled:tg.enabled!==false,updatedAt:nowISO()};await firebaseWriteJson('config/telegramChannels',channelData,7000);TELEGRAM_CHANNELS_REMOTE=channelData;firebaseChannels=true}catch(e){errors.push('channels: '+String(e.message||e).slice(0,120))}}
     // Welcome settings are independently durable. A channel-write failure must not make
     // a successfully persisted welcome/tutorial save look as though it failed.
     const durable=firebaseWelcome||DATA_IS_EXTERNAL;
-    if(!durable)return json(res,503,{ok:false,error:'لم يكتمل الحفظ الدائم لإعدادات الترحيب. تم حفظ نسخة محلية مؤقتة فقط، لكن Firebase رفض الحفظ ولا يوجد Railway Volume مؤكد. افحص صلاحيات كتابة Firebase ثم أعد الحفظ.',welcome,channels:{activationChat:tg.activationChat||telegramConfig().activationChat||'',overdueChat:tg.overdueChat||telegramConfig().overdueChat||''},persisted:false,firebaseWelcome,firebaseChannels:wantsChannelUpdate?firebaseChannels:null,errors});
+    if(!durable)return json(res,503,{ok:false,error:'لم يكتمل الحفظ الدائم لإعدادات الترحيب. تم حفظ نسخة محلية مؤقتة فقط، لكن Firebase رفض الحفظ ولا يوجد Railway Volume مؤكد. افحص صلاحيات كتابة Firebase ثم أعد الحفظ.',welcome,channels:{activationChat:tg.activationChat||telegramConfig().activationChat||'',overdueChat:tg.overdueChat||telegramConfig().overdueChat||'',freeSupportChat:tg.freeSupportChat||telegramConfig().freeSupportChat||FREE_SUPPORT_TELEGRAM_CHAT_DEFAULT},persisted:false,firebaseWelcome,firebaseChannels:wantsChannelUpdate?firebaseChannels:null,errors});
     const warning=!firebaseWelcome?'تم الحفظ في مساحة دائمة على الخادم، لكن Firebase لم يؤكد حفظ إعدادات الترحيب.':(wantsChannelUpdate&&!firebaseChannels?'تم حفظ إعدادات الترحيب، لكن لم تكتمل مزامنة إعدادات القنوات.':'');
-    return json(res,200,{ok:true,welcome,channels:{activationChat:tg.activationChat||telegramConfig().activationChat||'',overdueChat:tg.overdueChat||telegramConfig().overdueChat||''},persisted:true,firebaseWelcome,firebaseChannels:wantsChannelUpdate?firebaseChannels:null,warning,errors});
+    return json(res,200,{ok:true,welcome,channels:{activationChat:tg.activationChat||telegramConfig().activationChat||'',overdueChat:tg.overdueChat||telegramConfig().overdueChat||'',freeSupportChat:tg.freeSupportChat||telegramConfig().freeSupportChat||FREE_SUPPORT_TELEGRAM_CHAT_DEFAULT},persisted:true,firebaseWelcome,firebaseChannels:wantsChannelUpdate?firebaseChannels:null,warning,errors});
   }
   if(p==='/api/admin/refunds' && req.method==='GET'){
     if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
@@ -7324,7 +7459,7 @@ async function routeAPI(req,res,urlObj){
     try { buildFile=fs.readFileSync(path.join(ROOT,'BUILD_ID.txt'),'utf8').trim(); } catch(_) {}
     const deploymentConsistent=uiVersion===APP_VERSION && uiBuildId===BUILD_ID && versionFile===APP_VERSION && buildFile===BUILD_ID;
     const dbInfo=firebaseDatabaseDiagnosticInfo();
-    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.69',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
+    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.72',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
     // Keep operational configuration details private; only an authenticated admin can inspect them.
     if(isAdmin(req)){const credentialStatus=firebaseServiceAccountStatus();health.firebaseDatabase={host:dbInfo.host,source:dbInfo.source,databaseProjectHint:dbInfo.databaseProjectHint,serviceAccountProjectId:dbInfo.serviceAccountProjectId||null,configuredWebProjectId:dbInfo.configuredWebProjectId||null,serviceAccountProjectMatch:dbInfo.serviceAccountProjectMatch};health.securityConfig={sessionSecretConfigured:!!String(process.env.SESSION_SECRET||'').trim(),dedicatedEncryptionKeyConfigured:!!String(process.env.SADA_ENCRYPTION_KEY||'').trim(),stableEncryptionAvailable:telegramEncryptionReady(),firebaseConfigured:!!FIREBASE_DATABASE_URL,firebaseServiceAccountConfigured:credentialStatus.ok,firebaseCredentialStatus:{ok:credentialStatus.ok,code:credentialStatus.code,source:credentialStatus.source,message:credentialStatus.message},firebaseDatabaseSecretConfigured:!!String(process.env.FIREBASE_DATABASE_SECRET||'').trim(),firebaseAuthAvailable:firebaseAuthAvailable(),emailServiceConfigured:!!(String(process.env.RESEND_API_KEY||'').trim()&&String(process.env.RESEND_FROM_EMAIL||process.env.EMAIL_FROM||'').trim()),telegramTokenFromEnvironment:!!String(process.env.TELEGRAM_BOT_TOKEN||'').trim(),adminPasswordFromEnvironment:!!(String(process.env.ADMIN_PASSWORD||'').trim()||String(process.env.ADMIN_PASSWORD_HASH||'').trim()),adminPasswordConfigured:adminPasswordConfigured()};}
     return json(res,200,health);
@@ -7577,7 +7712,7 @@ server.listen(PORT,'0.0.0.0',()=>{
   // Bind HTTP before any remote Firebase hydration so saved sessions respond immediately.
   Promise.allSettled([hydrateProviderRuntimeFromFirebase(),hydrateTelegramChannelsFromFirebase(),hydrateApiServicesFromFirebase()]).then(()=>{
     // The bundled Base44 dump was removed from this release. Only the explicitly configured Firebase is used.
-    setTimeout(()=>{runOrderAuditMonitor().catch(()=>{});runTelegramNewOrdersMonitor().catch(()=>{});runRefundReconciliationMonitor().catch(()=>{});},2500).unref();
-    setInterval(()=>{runOrderAuditMonitor().catch(()=>{});runTelegramNewOrdersMonitor().catch(()=>{});runRefundReconciliationMonitor().catch(()=>{});},120*1000).unref();
+    setTimeout(()=>{runOrderAuditMonitor().catch(()=>{});runTelegramNewOrdersMonitor().catch(()=>{});runRefundReconciliationMonitor().catch(()=>{});runFreeSupportTelegramProofOutbox().catch(()=>{});},3000).unref();
+    setInterval(()=>{runOrderAuditMonitor().catch(()=>{});runTelegramNewOrdersMonitor().catch(()=>{});runRefundReconciliationMonitor().catch(()=>{});runFreeSupportTelegramProofOutbox().catch(()=>{});},60*1000).unref();
   });
 });
