@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
-<meta name="sada-version" content="1.6.67">
-<meta name="sada-build-id" content="SADA-1.6.67-FREE-SUPPORT-PLATFORM-UX-20261017">
+<meta name="sada-version" content="1.6.69">
+<meta name="sada-build-id" content="SADA-1.6.69-FREE-SUPPORT-TASK-COMPLETION-BALANCE-AUDIT-20261017">
 <script id="sada168-session-presence">try{window.__SADA_BOOT_HAD_SESSION=Boolean(localStorage.getItem('sadairaq_session_token')||localStorage.getItem('tz_u'));}catch(_){window.__SADA_BOOT_HAD_SESSION=false}</script>
 
 <style id="sada167-preboot-splash-style">
@@ -2837,7 +2837,7 @@ html.sada-lite-motion .ks-particle{display:none!important}
         </div>
         <i class="fas fa-ellipsis" style="color:var(--t2);font-size:12px;flex-shrink:0"></i>
       </div>
-      <div id="sada-sidebar-version" class="sada-sidebar-version" aria-label="إصدار التطبيق 2.41"><i class="fas fa-code-branch" aria-hidden="true"></i><span>إصدار التطبيق</span><b>2.41</b></div>
+      <div id="sada-sidebar-version" class="sada-sidebar-version" aria-label="إصدار التطبيق 2.43"><i class="fas fa-code-branch" aria-hidden="true"></i><span>إصدار التطبيق</span><b>2.43</b></div>
     </div>
   </div>
 
@@ -6582,7 +6582,7 @@ function tgSend(msg){fetch(`https://api.telegram.org/bot${CFG.tg.token}/sendMess
   };
   // Refresh the catalog index only; never rewrite every service's image on page load.
   setTimeout(()=>{hydrateAllCategoryMeta().then(()=>{repairServiceIndex();try{window.buildCatDD?.();window.buildSvcDD?.(SEL_CAT||'__all__')}catch(_){}})},900);
-  window.SadaIraqBuildId='SADA-1.6.67-FREE-SUPPORT-PLATFORM-UX-20261017';
+  window.SadaIraqBuildId='SADA-1.6.69-FREE-SUPPORT-TASK-COMPLETION-BALANCE-AUDIT-20261017';
 })();
 
 </script>
@@ -8180,7 +8180,7 @@ function admPays(){nav('admin');setTimeout(()=>admNavTo('payments',null),150);}
 ═══════════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  const SADA_VERSION='1.6.67';
+  const SADA_VERSION='1.6.69';
   const RATE=1250;
   const ATHIR_NUMBER='07903221783';
     window.SadaIraqVersion=SADA_VERSION;
@@ -8201,7 +8201,7 @@ function admPays(){nav('admin');setTimeout(()=>admNavTo('payments',null),150);}
       b=document.createElement('div'); b.id='sadairaq-version-badge';
       document.body.appendChild(b);
     }
-    const EXPECTED_BUILD='SADA-1.6.67-FREE-SUPPORT-PLATFORM-UX-20261017';
+    const EXPECTED_BUILD='SADA-1.6.69-FREE-SUPPORT-TASK-COMPLETION-BALANCE-AUDIT-20261017';
     const applyClientVersion=()=>{
       b.dataset.deployState='checking';
       b.textContent='صدى العراق · الإصدار '+SADA_VERSION+' · جارٍ فحص الخادم…';
@@ -8528,7 +8528,7 @@ function admPays(){nav('admin');setTimeout(()=>admNavTo('payments',null),150);}
   const ensure=fn=>document.readyState==='loading'?document.addEventListener('DOMContentLoaded',fn,{once:true}):fn();
   window.SECTION_META=window.SECTION_META||{};
   window.SadaIraqVersion=V;
-window.SadaIraqBuildId='SADA-1.6.67-FREE-SUPPORT-PLATFORM-UX-20261017';
+window.SadaIraqBuildId='SADA-1.6.69-FREE-SUPPORT-TASK-COMPLETION-BALANCE-AUDIT-20261017';
 
   function safe(v){return txt(v).replace(/[&<>\"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[m]));}
   function appLabel(id){const p=(CFG.platforms||[]).find(x=>x.id===id);return p?.lbl||id||'عام';}
@@ -8928,7 +8928,7 @@ const safe=v=>String(v??'').replace(/[&<>\"']/g,m=>({'&':'&amp;','<':'&lt;','>':
 const api=window.apiJSON||((p,o)=>fetch(p,Object.assign({credentials:'include',cache:'no-store',headers:{'Content-Type':'application/json'}},o||{})).then(async r=>{const t=await r.text();let d={};try{d=t?JSON.parse(t):{}}catch(_){d={error:t}}if(!r.ok||d.error)throw new Error(d.error||('HTTP '+r.status));return d;}));
 const mk=window.mk||((tag,cls,txt)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(txt!==undefined)e.textContent=txt;return e;});
 window.SadaIraqVersion=V;
-window.SadaIraqBuildId='SADA-1.6.67-FREE-SUPPORT-PLATFORM-UX-20261017';
+window.SadaIraqBuildId='SADA-1.6.69-FREE-SUPPORT-TASK-COMPLETION-BALANCE-AUDIT-20261017';
 
 function setVersion(){
   const b=$('sadairaq-version-badge');
@@ -12099,7 +12099,7 @@ curl -X POST ${base}/order -H "Authorization: Bearer YOUR_API_KEY" -H "Content-T
   document.addEventListener('DOMContentLoaded',startFinal);window.addEventListener('load',()=>setTimeout(startFinal,100));setTimeout(startFinal,250);setTimeout(startFinal,1200);
   // Observe the whole document so both independent controls survive page/route re-renders.
   if(document.body){const mo=new MutationObserver(()=>{ensureOrderWhatsApp();});mo.observe(document.body,{childList:true,subtree:true});}
-  window.__SADA_V1562_DIAGNOSTIC__={version:'1.6.67',buildId:'SADA-1.6.67-FREE-SUPPORT-PLATFORM-UX-20261017',hasFetchGuard:true,orderAudit:true};
+  window.__SADA_V1562_DIAGNOSTIC__={version:'1.6.69',buildId:'SADA-1.6.69-FREE-SUPPORT-TASK-COMPLETION-BALANCE-AUDIT-20261017',hasFetchGuard:true,orderAudit:true};
 })();
 </script>
 
@@ -12452,7 +12452,7 @@ curl -X POST ${base}/order -H "Authorization: Bearer YOUR_API_KEY" -H "Content-T
   const oldNav=window.nav;window.nav=function(name){const result=oldNav?oldNav.apply(this,arguments):undefined;setTimeout(safeEnhance,40);return result};
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{safeEnhance();setTimeout(safeEnhance,300);setTimeout(safeEnhance,1000)},{once:true});else{safeEnhance();setTimeout(safeEnhance,300)}
   if(document.body&&window.MutationObserver){let queued=false;const mo=new MutationObserver(()=>{if(queued)return;queued=true;requestAnimationFrame(()=>{queued=false;safeEnhance()})});mo.observe(document.body,{childList:true,subtree:true})}
-  window.__SADA_V1551_DIAGNOSTIC__={version:'1.6.67',features:['image-bounds','catalog-order','preserve-service-names','whatsapp-recharge','api-live-test']};
+  window.__SADA_V1551_DIAGNOSTIC__={version:'1.6.69',features:['image-bounds','catalog-order','preserve-service-names','whatsapp-recharge','api-live-test']};
 })();
 </script>
 
@@ -12555,7 +12555,7 @@ curl -X POST ${base}/order -H "Authorization: Bearer YOUR_API_KEY" -H "Content-T
  const nav=window.nav;if(typeof nav==='function'&&!nav.__sada1552Wrapped){const next=function(){const result=nav.apply(this,arguments);setTimeout(safe52,80);return result};next.__sada1552Wrapped=true;window.nav=next;}
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{safe52();setTimeout(safe52,500);setTimeout(safe52,1500)},{once:true});else{safe52();setTimeout(safe52,350)}
  if(window.MutationObserver&&document.body){let t=false;new MutationObserver(()=>{if(t)return;t=true;requestAnimationFrame(()=>{t=false;safe52()})}).observe(document.body,{childList:true,subtree:true})}
- window.__SADA_V1552_DIAGNOSTIC__={version:'1.6.67',features:['binance-pay-whatsapp-steps','platform-icons-every-service','full-provider-category-import','manual-quantity-bounds','provider-cost-based-global-markup','automatic-price-sync','numeric-order-fallback','order-card-polish']};
+ window.__SADA_V1552_DIAGNOSTIC__={version:'1.6.69',features:['binance-pay-whatsapp-steps','platform-icons-every-service','full-provider-category-import','manual-quantity-bounds','provider-cost-based-global-markup','automatic-price-sync','numeric-order-fallback','order-card-polish']};
 })();
 </script>
 
@@ -12650,7 +12650,7 @@ curl -X POST ${base}/order -H "Authorization: Bearer YOUR_API_KEY" -H "Content-T
     const wrapped=function(){clearPreviousService();const result=nativeSelectPlat.apply(this,arguments);const search=$('svc-search-inp');if(search)search.value='';setTimeout(()=>{try{window.buildCatDD?.();window.buildSvcDD?.(window.SEL_CAT||'__all__')}catch(_){}},0);return result};
     wrapped.__sada1560Wrapped=true;window.selectPlat=wrapped;
   }
-  window.__SADA_V1560_DIAGNOSTIC__={version:'1.6.67',features:['compact-binance-wallet-card','no-inline-order-whatsapp','left-floating-whatsapp','category-change-clears-stale-service-and-search']};
+  window.__SADA_V1560_DIAGNOSTIC__={version:'1.6.69',features:['compact-binance-wallet-card','no-inline-order-whatsapp','left-floating-whatsapp','category-change-clears-stale-service-and-search']};
 })();
 </script>
 
@@ -12731,7 +12731,7 @@ curl -X POST ${base}/order -H "Authorization: Bearer YOUR_API_KEY" -H "Content-T
  function renderPages(d){const root=$('oa-pages');if(!root)return;root.innerHTML='';if(Number(d.totalPages||1)<=1){root.innerHTML='<span style="font-size:10px;color:var(--t2)">عدد النتائج: '+Number(d.total||0).toLocaleString('ar-IQ')+'</span>';return}const prev=document.createElement('button');prev.className='btn bs2 btn-sm';prev.textContent='السابق';prev.disabled=d.page<=1;prev.onclick=()=>{state.page--;refresh()};const label=document.createElement('span');label.textContent='صفحة '+d.page+' من '+d.totalPages+' · '+d.total+' نتيجة';label.style.cssText='font-size:10px;color:var(--t1)';const next=document.createElement('button');next.className='btn bs2 btn-sm';next.textContent='التالي';next.disabled=d.page>=d.totalPages;next.onclick=()=>{state.page++;refresh()};root.append(prev,label,next)}
  function showCheckResult(d){const note=$('oa-source-note');const hasProviderStatus=!!(d.providerNormalizedStatus&&d.providerNormalizedStatus!=='unknown');const success=!!(d.externalVerified&&d.saved&&hasProviderStatus);const msg=d.warning||(success?'تم التحقق من حالة المزود وحفظ الحالة الجديدة.':d.externalVerified?(d.saved?'اتصل الموقع بالمزود لكن الحالة التي أعادها غير معروفة؛ لم نفترض اكتمال الطلب.':'تم الاتصال بالمزود لكن تعذر تأكيد حفظ الحالة.'):'تعذر التحقق الخارجي؛ الحالة المخزنة لم تتغير.');if(note)note.innerHTML='<div class="oa-note '+(success?'':'warn')+'">'+esc(msg)+(d.providerStatus?'<br>الحالة كما أرجعها المزود: <b>'+esc(d.providerStatus)+'</b>':'')+'</div>';notify(msg,success?'ok':'wrn')}
  async function initialize(){shell();try{const d=await api('/api/admin/order-audit/settings');if(d.settings){state.settings=d.settings;$('oa-delay-hours').value=d.settings.delayHours;$('oa-notify-admin').checked=!!d.settings.notifyAdmin}}catch(e){$('oa-settings-note').textContent='تعذر قراءة الإعدادات: '+e.message;$('oa-settings-note').style.color='#ff9b9b'}await refresh(true);if(!state.autoTimer)state.autoTimer=setInterval(()=>{if($('adm-sub-order-audit')?.classList.contains('on'))refresh(true)},60000)}
- window.loadOrderAuditSection=initialize;window.__SADA_V1562_ORDER_AUDIT__={version:'1.6.67',features:['overdue-dashboard','exact-site-and-provider-id-lookup','provider-status-refresh','copyable-provider-messages','completion-cancellation-tabs','server-deduplicated-alerts','settings']};
+ window.loadOrderAuditSection=initialize;window.__SADA_V1562_ORDER_AUDIT__={version:'1.6.69',features:['overdue-dashboard','exact-site-and-provider-id-lookup','provider-status-refresh','copyable-provider-messages','completion-cancellation-tabs','server-deduplicated-alerts','settings']};
  const old=window.admNavTo;window.admNavTo=function(sub,el){const result=old?old.apply(this,arguments):undefined;if(sub==='order-audit'){setTimeout(()=>initialize(),20)}return result};
  document.addEventListener('DOMContentLoaded',()=>{if(document.getElementById('adm-sub-order-audit'))shell()},{once:true});
 })();
@@ -12886,7 +12886,7 @@ body:has(#modal-mask.on) #wa-float{display:none!important}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{init();setTimeout(init,250);setTimeout(init,800)},{once:true});else{init();setTimeout(init,250)}
   document.addEventListener('visibilitychange',()=>{if(!document.hidden){pinWhatsApp();if($('pg-wallet')?.classList.contains('on'))buildRechargeMethods()}});
   if(document.body&&window.MutationObserver){let queued=false;const obs=new MutationObserver(()=>{if(queued)return;queued=true;requestAnimationFrame(()=>{queued=false;pinWhatsApp();const w=$('pg-wallet');if(w&&w.classList.contains('on'))buildRechargeMethods()})});obs.observe(document.body,{childList:true,subtree:true});}
-  window.__SADA_V1565_DIAGNOSTIC__={version:'1.6.67',methods:methods.map(m=>m.id),features:['kareemi-whatsapp','vodafone-cash-egp','stc-sawa-sar','itunes-us','sham-cash','crypto','opaque-wa-float']};
+  window.__SADA_V1565_DIAGNOSTIC__={version:'1.6.69',methods:methods.map(m=>m.id),features:['kareemi-whatsapp','vodafone-cash-egp','stc-sawa-sar','itunes-us','sham-cash','crypto','opaque-wa-float']};
 })();
 </script>
 
@@ -12921,7 +12921,7 @@ body:has(#modal-mask.on) #wa-float{display:none!important}
 <script id="sada1666-welcome-refunds-admin-splash">
 (function(){
  'use strict';
- const BUILD='SADA-1.6.67-FREE-SUPPORT-PLATFORM-UX-20261017';
+ const BUILD='SADA-1.6.69-FREE-SUPPORT-TASK-COMPLETION-BALANCE-AUDIT-20261017';
  const $=id=>document.getElementById(id);
  const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
  const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -13047,7 +13047,7 @@ body:has(#modal-mask.on) #wa-float{display:none!important}
    await refreshLocalBalanceAfterServer66(String(order.user||window.CU?.u||''));if(d.refund?.credited)toast66('تم تأكيد الحالة وإعادة المبلغ إلى المحفظة من الخادم.','ok');else if(d.refund?.state==='pending')toast66('تم تحديث الحالة، لكن الاسترداد ما زال قيد التحقق ولم يُضف رصيد جديد.','wrn');else toast66('تم تحديث حالة المزود. لم يُضف رصيد تلقائي إضافي.','inf');return d;
  };
  window.cancelOrd=async function(key,id,amt){try{if(!window.DB||!window.FB_OK)throw new Error('قاعدة بيانات الطلبات غير متصلة.');const snap=await window.DB.ref('orders/'+String(key)).once('value');if(!snap.exists())throw new Error('الطلب غير موجود.');const order={...snap.val(),_k:String(key)};if(!order.providerId||!(order.providerOrderId||order.smmpartyOrderId))throw new Error('لا يمكن إلغاء هذا الطلب من المتصفح مباشرةً. تواصل مع الدعم حتى لا يُضاف الرصيد مرتين.');if(!confirm('إرسال طلب إلغاء فعلي للمزوّد للطلب #'+(id||order.id||'')+'؟ لن يُعاد الرصيد إلا بعد تأكيد الحالة من الخادم.'))return;await window.cancelProviderOrder(order);window.loadOrds?.();}catch(e){toast66('تعذر إلغاء الطلب بأمان: '+e.message,'err')}};
- window.__SADA_1666__={version:'1.6.67',buildId:BUILD,features:['3-second-splash','admin-configurable-welcome','telegram-activation-and-overdue-channels','user-refund-history','admin-balance-report-and-adjustments','provider-confirmed-idempotent-refunds','server-authoritative-cancel','service-icon-motion']};
+ window.__SADA_1666__={version:'1.6.69',buildId:BUILD,features:['3-second-splash','admin-configurable-welcome','telegram-activation-and-overdue-channels','user-refund-history','admin-balance-report-and-adjustments','provider-confirmed-idempotent-refunds','server-authoritative-cancel','service-icon-motion']};
 })();
 </script>
 
@@ -13127,7 +13127,7 @@ body:has(#modal-mask.on) #wa-float{display:none!important}
 <script id="sada167-earn-notifications-dashboard">
 (function(){
 'use strict';
-const BUILD='SADA-1.6.67-FREE-SUPPORT-PLATFORM-UX-20261017';
+const BUILD='SADA-1.6.69-FREE-SUPPORT-TASK-COMPLETION-BALANCE-AUDIT-20261017';
 const $=id=>document.getElementById(id);
 const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const money=v=>'$'+Math.max(0,Number(v)||0).toFixed(2);
@@ -13196,7 +13196,7 @@ window.sada167Refresh=()=>{refreshNotifications67();loadHomeExtras67()};
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init67,{once:true});else init67();
 const priorLaunch=window.launchApp;if(typeof priorLaunch==='function'&&!priorLaunch.__sada167StatsWrapped){const wrap=function(){const r=priorLaunch.apply(this,arguments);setTimeout(()=>{ensureUserPages67();ensureAccountStatsFooter68();refreshNotifications67();loadHomeExtras67()},250);return r};wrap.__sada167StatsWrapped=true;window.launchApp=wrap}
 setInterval(refreshNotifications67,35000);document.addEventListener('visibilitychange',()=>{if(!document.hidden){refreshNotifications67();loadHomeExtras67()}});
-window.__SADA_167__={version:'1.6.67',buildId:BUILD,features:['earn-balance-review','user-notification-center','per-user-order-alerts','fast-session-start','hourly-price-sync-default','zero-price-protection','partial-refund-idempotency']};
+window.__SADA_167__={version:'1.6.69',buildId:BUILD,features:['earn-balance-review','user-notification-center','per-user-order-alerts','fast-session-start','hourly-price-sync-default','zero-price-protection','partial-refund-idempotency']};
 })();
 </script>
 
@@ -13349,7 +13349,7 @@ window.__SADA_167__={version:'1.6.67',buildId:BUILD,features:['earn-balance-revi
  function markServiceImages(){const page=$('pg-order');if(!page)return;page.querySelectorAll('#svc-options img.sada-svc-thumb,#svc-options img.sada1550-service-thumb,#cat-options img.sada-svc-thumb,#cat-options img.sada1550-category-thumb').forEach(img=>{img.loading='lazy';img.decoding='async'})}
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{ensureAdminNotices70();mergeUsersAndWallets70();markServiceImages();refreshSupportBadge70()},{once:true});else{ensureAdminNotices70();mergeUsersAndWallets70();markServiceImages();refreshSupportBadge70()}
  setInterval(()=>{if(document.hidden)return;refreshSupportBadge70();if($('pg-order')?.classList.contains('on'))markServiceImages();if(window.CU?.role==='admin'&&$('adm-panel')?.classList.contains('on')){ensureAdminNotices70();mergeUsersAndWallets70()}},45000);
- window.SADA_V1570_TEST={version:'1.6.67',features:['restored-original-admin-login-default','unified-notifications-center','broadcast-notifications','required-link-notifications','telegram-activation-channel','telegram-overdue-channel','support-reply-in-app-notification','support-branding','combined-users-balances-discounts','service-image-motion','static-platform-icons','order-card-redesign','server-backed-admin-users','site-wide-real-order-count','welcome-settings-durable-save','telegram-persistent-key-guidance']};
+ window.SADA_V1570_TEST={version:'1.6.69',features:['restored-original-admin-login-default','unified-notifications-center','broadcast-notifications','required-link-notifications','telegram-activation-channel','telegram-overdue-channel','support-reply-in-app-notification','support-branding','combined-users-balances-discounts','service-image-motion','static-platform-icons','order-card-redesign','server-backed-admin-users','site-wide-real-order-count','welcome-settings-durable-save','telegram-persistent-key-guidance']};
 })();
 </script>
 
@@ -13370,7 +13370,7 @@ window.__SADA_167__={version:'1.6.67',buildId:BUILD,features:['earn-balance-revi
  // Hide legacy duplicate navigation entries but keep their core functions accessible from the consolidated destinations.
  function tidyAdminNav(){const sb=$('adm-panel')?.querySelector('.adm-sb');if(!sb)return;for(const sub of ['sada24-tg','sada-v1527-tg']){const el=sb.querySelector('[data-sub="'+sub+'"]');if(el)el.style.display='none';}const stats=sb.querySelector('[data-sub="sada24-stats"]');if(stats){const t=stats.querySelector('span');if(t)t.textContent='الأرباح';stats.title='إيرادات الموقع وتكاليف المزودين وصافي الأرباح';}const welcome=$('adm-sub-sada1666-welcome');if(welcome){const cards=welcome.querySelectorAll('.sada1666-admin-tools');if(cards.length>1){cards[1].style.display='none';cards[1].setAttribute('aria-hidden','true');}const it=sb.querySelector('[data-sub="sada1666-welcome"]');if(it){const t=it.querySelector('span');if(t)t.textContent='إعدادات الترحيب';}}const wallet=sb.querySelector('[data-sub="wallets19"]'),users=sb.querySelector('[data-sub="users"]');if(wallet&&users){wallet.style.display='none';users.style.display='';const span=users.querySelector('span');if(span)span.textContent='المستخدمون';users.title='إدارة حسابات المستخدمين';}}
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',tidyAdminNav,{once:true});else tidyAdminNav();setInterval(()=>{if(!document.hidden)tidyAdminNav()},45000);
- window.SADA_V1571_EMAIL_EARNINGS={version:'1.6.67',features:['resend-email-verification','password-recovery-email-code','account-email-change-verification','legacy-firebase-account-lookup','encrypted-persistent-telegram-token','profit-dashboard-metrics','safe-json-backups']};
+ window.SADA_V1571_EMAIL_EARNINGS={version:'1.6.69',features:['resend-email-verification','password-recovery-email-code','account-email-change-verification','legacy-firebase-account-lookup','encrypted-persistent-telegram-token','profit-dashboard-metrics','safe-json-backups']};
 })();
 </script>
 
@@ -13705,7 +13705,7 @@ const oldLaunch=window.launchApp;if(typeof oldLaunch==='function'&&!oldLaunch.__
     finally{if(button){button.disabled=false;button.textContent=button.dataset.oldText||'إرسال طلب الشحن';delete button.dataset.oldText;}}
   }
   window.loadAdmStats=loadAdmStats1603;window.refreshAdmDashboard=refreshAdmDashboard1603;window.checkPendingPays=checkPendingPays1603;window.loadAdmPaysFull=loadAdmPaysFull1603;window.showAdmPayModal=showAdmPayModal1603;window.loadPayHist=loadPayHist1603;window.submitPay=submitPay1603;
-  window.SADA_V1603_ADMIN_REPAIRS={version:'1.6.67',features:['firebase-verification-route-unblocked','server-authoritative-dashboard','server-authoritative-payments','idempotent-payment-credit','firebase-key-aware-wallet-adjustment','explicit-errors-instead-of-infinite-loaders']};
+  window.SADA_V1603_ADMIN_REPAIRS={version:'1.6.69',features:['firebase-verification-route-unblocked','server-authoritative-dashboard','server-authoritative-payments','idempotent-payment-credit','firebase-key-aware-wallet-adjustment','explicit-errors-instead-of-infinite-loaders']};
 })();
 </script>
 
@@ -13775,7 +13775,7 @@ async function requestAccountSummary(){try{return await window.api('/api/user/su
 const d=await requestAccountSummary();if(!shell.isConnected)return;const p=d.profile||{};const storedEmail=String(p.email||window.CU?.email||window.CU?.mail||'').trim();email.textContent=storedEmail||'لم يُسجّل بريد إلكتروني';if(storedEmail&&window.CU){window.CU.email=storedEmail;try{localStorage.setItem('tz_u',JSON.stringify(window.CU))}catch(_){}}const iqd=Number(d.balanceIQD??window.CU?.bal??window.BAL??0);bal.textContent='$'+(iqd/1250).toFixed(2);stats.querySelector('[data-metric="spend"]').textContent='$'+(Number(d.spentIQD||0)/1250).toFixed(2);stats.querySelector('[data-metric="done"]').textContent=Number(d.completedOrders||0).toLocaleString('ar-IQ');stats.querySelector('[data-metric="orders"]').textContent=Number(d.orders||0).toLocaleString('ar-IQ');details.replaceChildren();const bits=[['اسم المستخدم',p.username||window.CU?.u||window.CU?.username||'—'],['رقم الهاتف',p.phone||'غير مضاف'],['تاريخ التسجيل',p.joined||p.createdAt||'غير متوفر'],['آخر تسجيل دخول',p.lastLoginAt||'غير متوفر'],['المستوى',p.level||'مبتدئ']];for(const [k,v] of bits){const row=profNode('div','',k+' : '+v);details.appendChild(row)}note.textContent='تم تحديث الرصيد والإحصائيات من الخادم · آخر تحديث '+new Date(d.checkedAt||Date.now()).toLocaleTimeString('ar-IQ',{hour:'2-digit',minute:'2-digit'})}catch(e){const detail=String(e?.message||e||'خطأ غير معروف');note.textContent='تعذر تحميل الإحصائيات من الخادم: '+detail;note.style.color='#ff9ba7';bal.textContent='$'+(Number(window.BAL||window.CU?.bal||0)/1250).toFixed(2)}})();});};
 // A profile modal is ephemeral; remove its sizing class on close so other dialogs retain their own styles.
 const oldClose=window.closeModal;if(typeof oldClose==='function'&&!oldClose.__sada624Cleanup){const wrappedClose=function(){const r=oldClose.apply(this,arguments);$('modal-mask')?.classList.remove('sada624-profile-mask');$('modal-box')?.classList.remove('sada624-profile-modal');return r};wrappedClose.__sada624Cleanup=true;window.closeModal=wrappedClose}
-window.SADA_V1626_RELEASE={version:'1.6.67',features:['earn-page-premium-order','welcome-every-entry','profile-neon-live-data','consolidated-notifications-telegram-channel-tests','sidebar-slot-rearrangement','service-category-image-glow','wallet-premium-motion','api-key-stable-encryption-resolver']};
+window.SADA_V1626_RELEASE={version:'1.6.69',features:['earn-page-premium-order','welcome-every-entry','profile-neon-live-data','consolidated-notifications-telegram-channel-tests','sidebar-slot-rearrangement','service-category-image-glow','wallet-premium-motion','api-key-stable-encryption-resolver']};
 })();
 </script>
 
@@ -13783,8 +13783,8 @@ window.SADA_V1626_RELEASE={version:'1.6.67',features:['earn-page-premium-order',
 <script id="sada1629-runtime-version-badge-fix">
 (function(){
   'use strict';
-  const EXPECTED_VERSION='1.6.67';
-  const EXPECTED_BUILD='SADA-1.6.67-FREE-SUPPORT-PLATFORM-UX-20261017';
+  const EXPECTED_VERSION='1.6.69';
+  const EXPECTED_BUILD='SADA-1.6.69-FREE-SUPPORT-TASK-COMPLETION-BALANCE-AUDIT-20261017';
   const $=id=>document.getElementById(id);
   function ensureBadge(){
     let b=$('sadairaq-version-badge');
@@ -14157,7 +14157,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 #adm-sub-free-support .fs-admin-review-back{display:inline-flex;gap:7px;align-items:center;min-height:34px;margin-bottom:10px;padding:7px 11px;border-radius:9px;color:#a7f3d0;background:rgba(16,185,129,.08);border:1px solid rgba(52,211,153,.23);cursor:pointer;font-size:11px;font-weight:800}
 @media(max-width:540px){#adm-sub-free-support .fs-admin-actions .fs-btn{flex:1 1 100%;min-width:0}#adm-sub-free-support .fs-admin-tabs{gap:4px}#adm-sub-free-support .fs-admin-tab{padding-inline:7px;font-size:10px}}
 
-/* Release 2.41: compact task hub, daily streak gift, readable histories and confirmation dialog */
+/* Release 2.43: compact task hub, daily streak gift, readable histories and confirmation dialog */
 .fs-daily-gift{margin:14px 0;padding:17px;border-radius:19px;border:1px solid rgba(64,214,169,.25);background:linear-gradient(135deg,rgba(14,80,75,.35),rgba(25,24,59,.85) 65%,rgba(51,34,87,.62));box-shadow:0 10px 24px rgba(0,0,0,.12)}
 .fs-daily-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.fs-daily-title{font-size:15px;font-weight:950;margin:0}.fs-daily-sub{font-size:11px;color:#c3cee8;line-height:1.8;margin-top:4px}.fs-daily-days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:7px;margin:14px 0}.fs-daily-day{border:1px solid rgba(165,184,224,.2);background:rgba(7,15,34,.45);border-radius:12px;padding:10px 4px;text-align:center;min-width:0}.fs-daily-day b{display:block;font-size:11px;color:#edf1ff}.fs-daily-day span{display:block;font-size:10px;color:#f5d178;margin-top:4px}.fs-daily-day.done{border-color:rgba(47,215,163,.5);background:rgba(26,140,107,.14)}.fs-daily-day.today{border-color:#9f82ff;box-shadow:inset 0 0 0 1px rgba(159,130,255,.32);background:rgba(111,76,213,.18)}.fs-daily-bottom{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}.fs-platform-hub{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}.fs-circle-action{min-height:148px;border:1px solid rgba(145,112,255,.32);border-radius:18px;background:linear-gradient(145deg,rgba(31,52,103,.75),rgba(14,25,48,.98));color:var(--t0);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:18px;text-align:center;cursor:pointer}.fs-circle-action.secondary{border-color:rgba(48,215,160,.3);background:linear-gradient(145deg,rgba(15,81,72,.58),rgba(13,33,44,.98))}.fs-circle-icon{width:62px;height:62px;border-radius:50%;display:grid;place-items:center;font-size:26px;background:linear-gradient(135deg,#6d55f4,#bb4ce8);box-shadow:0 0 0 6px rgba(145,112,255,.09)}.fs-circle-action.secondary .fs-circle-icon{background:linear-gradient(135deg,#087f73,#20c996);box-shadow:0 0 0 6px rgba(48,215,160,.08)}.fs-circle-action b{font-size:14px;font-weight:950}.fs-circle-action small{font-size:10px;color:#bec9e4;line-height:1.7}.fs-platform-selected{display:flex;align-items:center;gap:12px;padding:14px;border:1px solid rgba(145,112,255,.28);border-radius:16px;background:rgba(16,24,48,.78)}.fs-platform-selected .fs-platform-ico{margin:0;width:48px;height:48px;flex:0 0 48px;font-size:23px}.fs-lock-info{font-size:10px;color:#c3cee8;background:rgba(235,176,61,.08);border:1px solid rgba(235,176,61,.19);border-radius:9px;padding:8px 10px;margin-top:10px;line-height:1.8}.fs-wait-notice{margin-top:9px;border-right:3px solid #8b79ff;padding:9px 11px;border-radius:8px;background:rgba(122,99,255,.09);color:#d6d3fa;line-height:1.85;font-size:10px}.fs-request-title-row{display:flex;gap:9px;align-items:center}.fs-request-platform-icon{width:36px;height:36px;flex:0 0 36px;border-radius:11px;display:grid;place-items:center;background:rgba(145,112,255,.12);font-size:19px}.fs-request-header-text{min-width:0}.fs-count-pill{display:inline-flex;align-items:center;justify-content:center;min-width:28px;padding:3px 9px;border-radius:999px;background:rgba(145,112,255,.14);border:1px solid rgba(145,112,255,.26);font-size:10px;font-weight:900}.fs-my-tools{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}.fs-my-tools input,.fs-my-tools select{min-height:40px;border-radius:10px;border:1px solid var(--bd);background:var(--bg2);color:var(--t0);padding:8px 10px;min-width:140px;flex:1}.fs-modal-overlay{position:fixed;inset:0;z-index:100100;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(1,5,17,.79);backdrop-filter:blur(8px)}.fs-modal-card{width:min(520px,100%);max-height:min(90vh,780px);overflow:auto;border-radius:23px;border:1px solid rgba(161,135,255,.45);background:linear-gradient(155deg,#171f42,#0c1428 75%);color:#f4f6ff;padding:24px;box-shadow:0 24px 90px rgba(0,0,0,.52)}.fs-modal-icon{width:66px;height:66px;display:grid;place-items:center;border-radius:20px;background:linear-gradient(135deg,#5b50db,#18b891);font-size:31px;margin:0 auto 12px}.fs-modal-card h2{text-align:center;font-size:20px;font-weight:950;margin:0 0 8px}.fs-modal-card p{text-align:center;color:#c6d0ec;font-size:12px;line-height:1.95;margin:8px 0}.fs-modal-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:14px 0}.fs-modal-summary>div{padding:11px;border-radius:11px;background:rgba(255,255,255,.045);border:1px solid rgba(162,175,219,.16)}.fs-modal-summary small{display:block;font-size:10px;color:#b4c0df}.fs-modal-summary b{display:block;font-size:14px;margin-top:5px}.fs-admin-action-row{display:flex;gap:7px;flex-wrap:wrap;margin-top:9px}.fs-admin-item.pinned{border-color:rgba(239,192,91,.55);box-shadow:inset 0 0 0 1px rgba(239,192,91,.12)}.fs-admin-item.archived{opacity:.75;border-style:dashed}.fs-reward-setting{border:1px solid rgba(48,215,160,.2);background:rgba(48,215,160,.05);border-radius:15px;padding:14px}.fs-help-text{font-size:10px;line-height:1.85;color:var(--t2)}
 @media(max-width:680px){.fs-daily-days{grid-template-columns:repeat(4,minmax(0,1fr))}.fs-points-row,.fs-action-grid,.fs-task-grid,.fs-form-grid,.fs-platform-hub{grid-template-columns:1fr}.fs-hero{padding:16px}.fs-hero-icon{width:58px;height:58px;flex-basis:58px;border-radius:18px;font-size:28px}.fs-admin-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.fs-modal-card{padding:18px}.fs-modal-summary{grid-template-columns:1fr 1fr}.fs-platform-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
@@ -14221,7 +14221,20 @@ function clearToast(){$('fs-toast')?.remove()}
 function renderLoading(message='جاري تحميل البيانات...'){root.innerHTML='<div class="fs-loading"><div class="spin" style="width:28px;height:28px;margin:0 auto 12px"></div>'+esc(message)+'</div>'}
 function listOpenCampaigns(){return userData?.campaigns||[]}
 function platformButtons(){const plats=(userData?.settings?.platforms||[]).filter(p=>p.enabled!==false);return '<div class="fs-platform-grid">'+plats.map(p=>'<button type="button" class="fs-platform '+(currentPlatform===p.id?'active':'')+'" data-fs-platform="'+esc(p.id)+'">'+platformLogo(p.id)+'<b>'+esc(p.name)+'</b><small>عرض المهام المتاحة</small></button>').join('')+'</div>'}
-function tasksForPlatform(){return [...(userData?.tasks||[]).filter(t=>t.platform===currentPlatform),...listOpenCampaigns().filter(t=>t.platform===currentPlatform)]}
+function tasksForPlatform(){
+ const campaigns=listOpenCampaigns(),active=[...(userData?.tasks||[]).filter(t=>t.platform===currentPlatform),...campaigns.filter(t=>t.platform===currentPlatform)];
+ const lockedStatuses=new Set(['pending_review','reviewing','approved']);
+ const completedTasks=userData?.wallet?.completedTasks||{};
+ return active.filter(t=>{
+  const isCamp=t.taskKind==='campaign'||campaigns.some(c=>String(c.id)===String(t.id));
+  const completedKey=(isCamp?'campaign_':'task_')+String(t.id||'');
+  if(completedTasks[completedKey])return false;
+  const prior=(userData?.myRequests||[]).find(r=>r.type==='proof'&&(isCamp?String(r.campaignId||'')===String(t.id):String(r.taskId||'')===String(t.id)));
+  if(prior&&lockedStatuses.has(String(prior.status||'')))return false;
+  if(isCamp&&Math.max(0,Number(t.quantity||0)-Number(t.completedQuantity||0)-Number(t.reservedQuantity||0))<=0)return false;
+  return true;
+ })
+}
 function taskCard(t){
  const isCamp=t.taskKind==='campaign',qty=isCamp?Math.max(0,Number(t.quantity||0)-Number(t.completedQuantity||0)-Number(t.reservedQuantity||0)):null;
  const prior=(userData?.myRequests||[]).find(r=>r.type==='proof'&&(isCamp?String(r.campaignId||'')===String(t.id):String(r.taskId||'')===String(t.id)));
@@ -14243,12 +14256,12 @@ function renderRules(){root.innerHTML=`<div class="fs-back-row"><button type="bu
 async function claimDailyGift(){const b=$('fs-daily-claim');if(!b||b.disabled)return;b.disabled=true;b.textContent='جارٍ التحقق من الهدية…';try{const d=await post('/api/free-support',{action:'claim_daily_gift'});await loadUserData(false);renderMain();toast(d.message||'تم تحديث هديتك اليومية.','ok')}catch(e){toast(e.message||'تعذر استلام الهدية؛ حدّث الصفحة وحاول مرة أخرى.','error');if($('fs-daily-claim')){$('fs-daily-claim').disabled=false;$('fs-daily-claim').textContent='إعادة المحاولة'}}}
 function renderMain(){view='home';selectedTask=null;proofData='';clearToast();root.innerHTML=`<div class="fs-back-row"><button type="button" class="fs-back-btn" id="fs-main-back">← رجوع إلى التطبيق</button></div><div class="fs-hero"><div><h1>دعم حقيقي مجاني</h1><p>اجمع نقاطاً من المهام، واحصل على الدعم من المستخدمين الآخرين. نقاط الدعم منفصلة عن رصيد الدولارات.</p></div><div class="fs-hero-icon">🎁</div></div><div class="fs-points-row"><div class="fs-card fs-points"><div class="fs-label">⭐ نقاط الدعم المجاني</div><div class="fs-point-num" id="fs-point-balance">${points(userData?.wallet?.points)}</div><small>رصيد هذا القسم فقط؛ لا يؤثر في رصيد الدولارات.</small></div><div class="fs-action-grid fs-home-action-grid"><button type="button" class="fs-action fs-home-action fs-home-action-earn" id="fs-go-earn" aria-label="افتح تجميع النقاط"><span class="fs-action-icon" aria-hidden="true"><i class="fas fa-bolt"></i></span><span class="fs-action-copy"><b>تجميع النقاط</b><span class="fs-action-desc">اختر منصة ونفّذ المهام لتحصل على النقاط بعد موافقة الإدارة.</span><span class="fs-action-cta"><span>ابدأ تجميع النقاط</span><i class="fas fa-arrow-left" aria-hidden="true"></i></span></span><span class="fs-action-chevron" aria-hidden="true"><i class="fas fa-chevron-left"></i></span></button><button type="button" class="fs-action secondary fs-home-action fs-home-action-request" id="fs-go-request" aria-label="أنشئ طلب دعم جديد"><span class="fs-action-icon" aria-hidden="true"><i class="fas fa-hand-holding-heart"></i></span><span class="fs-action-copy"><b>طلب دعم</b><span class="fs-action-desc">اطلب متابعين أو إعجابات أو مشاهدات باستخدام نقاطك.</span><span class="fs-action-cta"><span>إنشاء طلب دعم</span><i class="fas fa-arrow-left" aria-hidden="true"></i></span></span><span class="fs-action-chevron" aria-hidden="true"><i class="fas fa-chevron-left"></i></span></button></div></div>${dailyGiftCard()}<div class="fs-note">⏳ <b>مدة التنفيذ:</b> قد يستغرق طلب الدعم ساعات أو عدة أيام، حسب مشاركة مستخدمي التطبيق. تظهر تفاصيل الانتظار مع طلبك وفي قسم «طلباتي».</div><div id="fs-subview"></div>`;$('fs-main-back').onclick=goBackToApp;$('fs-go-earn').onclick=()=>{view='earn';earnMode='platforms';renderEarn()};$('fs-go-request').onclick=()=>{view='request';renderCampaignForm()};$('fs-daily-claim')?.addEventListener('click',claimDailyGift);renderMyRequestsSection();}
 function renderMyRequestsSection(){const sub=$('fs-subview');if(!sub)return;const rows=userData.myRequests||[],pending=rows.filter(r=>['pending_review','reviewing'].includes(String(r.status))).length,done=rows.filter(r=>['approved','completed'].includes(String(r.status))).length;sub.innerHTML='<div class="fs-section-title"><h2>📋 طلباتي</h2><span class="fs-count-pill">'+points(rows.length)+' طلب</span></div><div class="fs-my-tools"><span class="fs-count-pill">قيد المراجعة '+points(pending)+'</span><span class="fs-count-pill">مكتمل '+points(done)+'</span><button type="button" class="fs-btn ghost" id="fs-my-all">عرض كل الطلبات ←</button></div><div class="fs-request-list">'+(rows.length?rows.slice(0,5).map(requestCard).join(''):'<div class="fs-empty">لا توجد طلبات حتى الآن. ابدأ بتجميع النقاط أو أرسل طلب دعم.</div>')+'</div>';$('fs-my-all').onclick=()=>renderMyRequestsPage('');}
-function renderMyRequestsPage(platformFilter=''){view='my-requests';myRequestsPlatform=platformFilter||'';myRequestsLimit=12;let status='all',query='';root.innerHTML='<div class="fs-back-row"><button type="button" class="fs-back-btn" id="fs-all-req-back">← رجوع</button></div><div class="fs-hero"><div><h1>📋 مهماتي وطلباتي</h1><p>'+(platformFilter?'طلبات منصة '+esc(platformLabel(platformFilter)):'كل إثباتاتك وطلبات الدعم')+' — تابع المراجعة والتنفيذ من مكان واحد.</p></div><div class="fs-hero-icon">🧾</div></div><div class="fs-card"><div class="fs-my-tools"><input type="search" id="fs-my-search" placeholder="ابحث برقم الطلب أو نوع المهمة…"><select id="fs-my-status"><option value="all">كل الحالات</option><option value="pending_review">قيد المراجعة</option><option value="approved">مكتملة / مقبولة</option><option value="rejected">مرفوضة</option><option value="queued">بانتظار المشاركين</option><option value="in_progress">قيد التنفيذ</option><option value="completed">مكتملة</option></select></div><div class="fs-my-tools"><span class="fs-count-pill" id="fs-my-count">0 طلب</span><span class="fs-help-text">لا يمكن إعادة إرسال إثبات للمهمة نفسها وهي قيد المراجعة أو بعد قبولها.</span></div><div class="fs-request-list" id="fs-my-all-list"></div><div style="text-align:center;margin-top:12px"><button type="button" id="fs-my-more" class="fs-btn ghost">عرض المزيد</button></div></div>';$('fs-all-req-back').onclick=()=>{if(platformFilter){earnMode='hub';renderEarn()}else renderMain()};const draw=()=>{query=String($('fs-my-search')?.value||'').trim().toLocaleLowerCase();status=String($('fs-my-status')?.value||'all');let rows=(userData.myRequests||[]).filter(r=>(!myRequestsPlatform||r.platform===myRequestsPlatform)&&(!query||[r.id,r.title,r.platformName,r.platform,r.status].join(' ').toLocaleLowerCase().includes(query))&&(status==='all'||r.status===status||(status==='pending_review'&&r.status==='reviewing')||(status==='approved'&&r.status==='approved')));$('fs-my-count').textContent=points(rows.length)+' طلب';$('fs-my-all-list').innerHTML=rows.length?rows.slice(0,myRequestsLimit).map(requestCard).join(''):'<div class="fs-empty">لا توجد طلبات تطابق البحث أو الحالة المحددة.</div>';$('fs-my-more').hidden=rows.length<=myRequestsLimit};$('fs-my-search').addEventListener('input',()=>{myRequestsLimit=12;draw()});$('fs-my-status').addEventListener('change',()=>{myRequestsLimit=12;draw()});$('fs-my-more').onclick=()=>{myRequestsLimit+=12;draw()};draw();}
-function renderEarn(){clearToast();view='earn';const plats=(userData?.settings?.platforms||[]).filter(p=>p.enabled!==false);const head='<div class="fs-back-row"><button type="button" class="fs-back-btn" id="fs-earn-back">← رجوع '+(earnMode==='platforms'?'إلى الدعم المجاني':'')+'</button></div><div class="fs-hero"><div><h1>⚡ تجميع النقاط</h1><p>اختر منصة أولاً، ثم اختر تجميع النقاط أو استعراض مهماتك وحالاتها.</p></div><div class="fs-hero-icon">⭐</div></div>';
- if(earnMode==='platforms'){root.innerHTML=head+'<div class="fs-card"><div class="fs-section-title" style="margin-top:0"><h2>اختر المنصة</h2><span class="fs-muted">رصيدك: '+points(userData.wallet.points)+' نقطة</span></div><div class="fs-platform-grid">'+plats.map(p=>'<button type="button" class="fs-platform" data-fs-platform="'+esc(p.id)+'">'+platformLogo(p.id)+'<b>'+esc(p.name)+'</b><small>فتح خيارات المنصة</small><span class="fs-platform-choose"><span>اختيار المنصة</span><i class="fas fa-arrow-left" aria-hidden="true"></i></span></button>').join('')+'</div></div>';$('fs-earn-back').onclick=renderMain;root.querySelectorAll('[data-fs-platform]').forEach(b=>b.onclick=()=>{currentPlatform=b.dataset.fsPlatform;earnMode='hub';renderEarn()});return;}
+function renderMyRequestsPage(platformFilter=''){view='my-requests';myRequestsPlatform=platformFilter||'';myRequestsLimit=12;let status='all',query='';root.innerHTML='<div class="fs-back-row"><button type="button" class="fs-back-btn" id="fs-all-req-back">← رجوع</button></div><div class="fs-hero"><div><h1>📋 طلباتي</h1><p>'+(platformFilter?'طلبات منصة '+esc(platformLabel(platformFilter)):'كل إثباتاتك وطلبات الدعم')+' — تابع المراجعة والتنفيذ من مكان واحد.</p></div><div class="fs-hero-icon">🧾</div></div><div class="fs-card"><div class="fs-my-tools"><input type="search" id="fs-my-search" placeholder="ابحث برقم الطلب أو نوع المهمة…"><select id="fs-my-status"><option value="all">كل الحالات</option><option value="pending_review">قيد المراجعة</option><option value="approved">مكتملة / مقبولة</option><option value="rejected">مرفوضة</option><option value="queued">بانتظار المشاركين</option><option value="in_progress">قيد التنفيذ</option><option value="completed">مكتملة</option></select></div><div class="fs-my-tools"><span class="fs-count-pill" id="fs-my-count">0 طلب</span><span class="fs-help-text">لا يمكن إعادة إرسال إثبات للمهمة نفسها وهي قيد المراجعة أو بعد قبولها.</span></div><div class="fs-request-list" id="fs-my-all-list"></div><div style="text-align:center;margin-top:12px"><button type="button" id="fs-my-more" class="fs-btn ghost">عرض المزيد</button></div></div>';$('fs-all-req-back').onclick=()=>{if(platformFilter){earnMode='tasks';renderEarn()}else renderMain()};const draw=()=>{query=String($('fs-my-search')?.value||'').trim().toLocaleLowerCase();status=String($('fs-my-status')?.value||'all');let rows=(userData.myRequests||[]).filter(r=>(!myRequestsPlatform||r.platform===myRequestsPlatform)&&(!query||[r.id,r.title,r.platformName,r.platform,r.status].join(' ').toLocaleLowerCase().includes(query))&&(status==='all'||r.status===status||(status==='pending_review'&&r.status==='reviewing')||(status==='approved'&&r.status==='approved')));$('fs-my-count').textContent=points(rows.length)+' طلب';$('fs-my-all-list').innerHTML=rows.length?rows.slice(0,myRequestsLimit).map(requestCard).join(''):'<div class="fs-empty">لا توجد طلبات تطابق البحث أو الحالة المحددة.</div>';$('fs-my-more').hidden=rows.length<=myRequestsLimit};$('fs-my-search').addEventListener('input',()=>{myRequestsLimit=12;draw()});$('fs-my-status').addEventListener('change',()=>{myRequestsLimit=12;draw()});$('fs-my-more').onclick=()=>{myRequestsLimit+=12;draw()};draw();}
+function renderEarn(){clearToast();view='earn';const plats=(userData?.settings?.platforms||[]).filter(p=>p.enabled!==false);const head='<div class="fs-back-row"><button type="button" class="fs-back-btn" id="fs-earn-back">← رجوع '+(earnMode==='platforms'?'إلى الدعم المجاني':'لاختيار المنصة')+'</button></div><div class="fs-hero"><div><h1>⚡ تجميع النقاط</h1><p>اختر المنصة، وستظهر المهام المتاحة مباشرة. المهام التي أرسلت إثباتها تختفي من القائمة النشطة.</p></div><div class="fs-hero-icon">⭐</div></div>';
+ if(earnMode==='platforms'){root.innerHTML=head+'<div class="fs-card"><div class="fs-section-title" style="margin-top:0"><h2>اختر المنصة</h2><span class="fs-muted">رصيدك: '+points(userData.wallet.points)+' نقطة</span></div><div class="fs-platform-grid">'+plats.map(p=>'<button type="button" class="fs-platform" data-fs-platform="'+esc(p.id)+'">'+platformLogo(p.id)+'<b>'+esc(p.name)+'</b><small>فتح خيارات المنصة</small><span class="fs-platform-choose"><span>اختيار المنصة</span><i class="fas fa-arrow-left" aria-hidden="true"></i></span></button>').join('')+'</div></div>';$('fs-earn-back').onclick=renderMain;root.querySelectorAll('[data-fs-platform]').forEach(b=>b.onclick=()=>{currentPlatform=b.dataset.fsPlatform;earnMode='tasks';renderEarn()});return;}
  const platform=plats.find(p=>p.id===currentPlatform)||{id:currentPlatform,name:platformLabel(currentPlatform)};
- if(earnMode==='hub'){root.innerHTML=head+'<div class="fs-platform-selected">'+platformLogo(currentPlatform)+'<div><b>'+esc(platform.name)+'</b><div class="fs-muted">اختر شنو تريد تسوي داخل هذه المنصة.</div></div><button type="button" class="fs-btn ghost" id="fs-change-platform">تغيير المنصة</button></div><div class="fs-platform-hub"><button type="button" class="fs-circle-action" id="fs-platform-collect"><span class="fs-circle-icon">⚡</span><b>تجميع النقاط</b><small>شاهد المهمات المتاحة ونفذها وارفع الإثبات</small></button><button type="button" class="fs-circle-action secondary" id="fs-platform-my-tasks"><span class="fs-circle-icon">📋</span><b>مهماتي</b><small>قيد الانتظار، مقبولة، مرفوضة ومكتملة</small></button></div><div class="fs-note">يظهر لكل طلب حالته. عند إرسال إثبات لا يمكنك إعادة تنفيذ المهمة نفسها أثناء مراجعة الإدارة أو بعد قبولها.</div>';$('fs-earn-back').onclick=()=>{earnMode='platforms';renderEarn()};$('fs-change-platform').onclick=()=>{earnMode='platforms';renderEarn()};$('fs-platform-collect').onclick=()=>{earnMode='tasks';renderEarn()};$('fs-platform-my-tasks').onclick=()=>renderMyRequestsPage(currentPlatform);return;}
- const tasks=tasksForPlatform();const successNotice=proofSuccessNotice?'<div class="fs-toast ok fs-proof-success" role="status" aria-live="polite"><i class="fas fa-circle-check" aria-hidden="true"></i> '+esc(proofSuccessNotice)+'</div>':'';proofSuccessNotice='';root.innerHTML=head+'<div class="fs-platform-selected">'+platformLogo(currentPlatform)+'<div style="flex:1"><b>'+esc(platform.name)+'</b><div class="fs-muted">'+points(tasks.length)+' مهمة متاحة حالياً</div></div><button type="button" class="fs-btn ghost" id="fs-earn-hub-back">رجوع للمنصة</button></div>'+successNotice+'<div class="fs-note">⭐ المكافأة تُضاف بعد قبول الإثبات من الإدارة فقط. إذا كان إثباتك قيد المراجعة، لن تتمكن من فتح المهمة نفسها مرة أخرى.</div><div class="fs-section-title"><h2>المهمات المتاحة</h2><span class="fs-muted">'+esc(platform.name)+'</span></div><div class="fs-task-grid" id="fs-task-grid">'+(tasks.length?tasks.map(taskCard).join(''):'<div class="fs-empty" style="grid-column:1/-1">لا توجد مهام متاحة لهذه المنصة حالياً. جرّب منصة أخرى أو عد لاحقاً.</div>')+'</div><div id="fs-proof-panel"></div>';$('fs-earn-back').onclick=()=>{earnMode='hub';renderEarn()};$('fs-earn-hub-back').onclick=()=>{earnMode='hub';renderEarn()};root.querySelectorAll('[data-fs-task]').forEach(b=>b.onclick=()=>startTask(b.dataset.fsTask,b.dataset.fsKind));}
+ if(earnMode==='hub'){earnMode='tasks';renderEarn();return;}
+ const tasks=tasksForPlatform();const successNotice=proofSuccessNotice?'<div class="fs-toast ok fs-proof-success" role="status" aria-live="polite"><i class="fas fa-circle-check" aria-hidden="true"></i> '+esc(proofSuccessNotice)+'</div>':'';proofSuccessNotice='';root.innerHTML=head+'<div class="fs-platform-selected">'+platformLogo(currentPlatform)+'<div style="flex:1"><b>'+esc(platform.name)+'</b><div class="fs-muted">'+points(tasks.length)+' مهمة متاحة حالياً</div></div><button type="button" class="fs-btn ghost" id="fs-earn-hub-back">تغيير المنصة</button></div>'+successNotice+'<div class="fs-note">⭐ المكافأة تُضاف بعد قبول الإثبات من الإدارة فقط. إذا كان إثباتك قيد المراجعة، لن تتمكن من فتح المهمة نفسها مرة أخرى.</div><div class="fs-section-title"><h2>المهمات المتاحة</h2><span class="fs-muted">'+esc(platform.name)+'</span></div><div class="fs-task-grid" id="fs-task-grid">'+(tasks.length?tasks.map(taskCard).join(''):'<div class="fs-empty" style="grid-column:1/-1">لا توجد مهام متاحة لهذه المنصة حالياً. جرّب منصة أخرى أو عد لاحقاً.</div>')+'</div><div id="fs-proof-panel"></div>';$('fs-earn-back').onclick=()=>{earnMode='platforms';renderEarn()};$('fs-earn-hub-back').onclick=()=>{earnMode='platforms';renderEarn()};root.querySelectorAll('[data-fs-task]').forEach(b=>b.onclick=()=>startTask(b.dataset.fsTask,b.dataset.fsKind));}
 function startTask(id,kind){const isCamp=kind==='campaign',item=isCamp?listOpenCampaigns().find(x=>x.id===id):userData.tasks.find(x=>x.id===id);if(!item)return;try{window.open(item.targetLink,'_blank','noopener,noreferrer')}catch(_){}selectedTask={...item,taskKind:kind};proofData='';const panel=$('fs-proof-panel');if(!panel)return;panel.innerHTML=`<div class="fs-card" style="margin-top:14px"><div class="fs-section-title" style="margin-top:0"><h2>🧾 إثبات تنفيذ المهمة</h2><div style="display:flex;gap:7px;flex-wrap:wrap"><button type="button" class="fs-btn ghost" id="fs-proof-back">← رجوع</button><button type="button" class="fs-btn ghost" id="fs-open-link">فتح رابط المهمة ↗</button></div></div><div class="fs-request-meta">المطلوب: ${esc(item.title||typeLabel(item.serviceType))} · المكافأة: ⭐ ${points(item.rewardPoints)} نقطة</div><div class="fs-note">1. افتح الرابط ونفّذ المهمة. 2. التقط صورة واضحة. 3. ارفع الإثبات وانتظر قرار الإدارة. لا ترسل صورة غير صحيحة.</div><div style="margin-top:12px"><label class="fs-upload" for="fs-proof-file" style="display:block"><i class="fas fa-cloud-arrow-up"></i><b>اضغط لاختيار صورة الإثبات</b><span>JPG أو PNG أو WEBP — سيتم ضغط الصورة قبل إرسالها</span><input type="file" id="fs-proof-file" accept="image/png,image/jpeg,image/webp" hidden></label><div id="fs-proof-preview"></div></div><button type="button" class="fs-btn" id="fs-submit-proof" style="width:100%;margin-top:12px" disabled>إرسال الإثبات إلى الإدارة</button><div class="fs-muted" style="margin-top:8px">بعد الإرسال لن تتمكن من إلغاء الطلب أو تغيير الصورة. نقاطك لا تُضاف إلا بعد القبول.</div></div>`;$('fs-open-link').onclick=()=>window.open(item.targetLink,'_blank','noopener,noreferrer');$('fs-proof-back').onclick=()=>{selectedTask=null;proofData='';renderEarn()};$('fs-proof-file').onchange=async e=>{const f=e.target.files?.[0];if(!f)return;if(!/^image\/(png|jpeg|webp)$/i.test(f.type)){toast('اختر صورة JPG أو PNG أو WEBP.','error');return}try{const data=await compressImage(f);proofData=data;$('fs-proof-preview').innerHTML='<img class="fs-preview" alt="معاينة إثبات المهمة" src="'+data+'">';$('fs-submit-proof').disabled=false;}catch(err){toast('تعذر تجهيز الصورة: '+err.message,'error')}};$('fs-submit-proof').onclick=submitProof;panel.scrollIntoView({behavior:'smooth',block:'start'});}
 async function compressImage(file){const original=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result||''));r.onerror=()=>reject(new Error('تعذرت قراءة الملف'));r.readAsDataURL(file)});const img=await new Promise((resolve,reject)=>{const i=new Image();i.onload=()=>resolve(i);i.onerror=()=>reject(new Error('ملف الصورة غير صالح'));i.src=original});const max=1280,scale=Math.min(1,max/Math.max(img.width,img.height)),canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(img.width*scale));canvas.height=Math.max(1,Math.round(img.height*scale));const ctx=canvas.getContext('2d');ctx.drawImage(img,0,0,canvas.width,canvas.height);let quality=.82,blob=await new Promise(r=>canvas.toBlob(r,'image/jpeg',quality));while(blob&&blob.size>880*1024&&quality>.48){quality-=.09;blob=await new Promise(r=>canvas.toBlob(r,'image/jpeg',quality))}if(!blob||blob.size>900*1024)throw new Error('حجم الصورة كبير حتى بعد الضغط؛ اختر صورة أصغر');return await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result));r.onerror=()=>reject(new Error('تعذر تحويل الصورة'));r.readAsDataURL(blob)})}
 async function submitProof(){if(busy||!selectedTask||!proofData)return;const b=$('fs-submit-proof');if(!b)return;const submittedTask={...selectedTask},platformToKeep=String(selectedTask.platform||currentPlatform);busy=true;b.disabled=true;b.textContent='جارٍ حفظ الطلب والصورة...';try{const d=await post('/api/free-support',{action:'submit_proof',taskId:selectedTask.taskKind==='admin'?selectedTask.id:'',campaignId:selectedTask.taskKind==='campaign'?selectedTask.id:'',imageData:proofData});let refreshError=null;try{await loadUserData(false)}catch(e){refreshError=e}if(!Array.isArray(userData?.myRequests))userData.myRequests=[];if(d.request&&!userData.myRequests.some(r=>String(r.id)===String(d.request.id)))userData.myRequests.unshift(d.request);selectedTask=null;proofData='';currentPlatform=platformToKeep;earnMode='tasks';proofSuccessNotice=(d.message||'تم إرسال الإثبات للمراجعة. تبقى داخل صفحة '+platformLabel(platformToKeep)+'، وستظهر المهمة بحالة قيد المراجعة.')+(refreshError?' تعذر تحديث البيانات الآن؛ تم إرسال الطلب وسيعاد تحديثه عند فتح القسم.':'');renderEarn();const banner=root.querySelector('.fs-proof-success');if(banner)banner.scrollIntoView({behavior:'smooth',block:'start'});}catch(e){toast(e.message||'تعذر إرسال الإثبات.','error');b.disabled=false;b.textContent='إعادة محاولة الإرسال'}finally{busy=false}}
@@ -14282,7 +14295,7 @@ const originalNav=window.nav;if(typeof originalNav==='function'&&!originalNav.__
 try{PG['free-support']='دعم حقيقي مجاني'}catch(_){}
 const prevAdmNav=window.admNavTo;if(typeof prevAdmNav==='function'&&!prevAdmNav.__freeSupportWrapped){const wrappedAdm=function(sub,el){if(sub==='free-support'){ensureAdminUI();openAdmin();return}return prevAdmNav.apply(this,arguments)};wrappedAdm.__freeSupportWrapped=true;window.admNavTo=wrappedAdm}
 ensureAdminUI();document.addEventListener('DOMContentLoaded',ensureAdminUI,{once:true});window.addEventListener('load',ensureAdminUI,{once:true});
-window.SADA_FREE_SUPPORT={version:'1.6.67',open:loadUserPage,openAdmin,refresh:loadUserData,pricePer100,campaignCost,rewardForTask};
+window.SADA_FREE_SUPPORT={version:'1.6.69',open:loadUserPage,openAdmin,refresh:loadUserData,pricePer100,campaignCost,rewardForTask};
 })();
 </script>
 
@@ -14358,6 +14371,70 @@ window.SADA_FREE_SUPPORT={version:'1.6.67',open:loadUserPage,openAdmin,refresh:l
 })();
 </script>
 
+<style id="sada-balance-audit-242-style">
+#adm-sub-sada-balance-audit-242 .sba-shell{display:grid;gap:12px;direction:rtl;color:var(--t0,#eef2ff)}
+#adm-sub-sada-balance-audit-242 .sba-title{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+#adm-sub-sada-balance-audit-242 .sba-title h2{margin:0;font-size:17px;font-weight:950}
+#adm-sub-sada-balance-audit-242 .sba-kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+#adm-sub-sada-balance-audit-242 .sba-kpi{border:1px solid var(--bd,rgba(148,163,184,.2));border-radius:13px;padding:12px;background:linear-gradient(145deg,rgba(55,75,125,.18),rgba(14,24,42,.65));min-width:0}
+#adm-sub-sada-balance-audit-242 .sba-kpi b{display:block;font-size:18px;font-weight:950;overflow-wrap:anywhere}
+#adm-sub-sada-balance-audit-242 .sba-kpi span{display:block;color:var(--t2,#94a3b8);font-size:10px;margin-top:4px;line-height:1.7}
+#adm-sub-sada-balance-audit-242 .sba-controls{display:grid;grid-template-columns:minmax(0,1fr) minmax(155px,.4fr) auto;gap:8px;align-items:center}
+#adm-sub-sada-balance-audit-242 .sba-controls input,#adm-sub-sada-balance-audit-242 .sba-controls select{min-width:0;width:100%;min-height:42px;border-radius:10px;border:1px solid var(--bd,rgba(148,163,184,.2));background:var(--bg2,#0d1729);color:var(--t0,#eef2ff);padding:9px 11px}
+#adm-sub-sada-balance-audit-242 .sba-list{display:grid;gap:9px}
+#adm-sub-sada-balance-audit-242 .sba-user{border:1px solid var(--bd,rgba(148,163,184,.19));border-radius:15px;padding:13px;background:linear-gradient(145deg,rgba(16,28,48,.92),rgba(10,19,34,.96));display:grid;gap:10px;min-width:0}
+#adm-sub-sada-balance-audit-242 .sba-user-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;min-width:0}
+#adm-sub-sada-balance-audit-242 .sba-user-name{font-size:13px;font-weight:950;line-height:1.7;overflow-wrap:anywhere}
+#adm-sub-sada-balance-audit-242 .sba-user-meta{font-size:10px;color:var(--t2,#9aaac4);line-height:1.9;overflow-wrap:anywhere}
+#adm-sub-sada-balance-audit-242 .sba-balance{flex:0 0 auto;text-align:left;padding:8px 10px;border-radius:11px;background:rgba(16,185,129,.1);border:1px solid rgba(52,211,153,.25);color:#86efac;font-weight:950;white-space:nowrap}
+#adm-sub-sada-balance-audit-242 .sba-actions{display:flex;gap:7px;flex-wrap:wrap}
+#adm-sub-sada-balance-audit-242 .sba-actions .btn{min-height:35px;font-size:10px;white-space:normal}
+#adm-sub-sada-balance-audit-242 .sba-status{font-size:9px;font-weight:900;border-radius:99px;border:1px solid rgba(148,163,184,.24);padding:4px 7px;color:#cbd5e1;white-space:nowrap}
+#adm-sub-sada-balance-audit-242 .sba-status.banned{color:#fda4af;border-color:rgba(244,63,94,.35);background:rgba(244,63,94,.08)}
+#adm-sub-sada-balance-audit-242 .sba-pages{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;padding:7px}
+#adm-sub-sada-balance-audit-242 .sba-message{padding:11px 12px;border-radius:11px;border:1px solid rgba(148,163,184,.2);background:rgba(15,23,42,.5);color:var(--t1,#cbd5e1);font-size:11px;line-height:1.8}
+@media(max-width:650px){#adm-sub-sada-balance-audit-242 .sba-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}#adm-sub-sada-balance-audit-242 .sba-controls{grid-template-columns:1fr}#adm-sub-sada-balance-audit-242 .sba-user-head{flex-direction:column}#adm-sub-sada-balance-audit-242 .sba-balance{text-align:right}#adm-sub-sada-balance-audit-242 .sba-actions .btn{flex:1 1 calc(50% - 7px)}}
+</style>
+<script id="sada-balance-audit-242">
+(function(){
+ 'use strict';
+ const ID='sada-balance-audit-242',PAGE_SIZE=50;
+ let page=1,totalPages=1,debounce=null,requestSerial=0;
+ const $=id=>document.getElementById(id);
+ const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+ const nfmt=v=>Number(v||0).toLocaleString('en-US',{maximumFractionDigits:2});
+ const iqdfmt=v=>nfmt(v)+' د.ع';
+ const toasts=(m,k='ok')=>{try{window.toast?.(m,k)}catch(_){alert(m)}};
+ function token(){try{return String(localStorage.getItem('sadairaq_session_token')||'')}catch(_){return ''}}
+ async function request(path,opts={}){const t=token(),headers={...(opts.headers||{})};if(!headers['Content-Type']&&opts.body)headers['Content-Type']='application/json';if(t){headers['X-Sada-Session']=t;headers.Authorization='Bearer '+t}const r=await fetch(path,{...opts,headers,credentials:'include',cache:'no-store'});const d=await r.json().catch(()=>({}));if(!r.ok||d.ok===false||d.error)throw new Error(d.error||('HTTP '+r.status));return d}
+ function ensure(){
+  const panel=$('adm-panel'),sb=panel?.querySelector('.adm-sb'),main=panel?.querySelector('.adm-main');if(!panel||!sb||!main)return false;
+  let item=sb.querySelector('[data-sub="'+ID+'"]');if(!item){item=document.createElement('div');item.className='adm-sb-item';item.dataset.sub=ID;item.innerHTML='<i class="fas fa-ranking-star" style="color:#7dd3fc"></i><span>كشف الرصيد</span>';const sys=sb.querySelector('.adm-sb-sec:last-child');if(sys)sb.insertBefore(item,sys);else sb.appendChild(item);item.addEventListener('click',open)}
+  let section=$(('adm-sub-'+ID));if(!section){section=document.createElement('section');section.id='adm-sub-'+ID;section.className='adm-sub';section.innerHTML='<div class="sba-shell"><div class="sba-message">جاري تحميل بيانات الأرصدة...</div></div>';main.appendChild(section)}
+  return true;
+ }
+ function open(){if(!ensure())return;document.querySelectorAll('#adm-panel .adm-sub').forEach(x=>x.classList.remove('on'));document.querySelectorAll('#adm-panel .adm-sb-item').forEach(x=>x.classList.remove('on'));$('adm-sub-'+ID)?.classList.add('on');document.querySelector('#adm-panel [data-sub="'+ID+'"]')?.classList.add('on');page=1;load()}
+ function render(data){const section=$('adm-sub-'+ID);if(!section)return;const stats=data.stats||{},items=Array.isArray(data.items)?data.items:[];totalPages=Math.max(1,Number(data.totalPages)||1);const oldQ=$('sba-search')?.value||'',oldSort=$('sba-sort')?.value||'balance';section.innerHTML='<div class="sba-shell"><div class="sba-title"><div><h2>كشف الرصيد</h2><div class="sba-user-meta">عرض الأرصدة الحقيقية، ترتيب المستخدمين، وإدارة الرصيد والخصومات والحظر.</div></div><button type="button" class="btn bs2 btn-sm" id="sba-refresh">↻ تحديث البيانات</button></div><div class="sba-kpis"><div class="sba-kpi"><b>'+nfmt(stats.totalUsers||0)+'</b><span>إجمالي الحسابات</span></div><div class="sba-kpi"><b>'+iqdfmt(stats.totalBalanceIQD||0)+'</b><span>إجمالي الأرصدة النقدية</span></div><div class="sba-kpi"><b>USD '+nfmt(stats.totalBalanceUSD||0)+'</b><span>إجمالي الأرصدة بالدولار</span></div></div><div class="sba-controls"><input id="sba-search" type="search" autocomplete="off" placeholder="ابحث بالاسم أو اسم المستخدم أو البريد" value="'+esc(oldQ)+'"><select id="sba-sort" aria-label="ترتيب المستخدمين"><option value="balance" '+(oldSort==='balance'?'selected':'')+'>أعلى رصيد أولاً</option><option value="balance_asc" '+(oldSort==='balance_asc'?'selected':'')+'>أقل رصيد أولاً</option><option value="orders" '+(oldSort==='orders'?'selected':'')+'>أكثر طلبات أولاً</option></select><span class="sba-status">'+nfmt(data.total||0)+' نتيجة</span></div>'+(data.warning?'<div class="sba-message">⚠️ '+esc(data.warning)+'</div>':'')+'<div class="sba-list" id="sba-list">'+(items.length?items.map(rowHTML).join(''):'<div class="sba-message">لا توجد حسابات تطابق البحث.</div>')+'</div><div class="sba-pages"><button type="button" class="btn bs2 btn-sm" id="sba-prev" '+(page<=1?'disabled':'')+'>← السابق</button><span>صفحة '+page+' من '+totalPages+'</span><button type="button" class="btn bs2 btn-sm" id="sba-next" '+(page>=totalPages?'disabled':'')+'>التالي →</button></div><div class="sba-message">تعديل الرصيد يغيّر رصيد الدولارات فقط. نقاط الدعم المجاني مستقلة ولا تتأثر. لا يمكن تنفيذ تعديل مالي لحساب لا يملك سجلاً مؤكداً في Firebase.</div></div>';
+  $('sba-refresh').onclick=()=>load();$('sba-prev').onclick=()=>{if(page>1){page--;load()}};$('sba-next').onclick=()=>{if(page<totalPages){page++;load()}};
+  $('sba-search').addEventListener('input',()=>{clearTimeout(debounce);debounce=setTimeout(()=>{page=1;load()},300)});$('sba-sort').onchange=()=>{page=1;load()};
+  section.querySelectorAll('[data-sba-action]').forEach(btn=>btn.addEventListener('click',()=>runAction(btn.dataset.sbaAction,items.find(x=>String(x.username)===btn.dataset.username))));
+ }
+ function rowHTML(u){const adm=String(u.role||'user')==='admin',hasKey=!!String(u.firebaseKey||''),blocked=!!u.banned;const status=adm?'حساب إدارة':blocked?'محظور': 'نشط';return '<article class="sba-user"><div class="sba-user-head"><div style="min-width:0;flex:1"><div class="sba-user-name">'+esc(u.name||u.username)+' <span class="sba-user-meta">· '+esc(u.username)+'</span></div><div class="sba-user-meta">'+esc(u.email||'لا يوجد بريد مسجل')+'<br>الطلبات: '+(u.orderCount===null||u.orderCount===undefined?'غير متاحة':nfmt(u.orderCount))+' · الخصم: '+nfmt(u.discountPct||0)+'%</div></div><div class="sba-balance">'+iqdfmt(u.balanceIQD)+'<div style="font-size:10px;font-weight:700">USD '+nfmt(u.balanceUSD)+'</div></div><span class="sba-status '+(blocked?'banned':'')+'">'+status+'</span></div><div class="sba-actions">'+(hasKey?'<button type="button" class="btn bok btn-sm" data-sba-action="charge" data-username="'+esc(u.username)+'">إضافة رصيد</button><button type="button" class="btn bdng btn-sm" data-sba-action="deduct" data-username="'+esc(u.username)+'">خصم رصيد</button><button type="button" class="btn bs2 btn-sm" data-sba-action="discount" data-username="'+esc(u.username)+'">تعديل الخصم</button>': '<span class="sba-user-meta">لا يوجد سجل Firebase مؤكد؛ الإجراءات المالية معطلة لحماية الحساب.</span>')+(hasKey&&!adm?'<button type="button" class="btn '+(blocked?'bok':'bdng')+' btn-sm" data-sba-action="ban" data-username="'+esc(u.username)+'">'+(blocked?'رفع الحظر':'حظر المستخدم')+'</button>':'')+'</div></article>'}
+ async function load(){const section=$('adm-sub-'+ID);if(!section)return;const serial=++requestSerial;const q=String($('sba-search')?.value||'').trim(),sort=String($('sba-sort')?.value||'balance');section.querySelector('.sba-list')?.setAttribute('aria-busy','true');if(!section.querySelector('.sba-list'))section.querySelector('.sba-shell').insertAdjacentHTML('beforeend','<div class="sba-message">جاري تحميل بيانات Firebase...</div>');try{const d=await request('/api/admin/order-audit/balances?sort='+encodeURIComponent(sort)+'&q='+encodeURIComponent(q)+'&page='+page+'&limit='+PAGE_SIZE);if(serial!==requestSerial)return;render(d)}catch(e){if(serial!==requestSerial)return;const shell=section.querySelector('.sba-shell');if(shell)shell.innerHTML='<div class="sba-title"><h2>كشف الرصيد</h2><button type="button" class="btn bs2 btn-sm" id="sba-refresh-error">إعادة المحاولة</button></div><div class="sba-message">تعذر جلب الأرصدة من الخادم: '+esc(e.message)+'<br>لم يتم عرض أرصدة محلية على أنها أرصدة حقيقية.</div>';section.querySelector('#sba-refresh-error')?.addEventListener('click',load)}}
+ async function runAction(action,u){if(!u)return;const email=String(u.email||'').trim().toLowerCase(),username=String(u.username||'').trim(),firebaseKey=String(u.firebaseKey||'');if(!firebaseKey){toasts('لا يوجد سجل Firebase مؤكد لهذا الحساب.','err');return}try{
+  if(action==='charge'||action==='deduct'){const raw=prompt(action==='charge'?'مبلغ إضافة الرصيد بالدولار USD:':'مبلغ خصم الرصيد بالدولار USD:','1.00');if(raw===null)return;const amountUsd=Number(raw);if(!Number.isFinite(amountUsd)||amountUsd<=0||amountUsd>1000000){toasts('أدخل مبلغاً صحيحاً أكبر من صفر.','err');return}const reason=prompt('سبب العملية (مطلوب للتدقيق):',action==='charge'?'إضافة رصيد من لوحة كشف الرصيد':'خصم رصيد من لوحة كشف الرصيد');if(reason===null)return;if(reason.trim().length<4){toasts('اكتب سبباً لا يقل عن 4 أحرف.','err');return}if(!confirm('تأكيد '+(action==='charge'?'إضافة':'خصم')+' USD '+nfmt(amountUsd)+' للمستخدم '+username+'؟'))return;const d=await request('/api/admin/order-audit/balances/adjust',{method:'POST',body:JSON.stringify({username,email,firebaseKey,type:action,amountUsd,reason:reason.trim()})});if(d.ok!==true||!Number.isFinite(Number(d.balanceIQD)))throw new Error('لم يؤكد الخادم حفظ الرصيد الجديد.');toasts('تم التحقق من حفظ الرصيد الجديد: '+iqdfmt(d.balanceIQD),'ok');await load();return}
+  if(action==='discount'){const raw=prompt('نسبة الخصم الجديدة (0–100%):',String(u.discountPct||0));if(raw===null)return;const discountPct=Number(raw);if(!Number.isFinite(discountPct)||discountPct<0||discountPct>100){toasts('نسبة الخصم يجب أن تكون بين 0 و100.','err');return}if(!confirm('حفظ خصم '+discountPct+'% للمستخدم '+username+'؟'))return;const d=await request('/api/admin/users/discount',{method:'POST',body:JSON.stringify({username,email,firebaseKey,discountPct})});if(d.ok!==true)throw new Error('لم يؤكد الخادم حفظ الخصم.');toasts('تم تحديث نسبة الخصم.','ok');await load();return}
+  if(action==='ban'){const banned=!u.banned;let reason=prompt(banned?'سبب حظر المستخدم:':'سبب رفع الحظر:',banned?'مخالفة شروط الاستخدام':'تم رفع الحظر من لوحة الإدارة');if(reason===null)return;if(banned&&reason.trim().length<4){toasts('سبب الحظر يجب أن يكون 4 أحرف على الأقل.','err');return}if(!confirm(banned?'تأكيد حظر '+username+' من الدخول للموقع؟':'تأكيد رفع الحظر عن '+username+'؟'))return;const d=await request('/api/admin/users/ban',{method:'POST',body:JSON.stringify({username,email,firebaseKey,banned,reason:reason.trim()})});if(d.ok!==true||d.banned!==banned||d.verified!==true)throw new Error('لم يؤكد الخادم حفظ حالة الحظر.');toasts(d.message||'تم حفظ حالة الحظر.','ok');await load()}
+ }catch(e){toasts('فشل تنفيذ العملية: '+String(e.message||e),'err')}}
+ function init(){if(!ensure())return;const w=window.admNavTo;if(typeof w==='function'&&!w.__sadaBalanceAudit242){const wrap=function(sub,el){if(sub===ID){ensure();open();return}return w.apply(this,arguments)};wrap.__sadaBalanceAudit242=true;window.admNavTo=wrap;}}
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
+ const prevNav=window.nav;if(typeof prevNav==='function'&&!prevNav.__sadaBalanceAudit242){const wrap=function(name){const out=prevNav.apply(this,arguments);if(name==='admin')setTimeout(init,160);return out};wrap.__sadaBalanceAudit242=true;window.nav=wrap}
+ const oldLoad=window.loadAdminPage;if(typeof oldLoad==='function'&&!oldLoad.__sadaBalanceAudit242){const wrap=function(){const out=oldLoad.apply(this,arguments);setTimeout(init,150);return out};wrap.__sadaBalanceAudit242=true;window.loadAdminPage=wrap}
+ setInterval(()=>{if(document.getElementById('adm-panel'))init()},12000);
+ window.SADA_BALANCE_AUDIT_242={open,refresh:load};
+})();
+</script>
+
 </body>
 
 
@@ -14389,7 +14466,7 @@ function installWalletPage(){const current=window.CU||(typeof CU!=='undefined'?C
 const oldLaunch=window.launchApp;if(typeof oldLaunch==='function'&&!oldLaunch.__sada1599Secure){const wrapped=function(){const out=oldLaunch.apply(this,arguments);return out};wrapped.__sada1599Secure=true;window.launchApp=wrapped}
 const oldLoadAdmin=window.loadAdminPage;if(typeof oldLoadAdmin==='function'&&!oldLoadAdmin.__sada1599Secure){const wrapped=function(){const out=oldLoadAdmin.apply(this,arguments);setTimeout(loadAdmMsgs,700);return out};wrapped.__sada1599Secure=true;window.loadAdminPage=wrapped}
 document.addEventListener('DOMContentLoaded',()=>{setTimeout(startUserChatPoll,1200)});
-window.SADA_V1599_FIXES={version:'1.6.67',features:['telegram-stable-server-derived-encryption-key','telegram-channel-id-normalization','server-authoritative-asiacell-topups','server-backed-recharge-statistics','server-backed-wallet-list-and-discount-updates','privileged-server-support-chat','privileged-server-provider-service-import']};
+window.SADA_V1599_FIXES={version:'1.6.69',features:['telegram-stable-server-derived-encryption-key','telegram-channel-id-normalization','server-authoritative-asiacell-topups','server-backed-recharge-statistics','server-backed-wallet-list-and-discount-updates','privileged-server-support-chat','privileged-server-provider-service-import']};
 })();
 </script>
 
@@ -14432,7 +14509,7 @@ window.SADA_V1599_FIXES={version:'1.6.67',features:['telegram-stable-server-deri
 </style>
 <script id="sada174-version-fix">
 (function(){
-  const version='1.6.67';
+  const version='1.6.69';
   document.querySelectorAll('[data-sada-version]').forEach(el=>{el.textContent=version});
   const versionNodes=[...document.querySelectorAll('body *')].filter(el=>el.children.length===0 && /^1\.5\.73$/.test((el.textContent||'').trim()));
   versionNodes.forEach(el=>{if(!el.closest('script,style,code,pre'))el.textContent=version});
@@ -14544,7 +14621,7 @@ window.SADA_V1599_FIXES={version:'1.6.67',features:['telegram-stable-server-deri
   function init(){installAdapter(typeof DB!=='undefined'?DB:null);pinSupport();}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
   setInterval(()=>{if(document.hidden||!document.getElementById('adm-panel')?.classList.contains('on'))return;try{installAdapter(typeof DB!=='undefined'?DB:null);pinSupport()}catch(_){}},10000);
-  window.SADA_V1600={version:'1.6.67',features:['host-json-service-catalog','server-authoritative-wallet-ui','server-authoritative-orders-list','fixed-firebase-user-path-resolution','support-pinned-first','server-only-service-sync']};
+  window.SADA_V1600={version:'1.6.69',features:['host-json-service-catalog','server-authoritative-wallet-ui','server-authoritative-orders-list','fixed-firebase-user-path-resolution','support-pinned-first','server-only-service-sync']};
 })();
 </script>
 
@@ -14607,7 +14684,7 @@ window.SADA_V1599_FIXES={version:'1.6.67',features:['telegram-stable-server-deri
   function refreshStats(){const me=userNow();if(me&&me.u&&!document.hidden){window.refreshSadaUserBalance1600?.();window.loadHomeExtras67?.()}}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{pinSupportAndFinance();refreshStats()},{once:true});else{pinSupportAndFinance();refreshStats()}
   setInterval(()=>{try{pinSupportAndFinance();refreshStats();if($('adm-panel')?.classList.contains('on'))addUserFinanceButtons()}catch(_){}},25000);
-  window.SADA_V1600_FINAL={version:'1.6.67',features:['server-only-order-submission','no-browser-wallet-debits','server-backed-wallet-adjustments','server-backed-user-balance-refresh','telegram-fallback-diagnostics','pinned-support-inbox','hosting-file-service-catalog']};
+  window.SADA_V1600_FINAL={version:'1.6.69',features:['server-only-order-submission','no-browser-wallet-debits','server-backed-wallet-adjustments','server-backed-user-balance-refresh','telegram-fallback-diagnostics','pinned-support-inbox','hosting-file-service-catalog']};
 })();
 </script>
 
@@ -14654,7 +14731,7 @@ window.SADA_V1599_FIXES={version:'1.6.67',features:['telegram-stable-server-deri
   const oldAdm=window.admNavTo;if(typeof oldAdm==='function'&&!oldAdm.__sada1602DescWrapped){const wrapped=function(sub,el){if(sub==='sada-service-descriptions'){install();showEditor();return}return oldAdm.apply(this,arguments)};wrapped.__sada1602DescWrapped=true;window.admNavTo=wrapped}
   const oldLaunch=window.launchApp;if(typeof oldLaunch==='function'&&!oldLaunch.__sada1602DescWrapped){const wrapped=function(){const r=oldLaunch.apply(this,arguments);setTimeout(install,250);return r};wrapped.__sada1602DescWrapped=true;window.launchApp=wrapped}
   function init(){install()};if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();setInterval(()=>{if(document.hidden||!document.getElementById('adm-panel')?.classList.contains('on')||!document.getElementById('adm-sub-sada-service-descriptions')?.classList.contains('on'))return;try{install()}catch(_){}},15000);
-  window.SADA_SERVICE_DESCRIPTIONS={version:'1.6.67',storage:'hosting-json',features:['provider-description-preservation','manual-service-description','category-description-fallback']};
+  window.SADA_SERVICE_DESCRIPTIONS={version:'1.6.69',storage:'hosting-json',features:['provider-description-preservation','manual-service-description','category-description-fallback']};
 })();
 </script>
 
@@ -14836,7 +14913,7 @@ window.SADA_V1599_FIXES={version:'1.6.67',features:['telegram-stable-server-deri
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
  setTimeout(()=>{syncHostMeta1605().then(changed=>{if(changed)rebuildCatalogSelectors1605()});installHostCatalogRefresh1605()},1600);
  setInterval(()=>{if(document.hidden)return;try{mountOrders();installServiceWrapper();installProviderCheck();installHostCatalogRefresh1605()}catch(_){}},45000);
- window.SADA_V1605={version:'1.6.67',features:['premium-order-history','arabic-order-status','visible-service-description','custom-category-service-images','firebase-wallet-key-fix','live-provider-api-diagnostics','exact-name-unique-id-reconcile']};
+ window.SADA_V1605={version:'1.6.69',features:['premium-order-history','arabic-order-status','visible-service-description','custom-category-service-images','firebase-wallet-key-fix','live-provider-api-diagnostics','exact-name-unique-id-reconcile']};
 })();
 </script>
 
@@ -15035,7 +15112,7 @@ function polishOrderForm(){
 }
 function init(){bindAsiaCell();polishOrderForm();const entry=$('sadairaq-ac-entry');if(entry)new MutationObserver(bindAsiaCell).observe(entry,{attributes:true,attributeFilter:['onclick']});const order=$('pg-order');if(order)new MutationObserver(()=>polishOrderForm()).observe(order,{childList:true,subtree:true});}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
-window.SADA1637_UI_FIXES={version:'1.6.67',openAsiaCell:openWizard,polishOrderForm,onLogout:()=>{clearState();$('sada1637-asiacell-wizard-overlay')?.remove();document.body.style.removeProperty('overflow');}};
+window.SADA1637_UI_FIXES={version:'1.6.69',openAsiaCell:openWizard,polishOrderForm,onLogout:()=>{clearState();$('sada1637-asiacell-wizard-overlay')?.remove();document.body.style.removeProperty('overflow');}};
 })();
 </script>
 
@@ -15079,7 +15156,7 @@ window.SADA1637_UI_FIXES={version:'1.6.67',openAsiaCell:openWizard,polishOrderFo
 .sada-sidebar-version{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:10px;padding:10px 8px;border-top:1px solid var(--bd);color:var(--t2);font-size:10px;font-weight:750;letter-spacing:.15px}.sada-sidebar-version i{color:var(--blue)}.sada-sidebar-version b{display:inline-flex;align-items:center;justify-content:center;min-width:34px;padding:4px 8px;border:1px solid rgba(91,164,255,.25);border-radius:999px;background:rgba(91,164,255,.08);color:var(--blue);font-size:11px;font-weight:950}.sb-foot{padding-bottom:max(10px,env(safe-area-inset-bottom))}
 </style>
 <script id="sada-v2-sidebar-only-version">
-(function(){'use strict';const shown='2.41';function apply(){const badge=document.getElementById('sadairaq-version-badge');if(badge){badge.style.setProperty('display','none','important');badge.setAttribute('aria-hidden','true')}const v=document.querySelector('#sada-sidebar-version b');if(v&&v.textContent.trim()!==shown)v.textContent=shown;document.title='صدى العراق';}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',apply,{once:true});else apply();window.addEventListener('pageshow',apply);})();
+(function(){'use strict';const shown='2.43';function apply(){const badge=document.getElementById('sadairaq-version-badge');if(badge){badge.style.setProperty('display','none','important');badge.setAttribute('aria-hidden','true')}const v=document.querySelector('#sada-sidebar-version b');if(v&&v.textContent.trim()!==shown)v.textContent=shown;document.title='صدى العراق';}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',apply,{once:true});else apply();window.addEventListener('pageshow',apply);})();
 </script>
 
 <script id="sada-free-services-21">

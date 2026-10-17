@@ -44,8 +44,8 @@ function purgeCatalogServiceSnapshots(){
 }
 purgeCatalogServiceSnapshots();
 const APP_NAME = 'صدى العراق';
-const APP_VERSION = '1.6.67';
-const BUILD_ID = 'SADA-1.6.67-FREE-SUPPORT-PLATFORM-UX-20261017';
+const APP_VERSION = '1.6.69';
+const BUILD_ID = 'SADA-1.6.69-FREE-SUPPORT-TASK-COMPLETION-BALANCE-AUDIT-20261017';
 // Keep the owner's admin identity available after packaging, but store only a scrypt hash
 // in the project. Railway variables can still explicitly override this packaged credential.
 function loadBundledAdminAuth(){
@@ -746,6 +746,9 @@ function decodeSession(token){
     return v;
   }catch(_){return null;}
 }
+function isSadaAdminBannedAccount(user){return !!(user&&(user.adminBanned===true||user.siteBanned===true));}
+const SADA_ADMIN_BANNED_USERNAMES=new Set();
+try{const _banStore=readJSON('users.json',{users:{}});for(const [k,u] of Object.entries(_banStore.users||{})){if(isSadaAdminBannedAccount(u)){const name=String(u.username||k).trim().toLowerCase();if(name)SADA_ADMIN_BANNED_USERNAMES.add(name);}}}catch(_){}
 function session(req){
   // Prefer any valid signed session among header, Bearer token and HttpOnly cookie.
   // A stale localStorage token must not shadow a still-valid secure cookie after deploy/refresh.
@@ -757,12 +760,13 @@ function session(req){
     const stateless=decodeSession(token);
     if(stateless){
       if(!/^[a-zA-Z0-9_@.\-]+$/.test(String(stateless.username||'')))continue;
+      if(String(stateless.role||'')!=='admin'&&SADA_ADMIN_BANNED_USERNAMES.has(String(stateless.username||'').trim().toLowerCase()))continue;
       // A signed admin session remains valid during an admin-email setting change until TTL expiry.
       // Do NOT require users.json for a signed user session; Firebase users can outlive ephemeral disks.
       return stateless;
     }
     const v=sessions.get(token);
-    if(v){if(Date.now()-(v.createdAt||0)>SESSION_TTL_MS){sessions.delete(token);continue;}return v;}
+    if(v){if(Date.now()-(v.createdAt||0)>SESSION_TTL_MS){sessions.delete(token);continue;}if(String(v.role||'')!=='admin'&&SADA_ADMIN_BANNED_USERNAMES.has(String(v.username||'').trim().toLowerCase())){sessions.delete(token);continue;}return v;}
   }
   return null;
 }
@@ -4652,7 +4656,7 @@ function freeSupportRequestPath(id){return FREE_SUPPORT_ROOT+'/requests/'+fireba
 function freeSupportEvidencePath(id){return FREE_SUPPORT_ROOT+'/evidence/'+firebaseSafeKey(id)}
 function freeSupportTaskPath(id){return FREE_SUPPORT_ROOT+'/tasks/'+firebaseSafeKey(id)}
 function freeSupportClaimPath(taskId,username){return FREE_SUPPORT_ROOT+'/claims/'+firebaseSafeKey(taskId)+'/'+firebaseSafeKey(username)}
-function freeSupportDefaultWallet(username){return {username:String(username||''),points:0,acceptedRules:false,blocked:false,warnings:0,warningHistory:[],awardedRequests:{},spentRequests:{},refundRequests:{},dailyGift:{streakDay:0,lastClaimDate:'',history:{}},updatedAt:nowISO()}}
+function freeSupportDefaultWallet(username){return {username:String(username||''),points:0,acceptedRules:false,blocked:false,warnings:0,warningHistory:[],awardedRequests:{},completedTasks:{},spentRequests:{},refundRequests:{},dailyGift:{streakDay:0,lastClaimDate:'',history:{}},updatedAt:nowISO()}}
 function freeSupportBaghdadDateKey(date=new Date()){
   const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Baghdad',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(date);
   const pick=type=>parts.find(p=>p.type===type)?.value||'';
@@ -4704,7 +4708,7 @@ function freeSupportPricePer100(settings,serviceType){const key=freeSupportPrice
 function freeSupportCampaignCost(settings,serviceType,quantity){return Math.ceil(Math.max(0,Number(quantity)||0)*freeSupportPricePer100(settings,serviceType)/100)}
 function freeSupportRewardPoints(settings,serviceType){const key=freeSupportPriceKey(serviceType),raw=Number(settings?.rewardPointsByType?.[key]??FREE_SUPPORT_DEFAULT_SETTINGS.rewardPointsByType[key]);return Number.isSafeInteger(raw)?Math.max(1,Math.min(1000000,raw)):FREE_SUPPORT_DEFAULT_SETTINGS.rewardPointsByType[key]}
 function freeSupportTaskTitle(serviceType,platformName){const names={followers:'متابعة حساب',likes:'إعجاب بمنشور',views:'مشاهدة محتوى'};return (names[String(serviceType||'followers')]||'تنفيذ مهمة')+' — '+String(platformName||'المنصة')}
-async function freeSupportReadWallet(username){const value=await firebaseGetJson(freeSupportWalletPath(username),7000);return {...freeSupportDefaultWallet(username),...freeSupportObject(value),username:String(username||''),points:Math.max(0,Math.floor(Number(value?.points)||0)),warnings:Math.max(0,Math.floor(Number(value?.warnings)||0)),warningHistory:Array.isArray(value?.warningHistory)?value.warningHistory:[],awardedRequests:freeSupportObject(value?.awardedRequests),spentRequests:freeSupportObject(value?.spentRequests),refundRequests:freeSupportObject(value?.refundRequests),dailyGift:{...freeSupportDefaultWallet(username).dailyGift,...freeSupportObject(value?.dailyGift),history:freeSupportObject(value?.dailyGift?.history)}}}
+async function freeSupportReadWallet(username){const value=await firebaseGetJson(freeSupportWalletPath(username),7000);return {...freeSupportDefaultWallet(username),...freeSupportObject(value),username:String(username||''),points:Math.max(0,Math.floor(Number(value?.points)||0)),warnings:Math.max(0,Math.floor(Number(value?.warnings)||0)),warningHistory:Array.isArray(value?.warningHistory)?value.warningHistory:[],awardedRequests:freeSupportObject(value?.awardedRequests),completedTasks:freeSupportObject(value?.completedTasks),spentRequests:freeSupportObject(value?.spentRequests),refundRequests:freeSupportObject(value?.refundRequests),dailyGift:{...freeSupportDefaultWallet(username).dailyGift,...freeSupportObject(value?.dailyGift),history:freeSupportObject(value?.dailyGift?.history)}}}
 async function freeSupportListData(){
   const [settingsRaw,tasksRaw,requestsRaw]=await Promise.all([firebaseGetJson(FREE_SUPPORT_ROOT+'/settings',7000),firebaseGetJson(FREE_SUPPORT_ROOT+'/tasks',10000),firebaseGetJson(FREE_SUPPORT_ROOT+'/requests',12000)]);
   const settings=freeSupportSafeSettings(settingsRaw||FREE_SUPPORT_DEFAULT_SETTINGS,FREE_SUPPORT_DEFAULT_SETTINGS);
@@ -4735,10 +4739,13 @@ async function freeSupportAward(request){
   const tx=await firebaseTransaction(freeSupportWalletPath(username),current=>{
     const wallet={...freeSupportDefaultWallet(username),...freeSupportObject(current)};
     const awarded={...freeSupportObject(wallet.awardedRequests)};
-    if(awarded[id])return {write:false,result:{alreadyAwarded:true,points:Math.max(0,Math.floor(Number(wallet.points)||0))}};
+    const completedTasks={...freeSupportObject(wallet.completedTasks)};
+    const taskKey=request.campaignId?'campaign_'+String(request.campaignId):request.taskId?'task_'+String(request.taskId):'';
+    if(taskKey){completedTasks[taskKey]={requestId:id,at:nowISO(),platform:String(request.platform||''),title:String(request.title||'')};const donePairs=Object.entries(completedTasks).sort((a,b)=>(Date.parse(a[1]?.at||0)||0)-(Date.parse(b[1]?.at||0)||0));while(donePairs.length>1500){const [k]=donePairs.shift();delete completedTasks[k]}}
+    if(awarded[id]){wallet.completedTasks=completedTasks;wallet.updatedAt=nowISO();return {write:!!taskKey,value:wallet,result:{alreadyAwarded:true,points:Math.max(0,Math.floor(Number(wallet.points)||0))}};}
     wallet.points=Math.max(0,Math.floor(Number(wallet.points)||0))+points;awarded[id]={points,at:nowISO()};
     const pairs=Object.entries(awarded).sort((a,b)=>(Date.parse(a[1]?.at||0)||0)-(Date.parse(b[1]?.at||0)||0));while(pairs.length>1200){const [k]=pairs.shift();delete awarded[k]}
-    wallet.awardedRequests=awarded;wallet.username=username;wallet.updatedAt=nowISO();return {write:true,value:wallet,result:{awarded:true,points:wallet.points}};
+    wallet.awardedRequests=awarded;wallet.completedTasks=completedTasks;wallet.username=username;wallet.updatedAt=nowISO();return {write:true,value:wallet,result:{awarded:true,points:wallet.points}};
   },12000,8);
   if(tx.result?.error)throw new Error('تعذر تحديث نقاط المستخدم.');
   return {points:Math.max(0,Math.floor(Number(tx.value?.points??tx.result?.points)||0)),alreadyAwarded:!!tx.result?.alreadyAwarded};
@@ -4796,7 +4803,7 @@ async function freeSupportRoute(req,res,urlObj){
       const campaigns=freeSupportRows(data.requests).filter(r=>r.type==='campaign'&&r.user!==username&&['queued','in_progress'].includes(String(r.status))&&Number(r.completedQuantity||0)+Number(r.reservedQuantity||0)<Number(r.quantity||0)).map(r=>({id:r.id,taskKind:'campaign',platform:r.platform,platformName:r.platformName,serviceType:r.serviceType,title:r.title||r.serviceType,targetLink:r.targetLink,quantity:Number(r.quantity||0),completedQuantity:Number(r.completedQuantity||0),reservedQuantity:Number(r.reservedQuantity||0),rewardPoints:Math.max(1,Math.floor(Number(r.rewardPoints||data.settings.pointsPerUnit)||1)),status:r.status,createdAt:r.createdAt}));
       const campaignsSorted=campaigns.filter(r=>r.adminDeleted!==true).sort((a,b)=>(a.pinned===true?-1:0)-(b.pinned===true?-1:0)||(Date.parse(b.createdAt||0)||0)-(Date.parse(a.createdAt||0)||0));
       const myRequests=freeSupportRows(data.requests).filter(r=>r.user===username&&r.adminDeleted!==true&&!(r.type==='proof'&&['approved','rejected'].includes(String(r.status)))).sort((a,b)=>(Date.parse(b.createdAt||0)||0)-(Date.parse(a.createdAt||0)||0)).slice(0,500).map(r=>({...freeSupportPublicRequest(r),...(r.type==='campaign'?{waitNotice:String(r.waitNotice||FREE_SUPPORT_WAIT_NOTICE)}:{})}));
-      return json(res,200,{ok:true,blocked:false,settings:data.settings,wallet:{points:wallet.points,warnings:wallet.warnings,acceptedRules:!!wallet.acceptedRules},dailyGift:freeSupportDailyGiftStatus(wallet),tasks,campaigns:campaignsSorted,myRequests});
+      return json(res,200,{ok:true,blocked:false,settings:data.settings,wallet:{points:wallet.points,warnings:wallet.warnings,acceptedRules:!!wallet.acceptedRules,completedTasks:freeSupportObject(wallet.completedTasks)},dailyGift:freeSupportDailyGiftStatus(wallet),tasks,campaigns:campaignsSorted,myRequests});
     }
     if(req.method==='POST'){
       if(!s)return json(res,401,{ok:false,error:'سجّل الدخول أولاً.'});
@@ -5772,6 +5779,46 @@ async function routeAPI(req,res,urlObj){
     }catch(e){return json(res,502,{ok:false,error:'تعذر حفظ الخصم في Firebase: '+String(e.message||e).slice(0,160)})}
   }
 
+  if(p==='/api/admin/users/ban'&&req.method==='POST'){
+    if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
+    const b=await bodyJSON(req),username=String(b.username||'').trim(),email=normalizeEmail(b.email),firebaseKey=String(b.firebaseKey||'').trim(),banned=b.banned===true,reason=String(b.reason||'').trim().slice(0,500);
+    if(!username||(email&&!validEmail(email)))return json(res,422,{ok:false,error:'حدد اسم المستخدم والبريد الصحيح إن توفر.'});
+    if(banned&&reason.length<4)return json(res,422,{ok:false,error:'اكتب سبب الحظر من 4 أحرف على الأقل.'});
+    try{
+      const found=await resolveAdminWalletUser(username,email,firebaseKey);
+      if(!found?.firebasePath||!found?.user)return json(res,404,{ok:false,error:'لم يُعثر على سجل Firebase مطابق وفريد لهذا المستخدم؛ لم يتم تغيير الحساب.'});
+      if(String(found.user.role||'user')==='admin')return json(res,409,{ok:false,error:'لا يمكن حظر حساب إدارة من قسم كشف الرصيد.'});
+      const actor=String(session(req)?.username||ADMIN_USER),at=nowISO();
+      const tx=await firebaseTransaction(found.firebasePath,current=>{
+        if(!current||typeof current!=='object'||Array.isArray(current))return {write:false,result:{error:'user-not-found'}};
+        if(String(current.role||'user')==='admin')return {write:false,result:{error:'admin-target'}};
+        const currentEmail=firebaseRecordEmail(current);if(validEmail(email)&&currentEmail&&currentEmail!==email)return {write:false,result:{error:'email-mismatch'}};
+        const was=isSadaAdminBannedAccount(current);
+        if(was===banned)return {write:false,result:{unchanged:true,banned:was,user:current}};
+        if(banned){
+          current.statusBeforeSadaBan=String(current.status||current.accountStatus||'active');
+          current.accountStatusBeforeSadaBan=String(current.accountStatus||current.status||'active');
+          current.adminBanned=true;current.siteBanned=true;current.banned=true;current.status='banned';current.accountStatus='banned';current.banReason=reason;current.bannedAt=at;current.bannedBy=actor;
+        }else{
+          current.adminBanned=false;current.siteBanned=false;current.banned=false;
+          current.status=String(current.statusBeforeSadaBan||'active');current.accountStatus=String(current.accountStatusBeforeSadaBan||current.status||'active');
+          current.unbannedAt=at;current.unbannedBy=actor;current.unbanReason=reason||'رفع الحظر من لوحة الإدارة';
+          delete current.statusBeforeSadaBan;delete current.accountStatusBeforeSadaBan;delete current.banReason;delete current.bannedAt;delete current.bannedBy;
+        }
+        const history=Array.isArray(current.adminBanLedger)?current.adminBanLedger.slice(-99):[];history.push({at,by:actor,action:banned?'ban':'unban',reason:reason||'',username:String(current.username||found.username||username)});current.adminBanLedger=history.slice(-100);current.updatedAt=at;
+        return {write:true,value:current,result:{banned,user:current,unchanged:false}};
+      },12000,8);
+      if(tx.result?.error){const e=tx.result.error;return json(res,e==='email-mismatch'?409:e==='admin-target'?409:404,{ok:false,error:e==='email-mismatch'?'البريد الإلكتروني لا يطابق حساب Firebase.':e==='admin-target'?'لا يمكن حظر حساب إدارة.':'المستخدم غير موجود.'});}
+      const verified=await firebaseGetJson(found.firebasePath,10000);if(!verified||isSadaAdminBannedAccount(verified)!==banned)throw new Error('لم يؤكد Firebase حالة الحظر بعد الحفظ.');
+      const canonical=String(found.username||verified.username||username).trim(),lower=canonical.toLowerCase();if(banned)SADA_ADMIN_BANNED_USERNAMES.add(lower);else SADA_ADMIN_BANNED_USERNAMES.delete(lower);
+      const store=readJSON('users.json',{users:{}});store.users=store.users&&typeof store.users==='object'?store.users:{};
+      const localKey=Object.keys(store.users).find(k=>String(store.users[k]?.username||k).toLowerCase()===lower)||Object.keys(store.users).find(k=>email&&normalizeEmail(firebaseRecordEmail(store.users[k])||store.users[k]?.email)===email)||canonical;
+      store.users[localKey]={...(store.users[localKey]||{}),...verified,username:String(store.users[localKey]?.username||canonical)};writeJSON('users.json',store);
+      const ev={id:'UB_'+crypto.randomUUID().replace(/-/g,''),username:canonical,email:firebaseRecordEmail(verified)||email,action:banned?'ban':'unban',reason,admin:actor,createdAt:at};let ledgerSaved=true;try{await firebaseWriteJson('userBanLedger/'+ev.id,ev,8000)}catch(e){ledgerSaved=false;console.warn('user ban ledger mirror failed:',String(e.message||e).slice(0,100))}
+      return json(res,200,{ok:true,username:canonical,banned,unchanged:!!tx.result?.unchanged,verified:true,ledgerSaved,message:banned?'تم حظر المستخدم من دخول الحساب والتحقق من حفظ الحالة.':'تم رفع الحظر والتحقق من حفظ الحالة.'});
+    }catch(e){return json(res,502,{ok:false,error:'تعذر تثبيت حالة الحظر في Firebase: '+String(e.message||e).slice(0,160)});}
+  }
+
   if(p==='/api/payments'&&req.method==='POST'){
     const actor=session(req);if(!actor||!['user','admin'].includes(String(actor.role||'')))return json(res,401,{ok:false,error:'سجّل الدخول أولاً'});
     const b=await bodyJSON(req);const inputAmount=Number(b.amount);const inputCurrency=String(b.currency||'IQD').trim().toUpperCase();
@@ -6437,7 +6484,7 @@ async function routeAPI(req,res,urlObj){
     let remote=null;let remoteOk=false;try{remote=await firebaseGetJson('users',12000);if(remote!==null&&remote!==undefined&&(typeof remote!=='object'))throw new Error('شكل بيانات users غير متوقع');remoteOk=true}catch(e){if(!DATA_IS_EXTERNAL)return json(res,502,{ok:false,error:'تعذر قراءة أرصدة Firebase بأمان؛ لم نعرض أرقاماً محلية على أنها الأرصدة الحقيقية.',details:String(e.message||e).slice(0,140)})}
     const local=readJSON('users.json',{users:{}}).users||{};const all=new Map();for(const [k,v] of Object.entries(local)){if(v&&typeof v==='object')all.set(k,{...v,username:String(v.username||k),_firebaseKey:'',_source:'local'})}for(const [k,v] of collectionEntries(remote)){if(v&&typeof v==='object'&&!Array.isArray(v)){const username=String(v.username||v.userName||decodeFirebaseSafeKey(k)||k);all.set(username,{...(all.get(username)||{}),...v,username,_firebaseKey:String(k),_source:'firebase'})}}
     const orderCounts=new Map();let ordersAvailable=true;try{const orderRoot=await firebaseGetJson('orders',10000),orderRows=new Map();for(const o of readJSON('orders.json',[])){if(o&&typeof o==='object'&&!o.event)orderRows.set(String(o.id||o.siteOrderId||o.providerOrderId||o.createdAt||'')+'|'+String(o.user||o.username||'').toLowerCase(),o)}for(const [key,o] of collectionEntries(orderRoot)){if(o&&typeof o==='object'&&!o.event)orderRows.set(String(o.id||o.siteOrderId||o.providerOrderId||o.createdAt||key)+'|'+String(o.user||o.username||'').toLowerCase(),o)}for(const o of orderRows.values()){const u=String(o.user||o.username||'').trim().toLowerCase();if(u)orderCounts.set(u,(orderCounts.get(u)||0)+1)}}catch(_){ordersAvailable=false}
-    const rows=[...all.values()].map(u=>({username:String(u.username||u.u||''),name:String(u.fullName||u.name||u.username||''),email:String(firebaseRecordEmail(u)||''),balanceIQD:Number(u.balance||0),balanceUSD:Number((Number(u.balance||0)/FIXED_RATE).toFixed(6)),orderCount:ordersAvailable?(orderCounts.get(String(u.username||u.u||'').trim().toLowerCase())||0):null,role:String(u.role||'user'),updatedAt:u.updatedAt||u.joined||null,firebaseKey:String(u._firebaseKey||'')})).filter(u=>u.username&&(!q||[u.username,u.name,u.email].join(' ').toLowerCase().includes(q))).sort((a,b)=>sort==='orders'?((Number(b.orderCount)||0)-(Number(a.orderCount)||0)||b.balanceIQD-a.balanceIQD):b.balanceIQD-a.balanceIQD);
+    const rows=[...all.values()].map(u=>({username:String(u.username||u.u||''),name:String(u.fullName||u.name||u.username||''),email:String(firebaseRecordEmail(u)||''),balanceIQD:Number(u.balance||0),balanceUSD:Number((Number(u.balance||0)/FIXED_RATE).toFixed(6)),orderCount:ordersAvailable?(orderCounts.get(String(u.username||u.u||'').trim().toLowerCase())||0):null,role:String(u.role||'user'),discountPct:Number(u.discountPct??u.discount??0),banned:isSadaAdminBannedAccount(u),status:String(u.status||u.accountStatus||''),updatedAt:u.updatedAt||u.joined||null,firebaseKey:String(u._firebaseKey||'')})).filter(u=>u.username&&(!q||[u.username,u.name,u.email].join(' ').toLowerCase().includes(q))).sort((a,b)=>sort==='orders'?((Number(b.orderCount)||0)-(Number(a.orderCount)||0)||b.balanceIQD-a.balanceIQD):sort==='balance_asc'?(a.balanceIQD-b.balanceIQD||a.username.localeCompare(b.username,'ar')):(b.balanceIQD-a.balanceIQD||a.username.localeCompare(b.username,'ar')));
     const stats={totalUsers:all.size,withBalance:rows.filter(x=>x.balanceIQD>0).length,totalBalanceIQD:[...all.values()].reduce((sum,u)=>sum+Number(u.balance||0),0),totalBalanceUSD:0};stats.totalBalanceUSD=Number((stats.totalBalanceIQD/FIXED_RATE).toFixed(6));
     return json(res,200,{ok:true,stats,items:rows.slice((page-1)*limit,page*limit),page,limit,total:rows.length,totalPages:Math.max(1,Math.ceil(rows.length/limit)),source:remoteOk?'firebase':'local-only',warning:(remoteOk?'': 'تنبيه: مصدر Firebase غير متاح؛ بيانات العرض محلية وقد لا تعكس الرصيد الحي.')+(!ordersAvailable?' · تعذر قراءة الطلبات؛ أعداد الطلبات غير متاحة.':'')});
   }
@@ -6532,7 +6579,7 @@ async function routeAPI(req,res,urlObj){
     const wait=rateLimit(req,'auth');if(wait)return json(res,429,{ok:false,error:'محاولات كثيرة، أعد المحاولة بعد '+wait+' ثانية'},{'Retry-After':String(wait)});
     const b=await bodyJSON(req);const cap=consumeMathCaptcha(req,b);if(cap)return json(res,422,{ok:false,error:cap,captchaFailed:true});
     if(!String(b.credential||''))return json(res,422,{ok:false,error:'رمز Google مفقود.'});
-    try{const out=await googleAuthLogin(String(b.credential));const role='user';const lastLoginAt=recordSuccessfulUserLogin(out.username);const sessionToken=setSession(res,{role,username:out.username});const safe={...cleanGoogleUser(out.user),lastLoginAt};return json(res,200,{ok:true,role,username:out.username,user:safe,sessionToken,authProvider:'google',firebaseSaved:out.firebaseSaved});}
+    try{const out=await googleAuthLogin(String(b.credential));let authUser=out.user||{};let remoteAuthUser=null;try{remoteAuthUser=await findRemoteUserByUsername(out.username)}catch(e){return json(res,503,{ok:false,error:'تعذر التحقق من حالة الحساب في قاعدة البيانات؛ لم يتم تسجيل الدخول.'})}if(isSadaAdminBannedAccount(authUser)||isSadaAdminBannedAccount(remoteAuthUser?.user)||SADA_ADMIN_BANNED_USERNAMES.has(String(out.username||'').trim().toLowerCase()))return json(res,403,{ok:false,code:'account_banned',error:'تم حظر حسابك من تسجيل الدخول. يرجى التواصل مع الإدارة.'});const role='user';const lastLoginAt=recordSuccessfulUserLogin(out.username);const sessionToken=setSession(res,{role,username:out.username});const safe={...cleanGoogleUser(out.user),lastLoginAt};return json(res,200,{ok:true,role,username:out.username,user:safe,sessionToken,authProvider:'google',firebaseSaved:out.firebaseSaved});}
     catch(e){const code=Number(e.statusCode)||(/invalid|token|audience|expired|signature/i.test(String(e.message||''))?401:502);return json(res,code,{ok:false,error:code===502?'تعذر الاتصال بخدمة التحقق من Google؛ حاول مرة أخرى.':String(e.message||'فشل التحقق من Google')});}
   }
   if((p==='/api/auth/register/resend'||p==='/api/auth/register/verify') && req.method==='POST'){
@@ -6617,6 +6664,7 @@ async function routeAPI(req,res,urlObj){
       catch(e){remoteLookupFailed=true;console.warn('Email login lookup failed:',String(e.message||e).slice(0,120));}
     }
     if(user&&String(user.passwordHash||user.password||user.passHash||user.pass||'').length>0&&verifyPassword(pw,user.passwordHash||user.password||user.passHash||user.pass||'')){
+      if(isSadaAdminBannedAccount(user)||SADA_ADMIN_BANNED_USERNAMES.has(String(actualUsername||u).trim().toLowerCase()))return json(res,403,{ok:false,code:'account_banned',error:'تم حظر حسابك من تسجيل الدخول. يرجى التواصل مع الإدارة.'});
       // Mirror a remote-only legacy account locally without replacing its financial/order fields.
       if(!store.users[actualUsername]||!String(user.passwordHash||'').startsWith('scrypt$')){const upgraded={...(store.users[actualUsername]||user),...user,username:actualUsername};if(!String(user.passwordHash||'').startsWith('scrypt$'))upgraded.passwordHash=hashPassword(pw);delete upgraded.password;delete upgraded.pass;delete upgraded.passHash;store.users[actualUsername]=upgraded;writeJSON('users.json',store);
         if(remoteRecord&&remoteRecord.firebasePath&&!String(user.passwordHash||'').startsWith('scrypt$')){try{await firebasePatchJson(remoteRecord.firebasePath,{passwordHash:upgraded.passwordHash,password:null,pass:null,passHash:null,passwordUpdatedAt:nowISO()},5000);}catch(e){console.warn('Legacy password hash remote migration skipped:',String(e.message||e).slice(0,100));}}
@@ -7276,7 +7324,7 @@ async function routeAPI(req,res,urlObj){
     try { buildFile=fs.readFileSync(path.join(ROOT,'BUILD_ID.txt'),'utf8').trim(); } catch(_) {}
     const deploymentConsistent=uiVersion===APP_VERSION && uiBuildId===BUILD_ID && versionFile===APP_VERSION && buildFile===BUILD_ID;
     const dbInfo=firebaseDatabaseDiagnosticInfo();
-    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.67',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
+    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.69',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
     // Keep operational configuration details private; only an authenticated admin can inspect them.
     if(isAdmin(req)){const credentialStatus=firebaseServiceAccountStatus();health.firebaseDatabase={host:dbInfo.host,source:dbInfo.source,databaseProjectHint:dbInfo.databaseProjectHint,serviceAccountProjectId:dbInfo.serviceAccountProjectId||null,configuredWebProjectId:dbInfo.configuredWebProjectId||null,serviceAccountProjectMatch:dbInfo.serviceAccountProjectMatch};health.securityConfig={sessionSecretConfigured:!!String(process.env.SESSION_SECRET||'').trim(),dedicatedEncryptionKeyConfigured:!!String(process.env.SADA_ENCRYPTION_KEY||'').trim(),stableEncryptionAvailable:telegramEncryptionReady(),firebaseConfigured:!!FIREBASE_DATABASE_URL,firebaseServiceAccountConfigured:credentialStatus.ok,firebaseCredentialStatus:{ok:credentialStatus.ok,code:credentialStatus.code,source:credentialStatus.source,message:credentialStatus.message},firebaseDatabaseSecretConfigured:!!String(process.env.FIREBASE_DATABASE_SECRET||'').trim(),firebaseAuthAvailable:firebaseAuthAvailable(),emailServiceConfigured:!!(String(process.env.RESEND_API_KEY||'').trim()&&String(process.env.RESEND_FROM_EMAIL||process.env.EMAIL_FROM||'').trim()),telegramTokenFromEnvironment:!!String(process.env.TELEGRAM_BOT_TOKEN||'').trim(),adminPasswordFromEnvironment:!!(String(process.env.ADMIN_PASSWORD||'').trim()||String(process.env.ADMIN_PASSWORD_HASH||'').trim()),adminPasswordConfigured:adminPasswordConfigured()};}
     return json(res,200,health);
