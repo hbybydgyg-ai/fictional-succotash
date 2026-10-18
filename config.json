@@ -1,7 +1,7 @@
 {
   "appName": "صدى العراق",
-  "version": "2.48",
-  "buildId": "SADA-1.6.74-FREE-SUPPORT-TASK-LOCK-FIX-20261017",
+  "version": "2.50",
+  "buildId": "SADA-1.6.76-ORDERS-PAID-USERINFO-FIREBASE-20261018",
   "currency": "USD",
   "exchangeRate": 1250,
   "fixedRecharge": "5000 IQD = 4 USD",
@@ -49,5 +49,5 @@
   ],
   "supportWhatsappUrl": "https://wa.me/9647762267959",
   "supportWhatsappNumber": "9647762267959",
-  "telegramChannelUrl": "https://t.me/jgkhfcvn"
+  "telegramChannelUrl": "https://t.me/jbhbhg58"
 }

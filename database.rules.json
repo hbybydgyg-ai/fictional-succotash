@@ -112,6 +112,7 @@
     },
     "balanceLedger": {
       ".read": "auth != null && (auth.token.admin === true || (query.orderByChild === 'user' && query.equalTo === auth.uid))",
+      ".indexOn": ["user", "username", "createdAt"],
       "$entryId": {
         ".read": "auth != null && (auth.token.admin === true || data.child('user').val() === auth.uid)",
         ".write": "auth != null && auth.token.admin === true"
