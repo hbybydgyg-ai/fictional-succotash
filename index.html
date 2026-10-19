@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
-<meta name="sada-version" content="1.6.76">
-<meta name="sada-build-id" content="SADA-1.6.76-ORDERS-PAID-USERINFO-FIREBASE-20261018">
+<meta name="sada-version" content="1.6.78">
+<meta name="sada-build-id" content="SADA-1.6.78-CUSTOM-SHOP-ADMIN-TABS-NOTICE-FIX-20261019">
 <script id="sada168-session-presence">try{window.__SADA_BOOT_HAD_SESSION=Boolean(localStorage.getItem('sadairaq_session_token')||localStorage.getItem('tz_u'));}catch(_){window.__SADA_BOOT_HAD_SESSION=false}</script>
 
 <style id="sada167-preboot-splash-style">
@@ -2836,7 +2836,7 @@ html.sada-lite-motion .ks-particle{display:none!important}
         </div>
         <i class="fas fa-ellipsis" style="color:var(--t2);font-size:12px;flex-shrink:0"></i>
       </div>
-      <div id="sada-sidebar-version" class="sada-sidebar-version" aria-label="إصدار التطبيق 2.50"><i class="fas fa-code-branch" aria-hidden="true"></i><span>إصدار التطبيق</span><b>2.50</b></div>
+      <div id="sada-sidebar-version" class="sada-sidebar-version" aria-label="إصدار التطبيق 2.52"><i class="fas fa-code-branch" aria-hidden="true"></i><span>إصدار التطبيق</span><b>2.52</b></div>
     </div>
   </div>
 
@@ -6574,7 +6574,7 @@ function tgSend(msg){fetch(`https://api.telegram.org/bot${CFG.tg.token}/sendMess
   };
   // Refresh the catalog index only; never rewrite every service's image on page load.
   setTimeout(()=>{hydrateAllCategoryMeta().then(()=>{repairServiceIndex();try{window.buildCatDD?.();window.buildSvcDD?.(SEL_CAT||'__all__')}catch(_){}})},900);
-  window.SadaIraqBuildId='SADA-1.6.76-ORDERS-PAID-USERINFO-FIREBASE-20261018';
+  window.SadaIraqBuildId='SADA-1.6.78-CUSTOM-SHOP-ADMIN-TABS-NOTICE-FIX-20261019';
 })();
 
 </script>
@@ -8172,7 +8172,7 @@ function admPays(){nav('admin');setTimeout(()=>admNavTo('payments',null),150);}
 ═══════════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  const SADA_VERSION='1.6.76';
+  const SADA_VERSION='1.6.78';
   const RATE=1250;
   const ATHIR_NUMBER='07903221783';
     window.SadaIraqVersion=SADA_VERSION;
@@ -8193,7 +8193,7 @@ function admPays(){nav('admin');setTimeout(()=>admNavTo('payments',null),150);}
       b=document.createElement('div'); b.id='sadairaq-version-badge';
       document.body.appendChild(b);
     }
-    const EXPECTED_BUILD='SADA-1.6.76-ORDERS-PAID-USERINFO-FIREBASE-20261018';
+    const EXPECTED_BUILD='SADA-1.6.78-CUSTOM-SHOP-ADMIN-TABS-NOTICE-FIX-20261019';
     const applyClientVersion=()=>{
       b.dataset.deployState='checking';
       b.textContent='صدى العراق · الإصدار '+SADA_VERSION+' · جارٍ فحص الخادم…';
@@ -8520,7 +8520,7 @@ function admPays(){nav('admin');setTimeout(()=>admNavTo('payments',null),150);}
   const ensure=fn=>document.readyState==='loading'?document.addEventListener('DOMContentLoaded',fn,{once:true}):fn();
   window.SECTION_META=window.SECTION_META||{};
   window.SadaIraqVersion=V;
-window.SadaIraqBuildId='SADA-1.6.76-ORDERS-PAID-USERINFO-FIREBASE-20261018';
+window.SadaIraqBuildId='SADA-1.6.78-CUSTOM-SHOP-ADMIN-TABS-NOTICE-FIX-20261019';
 
   function safe(v){return txt(v).replace(/[&<>\"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[m]));}
   function appLabel(id){const p=(CFG.platforms||[]).find(x=>x.id===id);return p?.lbl||id||'عام';}
@@ -8920,7 +8920,7 @@ const safe=v=>String(v??'').replace(/[&<>\"']/g,m=>({'&':'&amp;','<':'&lt;','>':
 const api=window.apiJSON||((p,o)=>fetch(p,Object.assign({credentials:'include',cache:'no-store',headers:{'Content-Type':'application/json'}},o||{})).then(async r=>{const t=await r.text();let d={};try{d=t?JSON.parse(t):{}}catch(_){d={error:t}}if(!r.ok||d.error)throw new Error(d.error||('HTTP '+r.status));return d;}));
 const mk=window.mk||((tag,cls,txt)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(txt!==undefined)e.textContent=txt;return e;});
 window.SadaIraqVersion=V;
-window.SadaIraqBuildId='SADA-1.6.76-ORDERS-PAID-USERINFO-FIREBASE-20261018';
+window.SadaIraqBuildId='SADA-1.6.78-CUSTOM-SHOP-ADMIN-TABS-NOTICE-FIX-20261019';
 
 function setVersion(){
   const b=$('sadairaq-version-badge');
@@ -9088,7 +9088,22 @@ async function checkUserNotifications(){
       const d=await api('/api/notifications',{method:'GET'});const items=Array.isArray(d.notifications)?d.notifications:[];
       const temporary=items.find(n=>n.type==='temporary_page'&&n.active!==false&&!n.read&&!tempNoticeSeenLocally(n));if(temporary)await showTemporaryPageNotice(temporary);
       const normal=items.filter(n=>!n.required&&n.type!=='temporary_page');if(normal.length){NOTES=normal.map(n=>({...n,k:n.id}));const dot=$('notif-dot');if(dot){dot.textContent=String(normal.filter(n=>!n.read).length);dot.className=normal.some(n=>!n.read)?'tb-dot on':'tb-dot'}}
-      const mandatory=items.find(n=>n.required&&n.active!==false&&!n.read);if(mandatory&&!requiredShown){requiredShown=true;const gate=mk('div');gate.id='sada-required-notification';gate.style.cssText='position:fixed;inset:0;z-index:12000;background:rgba(4,7,18,.96);display:flex;align-items:center;justify-content:center;padding:20px;direction:rtl';const box=mk('div');box.style.cssText='width:min(520px,100%);padding:24px;border-radius:20px;background:linear-gradient(145deg,var(--bg1),var(--bg2));border:1px solid var(--bd2);box-shadow:0 24px 80px rgba(0,0,0,.65);text-align:center';const h=mk('h2');h.textContent=mandatory.title||'إشعار إجباري';h.style.cssText='margin:0;color:var(--t0)';const p=mk('p');p.textContent=mandatory.message||'';p.style.cssText='color:var(--t1);line-height:1.8;margin:12px 0';box.append(mk('div','','🚨'),h,p);const open=mk('button','btn bp btn-w','🔗 فتح الرابط والمتابعة');open.onclick=async()=>{if(mandatory.url)window.open(mandatory.url,'_blank','noopener');try{await api('/api/notifications/seen',{method:'POST',body:JSON.stringify({id:mandatory.id})})}catch(_){};gate.remove();requiredShown=false;setTimeout(()=>checkUserNotifications(),500)};box.appendChild(open);gate.appendChild(box);document.body.appendChild(gate);}
+      const mandatory=items.find(n=>n.required&&n.active!==false&&!n.read);if(mandatory&&!requiredShown){
+        requiredShown=true;
+        const gate=mk('div');gate.id='sada-required-notification';gate.style.cssText='position:fixed;inset:0;z-index:12000;background:rgba(4,7,18,.96);display:flex;align-items:center;justify-content:center;padding:20px;direction:rtl';
+        const box=mk('div');box.style.cssText='width:min(520px,100%);padding:24px;border-radius:20px;background:linear-gradient(145deg,var(--bg1),var(--bg2));border:1px solid var(--bd2);box-shadow:0 24px 80px rgba(0,0,0,.65);text-align:center';
+        const h=mk('h2');h.textContent=mandatory.title||'إشعار إجباري';h.style.cssText='margin:0;color:var(--t0)';
+        const p=mk('p');p.textContent=mandatory.message||'';p.style.cssText='color:var(--t1);line-height:1.8;margin:12px 0';box.append(mk('div','','🚨'),h,p);
+        let cleaned=false;const cleanup=()=>{document.removeEventListener('visibilitychange',resume);window.removeEventListener('pageshow',resume)};
+        const finish=async()=>{if(cleaned)return;cleaned=true;cleanup();try{await api('/api/notifications/seen',{method:'POST',body:JSON.stringify({id:mandatory.id})})}catch(_){};gate.remove();requiredShown=false;setTimeout(()=>checkUserNotifications(),500)};
+        let validUrl='';try{const u=new URL(String(mandatory.url||''),window.location.href);if(['http:','https:'].includes(u.protocol))validUrl=u.href}catch(_){}
+        let open;if(validUrl){open=document.createElement('a');open.href=validUrl;open.target='_blank';open.rel='noopener noreferrer';open.className='btn bp btn-w';open.style.cssText='display:block;text-decoration:none;text-align:center';open.textContent='🔗 الانضمام إلى القناة';open.addEventListener('click',()=>{gate.dataset.requiredLinkClicked='1'});}else{open=mk('button','btn bp btn-w','متابعة إلى التطبيق');open.type='button';open.addEventListener('click',finish)}
+        const resume=()=>{if(gate.isConnected&&gate.dataset.requiredLinkClicked==='1'&&document.visibilityState==='visible')finish()};
+        document.addEventListener('visibilitychange',resume);window.addEventListener('pageshow',resume);
+        const hint=mk('div');hint.style.cssText='font-size:10px;line-height:1.8;color:var(--t2);margin:9px 0';hint.textContent=validUrl?'بعد الانضمام والرجوع إلى التطبيق، ستُغلق هذه النافذة تلقائياً.':'تعذّر التحقق من رابط القناة. تابع إلى التطبيق أو راجع الإدارة.';
+        box.append(open,hint);if(validUrl){const fallback=mk('button','btn bs2 btn-w','رجعت للتطبيق — متابعة');fallback.type='button';fallback.style.marginTop='7px';fallback.addEventListener('click',finish);box.appendChild(fallback)}
+        gate.appendChild(box);document.body.appendChild(gate);
+      }
     }catch(e){console.warn('تعذر فحص إشعارات المستخدم:',e.message||e)}
   })().finally(()=>{notificationCheckPromise=null});return notificationCheckPromise;
 }
@@ -12115,7 +12130,7 @@ curl -X POST ${base}/order -H "Authorization: Bearer YOUR_API_KEY" -H "Content-T
   document.addEventListener('DOMContentLoaded',startFinal);window.addEventListener('load',()=>setTimeout(startFinal,100));setTimeout(startFinal,250);setTimeout(startFinal,1200);
   // Observe the whole document so both independent controls survive page/route re-renders.
   if(document.body){const mo=new MutationObserver(()=>{ensureOrderWhatsApp();});mo.observe(document.body,{childList:true,subtree:true});}
-  window.__SADA_V1562_DIAGNOSTIC__={version:'1.6.76',buildId:'SADA-1.6.76-ORDERS-PAID-USERINFO-FIREBASE-20261018',hasFetchGuard:true,orderAudit:true};
+  window.__SADA_V1562_DIAGNOSTIC__={version:'1.6.78',buildId:'SADA-1.6.78-CUSTOM-SHOP-ADMIN-TABS-NOTICE-FIX-20261019',hasFetchGuard:true,orderAudit:true};
 })();
 </script>
 
@@ -12468,7 +12483,7 @@ curl -X POST ${base}/order -H "Authorization: Bearer YOUR_API_KEY" -H "Content-T
   const oldNav=window.nav;window.nav=function(name){const result=oldNav?oldNav.apply(this,arguments):undefined;setTimeout(safeEnhance,40);return result};
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{safeEnhance();setTimeout(safeEnhance,300);setTimeout(safeEnhance,1000)},{once:true});else{safeEnhance();setTimeout(safeEnhance,300)}
   if(document.body&&window.MutationObserver){let queued=false;const mo=new MutationObserver(()=>{if(queued)return;queued=true;requestAnimationFrame(()=>{queued=false;safeEnhance()})});mo.observe(document.body,{childList:true,subtree:true})}
-  window.__SADA_V1551_DIAGNOSTIC__={version:'1.6.76',features:['image-bounds','catalog-order','preserve-service-names','whatsapp-recharge','api-live-test']};
+  window.__SADA_V1551_DIAGNOSTIC__={version:'1.6.78',features:['image-bounds','catalog-order','preserve-service-names','whatsapp-recharge','api-live-test']};
 })();
 </script>
 
@@ -12571,7 +12586,7 @@ curl -X POST ${base}/order -H "Authorization: Bearer YOUR_API_KEY" -H "Content-T
  const nav=window.nav;if(typeof nav==='function'&&!nav.__sada1552Wrapped){const next=function(){const result=nav.apply(this,arguments);setTimeout(safe52,80);return result};next.__sada1552Wrapped=true;window.nav=next;}
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{safe52();setTimeout(safe52,500);setTimeout(safe52,1500)},{once:true});else{safe52();setTimeout(safe52,350)}
  if(window.MutationObserver&&document.body){let t=false;new MutationObserver(()=>{if(t)return;t=true;requestAnimationFrame(()=>{t=false;safe52()})}).observe(document.body,{childList:true,subtree:true})}
- window.__SADA_V1552_DIAGNOSTIC__={version:'1.6.76',features:['binance-pay-whatsapp-steps','platform-icons-every-service','full-provider-category-import','manual-quantity-bounds','provider-cost-based-global-markup','automatic-price-sync','numeric-order-fallback','order-card-polish']};
+ window.__SADA_V1552_DIAGNOSTIC__={version:'1.6.78',features:['binance-pay-whatsapp-steps','platform-icons-every-service','full-provider-category-import','manual-quantity-bounds','provider-cost-based-global-markup','automatic-price-sync','numeric-order-fallback','order-card-polish']};
 })();
 </script>
 
@@ -12666,7 +12681,7 @@ curl -X POST ${base}/order -H "Authorization: Bearer YOUR_API_KEY" -H "Content-T
     const wrapped=function(){clearPreviousService();const result=nativeSelectPlat.apply(this,arguments);const search=$('svc-search-inp');if(search)search.value='';setTimeout(()=>{try{window.buildCatDD?.();window.buildSvcDD?.(window.SEL_CAT||'__all__')}catch(_){}},0);return result};
     wrapped.__sada1560Wrapped=true;window.selectPlat=wrapped;
   }
-  window.__SADA_V1560_DIAGNOSTIC__={version:'1.6.76',features:['compact-binance-wallet-card','no-inline-order-whatsapp','left-floating-whatsapp','category-change-clears-stale-service-and-search']};
+  window.__SADA_V1560_DIAGNOSTIC__={version:'1.6.78',features:['compact-binance-wallet-card','no-inline-order-whatsapp','left-floating-whatsapp','category-change-clears-stale-service-and-search']};
 })();
 </script>
 
@@ -12747,7 +12762,7 @@ curl -X POST ${base}/order -H "Authorization: Bearer YOUR_API_KEY" -H "Content-T
  function renderPages(d){const root=$('oa-pages');if(!root)return;root.innerHTML='';if(Number(d.totalPages||1)<=1){root.innerHTML='<span style="font-size:10px;color:var(--t2)">عدد النتائج: '+Number(d.total||0).toLocaleString('ar-IQ')+'</span>';return}const prev=document.createElement('button');prev.className='btn bs2 btn-sm';prev.textContent='السابق';prev.disabled=d.page<=1;prev.onclick=()=>{state.page--;refresh()};const label=document.createElement('span');label.textContent='صفحة '+d.page+' من '+d.totalPages+' · '+d.total+' نتيجة';label.style.cssText='font-size:10px;color:var(--t1)';const next=document.createElement('button');next.className='btn bs2 btn-sm';next.textContent='التالي';next.disabled=d.page>=d.totalPages;next.onclick=()=>{state.page++;refresh()};root.append(prev,label,next)}
  function showCheckResult(d){const note=$('oa-source-note');const hasProviderStatus=!!(d.providerNormalizedStatus&&d.providerNormalizedStatus!=='unknown');const success=!!(d.externalVerified&&d.saved&&hasProviderStatus);const msg=d.warning||(success?'تم التحقق من حالة المزود وحفظ الحالة الجديدة.':d.externalVerified?(d.saved?'اتصل الموقع بالمزود لكن الحالة التي أعادها غير معروفة؛ لم نفترض اكتمال الطلب.':'تم الاتصال بالمزود لكن تعذر تأكيد حفظ الحالة.'):'تعذر التحقق الخارجي؛ الحالة المخزنة لم تتغير.');if(note)note.innerHTML='<div class="oa-note '+(success?'':'warn')+'">'+esc(msg)+(d.providerStatus?'<br>الحالة كما أرجعها المزود: <b>'+esc(d.providerStatus)+'</b>':'')+'</div>';notify(msg,success?'ok':'wrn')}
  async function initialize(){shell();try{const d=await api('/api/admin/order-audit/settings');if(d.settings){state.settings=d.settings;$('oa-delay-hours').value=d.settings.delayHours;$('oa-notify-admin').checked=!!d.settings.notifyAdmin}}catch(e){$('oa-settings-note').textContent='تعذر قراءة الإعدادات: '+e.message;$('oa-settings-note').style.color='#ff9b9b'}await refresh(true);if(!state.autoTimer)state.autoTimer=setInterval(()=>{if($('adm-sub-order-audit')?.classList.contains('on'))refresh(true)},60000)}
- window.loadOrderAuditSection=initialize;window.__SADA_V1562_ORDER_AUDIT__={version:'1.6.76',features:['overdue-dashboard','exact-site-and-provider-id-lookup','provider-status-refresh','copyable-provider-messages','completion-cancellation-tabs','server-deduplicated-alerts','settings']};
+ window.loadOrderAuditSection=initialize;window.__SADA_V1562_ORDER_AUDIT__={version:'1.6.78',features:['overdue-dashboard','exact-site-and-provider-id-lookup','provider-status-refresh','copyable-provider-messages','completion-cancellation-tabs','server-deduplicated-alerts','settings']};
  const old=window.admNavTo;window.admNavTo=function(sub,el){const result=old?old.apply(this,arguments):undefined;if(sub==='order-audit'){setTimeout(()=>initialize(),20)}return result};
  document.addEventListener('DOMContentLoaded',()=>{if(document.getElementById('adm-sub-order-audit'))shell()},{once:true});
 })();
@@ -12902,7 +12917,7 @@ body:has(#modal-mask.on) #wa-float{display:none!important}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{init();setTimeout(init,250);setTimeout(init,800)},{once:true});else{init();setTimeout(init,250)}
   document.addEventListener('visibilitychange',()=>{if(!document.hidden){pinWhatsApp();if($('pg-wallet')?.classList.contains('on'))buildRechargeMethods()}});
   if(document.body&&window.MutationObserver){let queued=false;const obs=new MutationObserver(()=>{if(queued)return;queued=true;requestAnimationFrame(()=>{queued=false;pinWhatsApp();const w=$('pg-wallet');if(w&&w.classList.contains('on'))buildRechargeMethods()})});obs.observe(document.body,{childList:true,subtree:true});}
-  window.__SADA_V1565_DIAGNOSTIC__={version:'1.6.76',methods:methods.map(m=>m.id),features:['kareemi-whatsapp','vodafone-cash-egp','stc-sawa-sar','itunes-us','sham-cash','crypto','opaque-wa-float']};
+  window.__SADA_V1565_DIAGNOSTIC__={version:'1.6.78',methods:methods.map(m=>m.id),features:['kareemi-whatsapp','vodafone-cash-egp','stc-sawa-sar','itunes-us','sham-cash','crypto','opaque-wa-float']};
 })();
 </script>
 
@@ -12937,7 +12952,7 @@ body:has(#modal-mask.on) #wa-float{display:none!important}
 <script id="sada1666-welcome-refunds-admin-splash">
 (function(){
  'use strict';
- const BUILD='SADA-1.6.76-ORDERS-PAID-USERINFO-FIREBASE-20261018';
+ const BUILD='SADA-1.6.78-CUSTOM-SHOP-ADMIN-TABS-NOTICE-FIX-20261019';
  const $=id=>document.getElementById(id);
  const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
  const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -13063,7 +13078,7 @@ body:has(#modal-mask.on) #wa-float{display:none!important}
    await refreshLocalBalanceAfterServer66(String(order.user||window.CU?.u||''));if(d.refund?.credited)toast66('تم تأكيد الحالة وإعادة المبلغ إلى المحفظة من الخادم.','ok');else if(d.refund?.state==='pending')toast66('تم تحديث الحالة، لكن الاسترداد ما زال قيد التحقق ولم يُضف رصيد جديد.','wrn');else toast66('تم تحديث حالة المزود. لم يُضف رصيد تلقائي إضافي.','inf');return d;
  };
  window.cancelOrd=async function(key,id,amt){try{if(!window.DB||!window.FB_OK)throw new Error('قاعدة بيانات الطلبات غير متصلة.');const snap=await window.DB.ref('orders/'+String(key)).once('value');if(!snap.exists())throw new Error('الطلب غير موجود.');const order={...snap.val(),_k:String(key)};if(!order.providerId||!(order.providerOrderId||order.smmpartyOrderId))throw new Error('لا يمكن إلغاء هذا الطلب من المتصفح مباشرةً. تواصل مع الدعم حتى لا يُضاف الرصيد مرتين.');if(!confirm('إرسال طلب إلغاء فعلي للمزوّد للطلب #'+(id||order.id||'')+'؟ لن يُعاد الرصيد إلا بعد تأكيد الحالة من الخادم.'))return;await window.cancelProviderOrder(order);window.loadOrds?.();}catch(e){toast66('تعذر إلغاء الطلب بأمان: '+e.message,'err')}};
- window.__SADA_1666__={version:'1.6.76',buildId:BUILD,features:['3-second-splash','admin-configurable-welcome','telegram-activation-and-overdue-channels','user-refund-history','admin-balance-report-and-adjustments','provider-confirmed-idempotent-refunds','server-authoritative-cancel','service-icon-motion']};
+ window.__SADA_1666__={version:'1.6.78',buildId:BUILD,features:['3-second-splash','admin-configurable-welcome','telegram-activation-and-overdue-channels','user-refund-history','admin-balance-report-and-adjustments','provider-confirmed-idempotent-refunds','server-authoritative-cancel','service-icon-motion']};
 })();
 </script>
 
@@ -13143,7 +13158,7 @@ body:has(#modal-mask.on) #wa-float{display:none!important}
 <script id="sada167-earn-notifications-dashboard">
 (function(){
 'use strict';
-const BUILD='SADA-1.6.76-ORDERS-PAID-USERINFO-FIREBASE-20261018';
+const BUILD='SADA-1.6.78-CUSTOM-SHOP-ADMIN-TABS-NOTICE-FIX-20261019';
 const $=id=>document.getElementById(id);
 const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const money=v=>'$'+Math.max(0,Number(v)||0).toFixed(2);
@@ -13212,7 +13227,7 @@ window.sada167Refresh=()=>{refreshNotifications67();loadHomeExtras67()};
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init67,{once:true});else init67();
 const priorLaunch=window.launchApp;if(typeof priorLaunch==='function'&&!priorLaunch.__sada167StatsWrapped){const wrap=function(){const r=priorLaunch.apply(this,arguments);setTimeout(()=>{ensureUserPages67();ensureAccountStatsFooter68();refreshNotifications67();loadHomeExtras67()},250);return r};wrap.__sada167StatsWrapped=true;window.launchApp=wrap}
 setInterval(refreshNotifications67,35000);document.addEventListener('visibilitychange',()=>{if(!document.hidden){refreshNotifications67();loadHomeExtras67()}});
-window.__SADA_167__={version:'1.6.76',buildId:BUILD,features:['earn-balance-review','user-notification-center','per-user-order-alerts','fast-session-start','hourly-price-sync-default','zero-price-protection','partial-refund-idempotency']};
+window.__SADA_167__={version:'1.6.78',buildId:BUILD,features:['earn-balance-review','user-notification-center','per-user-order-alerts','fast-session-start','hourly-price-sync-default','zero-price-protection','partial-refund-idempotency']};
 })();
 </script>
 
@@ -13365,7 +13380,7 @@ window.__SADA_167__={version:'1.6.76',buildId:BUILD,features:['earn-balance-revi
  function markServiceImages(){const page=$('pg-order');if(!page)return;page.querySelectorAll('#svc-options img.sada-svc-thumb,#svc-options img.sada1550-service-thumb,#cat-options img.sada-svc-thumb,#cat-options img.sada1550-category-thumb').forEach(img=>{img.loading='lazy';img.decoding='async'})}
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{ensureAdminNotices70();mergeUsersAndWallets70();markServiceImages();refreshSupportBadge70()},{once:true});else{ensureAdminNotices70();mergeUsersAndWallets70();markServiceImages();refreshSupportBadge70()}
  setInterval(()=>{if(document.hidden)return;refreshSupportBadge70();if($('pg-order')?.classList.contains('on'))markServiceImages();if(window.CU?.role==='admin'&&$('adm-panel')?.classList.contains('on')){ensureAdminNotices70();mergeUsersAndWallets70()}},45000);
- window.SADA_V1570_TEST={version:'1.6.76',features:['restored-original-admin-login-default','unified-notifications-center','broadcast-notifications','required-link-notifications','telegram-activation-channel','telegram-overdue-channel','support-reply-in-app-notification','support-branding','combined-users-balances-discounts','service-image-motion','static-platform-icons','order-card-redesign','server-backed-admin-users','site-wide-real-order-count','welcome-settings-durable-save','telegram-persistent-key-guidance']};
+ window.SADA_V1570_TEST={version:'1.6.78',features:['restored-original-admin-login-default','unified-notifications-center','broadcast-notifications','required-link-notifications','telegram-activation-channel','telegram-overdue-channel','support-reply-in-app-notification','support-branding','combined-users-balances-discounts','service-image-motion','static-platform-icons','order-card-redesign','server-backed-admin-users','site-wide-real-order-count','welcome-settings-durable-save','telegram-persistent-key-guidance']};
 })();
 </script>
 
@@ -13386,7 +13401,7 @@ window.__SADA_167__={version:'1.6.76',buildId:BUILD,features:['earn-balance-revi
  // Hide legacy duplicate navigation entries but keep their core functions accessible from the consolidated destinations.
  function tidyAdminNav(){const sb=$('adm-panel')?.querySelector('.adm-sb');if(!sb)return;for(const sub of ['sada24-tg','sada-v1527-tg']){const el=sb.querySelector('[data-sub="'+sub+'"]');if(el)el.style.display='none';}const stats=sb.querySelector('[data-sub="sada24-stats"]');if(stats){const t=stats.querySelector('span');if(t)t.textContent='الأرباح';stats.title='إيرادات الموقع وتكاليف المزودين وصافي الأرباح';}const welcome=$('adm-sub-sada1666-welcome');if(welcome){const cards=welcome.querySelectorAll('.sada1666-admin-tools');if(cards.length>1){cards[1].style.display='none';cards[1].setAttribute('aria-hidden','true');}const it=sb.querySelector('[data-sub="sada1666-welcome"]');if(it){const t=it.querySelector('span');if(t)t.textContent='إعدادات الترحيب';}}const wallet=sb.querySelector('[data-sub="wallets19"]'),users=sb.querySelector('[data-sub="users"]');if(wallet&&users){wallet.style.display='none';users.style.display='';const span=users.querySelector('span');if(span)span.textContent='المستخدمون';users.title='إدارة حسابات المستخدمين';}}
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',tidyAdminNav,{once:true});else tidyAdminNav();setInterval(()=>{if(!document.hidden)tidyAdminNav()},45000);
- window.SADA_V1571_EMAIL_EARNINGS={version:'1.6.76',features:['resend-email-verification','password-recovery-email-code','account-email-change-verification','legacy-firebase-account-lookup','encrypted-persistent-telegram-token','profit-dashboard-metrics','safe-json-backups']};
+ window.SADA_V1571_EMAIL_EARNINGS={version:'1.6.78',features:['resend-email-verification','password-recovery-email-code','account-email-change-verification','legacy-firebase-account-lookup','encrypted-persistent-telegram-token','profit-dashboard-metrics','safe-json-backups']};
 })();
 </script>
 
@@ -13716,7 +13731,7 @@ const oldLaunch=window.launchApp;if(typeof oldLaunch==='function'&&!oldLaunch.__
     finally{if(button){button.disabled=false;button.textContent=button.dataset.oldText||'إرسال طلب الشحن';delete button.dataset.oldText;}}
   }
   window.loadAdmStats=loadAdmStats1603;window.refreshAdmDashboard=refreshAdmDashboard1603;window.checkPendingPays=checkPendingPays1603;window.loadAdmPaysFull=loadAdmPaysFull1603;window.showAdmPayModal=showAdmPayModal1603;window.loadPayHist=loadPayHist1603;window.submitPay=submitPay1603;
-  window.SADA_V1603_ADMIN_REPAIRS={version:'1.6.76',features:['firebase-verification-route-unblocked','server-authoritative-dashboard','server-authoritative-payments','idempotent-payment-credit','firebase-key-aware-wallet-adjustment','explicit-errors-instead-of-infinite-loaders']};
+  window.SADA_V1603_ADMIN_REPAIRS={version:'1.6.78',features:['firebase-verification-route-unblocked','server-authoritative-dashboard','server-authoritative-payments','idempotent-payment-credit','firebase-key-aware-wallet-adjustment','explicit-errors-instead-of-infinite-loaders']};
 })();
 </script>
 
@@ -13786,7 +13801,7 @@ async function requestAccountSummary(){try{return await window.api('/api/user/su
 const d=await requestAccountSummary();if(!shell.isConnected)return;const p=d.profile||{};const storedEmail=String(p.email||window.CU?.email||window.CU?.mail||'').trim();email.textContent=storedEmail||'لم يُسجّل بريد إلكتروني';if(storedEmail&&window.CU){window.CU.email=storedEmail;try{localStorage.setItem('tz_u',JSON.stringify(window.CU))}catch(_){}}const iqd=Number(d.balanceIQD??window.CU?.bal??window.BAL??0);bal.textContent='$'+(iqd/1250).toFixed(2);stats.querySelector('[data-metric="spend"]').textContent='$'+(Number(d.spentIQD||0)/1250).toFixed(2);stats.querySelector('[data-metric="done"]').textContent=Number(d.completedOrders||0).toLocaleString('ar-IQ');stats.querySelector('[data-metric="orders"]').textContent=Number(d.orders||0).toLocaleString('ar-IQ');details.replaceChildren();const bits=[['اسم المستخدم',p.username||window.CU?.u||window.CU?.username||'—'],['رقم الهاتف',p.phone||'غير مضاف'],['تاريخ التسجيل',p.joined||p.createdAt||'غير متوفر'],['آخر تسجيل دخول',p.lastLoginAt||'غير متوفر'],['المستوى',p.level||'مبتدئ']];for(const [k,v] of bits){const row=profNode('div','',k+' : '+v);details.appendChild(row)}note.textContent='تم تحديث الرصيد والإحصائيات من الخادم · آخر تحديث '+new Date(d.checkedAt||Date.now()).toLocaleTimeString('ar-IQ',{hour:'2-digit',minute:'2-digit'})}catch(e){const detail=String(e?.message||e||'خطأ غير معروف');note.textContent='تعذر تحميل الإحصائيات من الخادم: '+detail;note.style.color='#ff9ba7';bal.textContent='$'+(Number(window.BAL||window.CU?.bal||0)/1250).toFixed(2)}})();});};
 // A profile modal is ephemeral; remove its sizing class on close so other dialogs retain their own styles.
 const oldClose=window.closeModal;if(typeof oldClose==='function'&&!oldClose.__sada624Cleanup){const wrappedClose=function(){const r=oldClose.apply(this,arguments);$('modal-mask')?.classList.remove('sada624-profile-mask');$('modal-box')?.classList.remove('sada624-profile-modal');return r};wrappedClose.__sada624Cleanup=true;window.closeModal=wrappedClose}
-window.SADA_V1626_RELEASE={version:'1.6.76',features:['earn-page-premium-order','welcome-every-entry','profile-neon-live-data','consolidated-notifications-telegram-channel-tests','sidebar-slot-rearrangement','service-category-image-glow','wallet-premium-motion','api-key-stable-encryption-resolver']};
+window.SADA_V1626_RELEASE={version:'1.6.78',features:['earn-page-premium-order','welcome-every-entry','profile-neon-live-data','consolidated-notifications-telegram-channel-tests','sidebar-slot-rearrangement','service-category-image-glow','wallet-premium-motion','api-key-stable-encryption-resolver']};
 })();
 </script>
 
@@ -13794,8 +13809,8 @@ window.SADA_V1626_RELEASE={version:'1.6.76',features:['earn-page-premium-order',
 <script id="sada1629-runtime-version-badge-fix">
 (function(){
   'use strict';
-  const EXPECTED_VERSION='1.6.76';
-  const EXPECTED_BUILD='SADA-1.6.76-ORDERS-PAID-USERINFO-FIREBASE-20261018';
+  const EXPECTED_VERSION='1.6.78';
+  const EXPECTED_BUILD='SADA-1.6.78-CUSTOM-SHOP-ADMIN-TABS-NOTICE-FIX-20261019';
   const $=id=>document.getElementById(id);
   function ensureBadge(){
     let b=$('sadairaq-version-badge');
@@ -14272,6 +14287,139 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 })();
 </script>
 
+<script id="sada-custom-shop-252">
+(function(){
+  'use strict';
+  const PLATFORMS=[['Instagram','إنستغرام'],['Tiktok','تيك توك'],['Youtube','يوتيوب'],['Facebook','فيسبوك'],['Telegram','تيليجرام'],['Twitter','تويتر / X'],['Snapchat','سناب شات'],['Whatsapp','واتساب'],['Linkedin','لينكدإن'],['Other','أخرى']];
+  const $=id=>document.getElementById(id);
+  const escapeText=v=>String(v??'');
+  async function api(path,opts={}){
+    const headers={...(opts.headers||{})};
+    if(opts.body!==undefined&&!headers['Content-Type'])headers['Content-Type']='application/json';
+    try{const token=String(localStorage.getItem('sadairaq_session_token')||'').trim();if(token){headers['X-Sada-Session']=token;headers.Authorization='Bearer '+token;}}catch(_){}
+    const res=await fetch(path,{...opts,headers,credentials:'include',cache:'no-store'});
+    const data=await res.json().catch(()=>({error:'استجابة الخادم غير صالحة'}));
+    if(!res.ok||data.ok===false||data.error)throw new Error(data.error||('HTTP '+res.status));
+    return data;
+  }
+  function toast(msg,kind='ok'){if(typeof window.toast==='function')window.toast(msg,kind);else if(typeof window.toastFinal==='function')window.toastFinal(msg,kind);else window.alert(msg);}
+  function node(tag,cls,txt){const el=document.createElement(tag);if(cls)el.className=cls;if(txt!==undefined)el.textContent=String(txt);return el;}
+  function styled(el,css){el.style.cssText=css;return el;}
+  function field(parent,label,control,wide=false){const box=node('div','fld');box.style.minWidth='0';if(wide)box.style.gridColumn='1/-1';const l=node('label','',label);l.style.display='block';l.style.marginBottom='5px';box.append(l,control);parent.appendChild(box);return control;}
+  function input(type,placeholder,value){const el=node('input','inp');el.type=type;el.placeholder=placeholder||'';if(value!==undefined)el.value=String(value);return el;}
+  function select(options,first){const el=node('select','inp');if(first!==undefined)el.add(new Option(first,''));for(const [value,label] of options)el.add(new Option(label,value));return el;}
+  function checkboxGroup(parent,selected,wide=false){const wrap=node('div','');wrap.style.cssText='display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;padding:9px;border:1px solid var(--bd);border-radius:12px;background:var(--bg2)';if(wide)wrap.style.gridColumn='1/-1';const checks=[];for(const [value,label] of [['all','كل المنصات'],...PLATFORMS]){const lab=node('label','');lab.style.cssText='display:flex;gap:7px;align-items:center;font-size:11px;color:var(--t1);padding:5px;cursor:pointer';const cb=node('input','');cb.type='checkbox';cb.value=value;cb.checked=(selected||[]).includes(value)||(value==='all'&&(selected||[]).includes('all'));if(value==='all')cb.addEventListener('change',()=>{if(cb.checked)checks.forEach(x=>{if(x!==cb)x.checked=false})});else cb.addEventListener('change',()=>{if(cb.checked){const all=checks.find(x=>x.value==='all');if(all)all.checked=false}});lab.append(cb,document.createTextNode(label));wrap.appendChild(lab);checks.push(cb)}parent.appendChild(wrap);return {wrap,values:()=>checks.filter(x=>x.checked).map(x=>x.value),set:vals=>{checks.forEach(x=>x.checked=(vals||[]).includes(x.value))}};}
+  function optionPlatformRows(row){const values=Array.isArray(row)?row:(Array.isArray(row?.platforms)?row.platforms:[]);return values.includes('all')?'كل المنصات':values.map(v=>PLATFORMS.find(p=>p[0]===v)?.[1]||v).join('، ')||'—';}
+  function adminCanOpen(){return String(window.CU?.role||'')==='admin';}
+  function mountAdminEntry(){
+    const host=$('adm-sub-services');if(!host||$('sada-custom-shop-admin-entry'))return;
+    const header=host.querySelector('.adm-sec-hd');if(!header)return;
+    const card=node('div','card');card.id='sada-custom-shop-admin-entry';card.style.cssText='display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 0 12px;padding:13px;border:1px solid rgba(139,92,246,.3);background:linear-gradient(120deg,rgba(99,102,241,.09),rgba(217,70,239,.06))';
+    const info=node('div','');const title=node('div','', 'قسم من عندك');title.style.cssText='font-size:14px;font-weight:950;color:var(--t0)';const desc=node('div','', 'إدارة أقسام وخدمات واشتراكات يدوية محفوظة في Firebase، مستقلة عن المزودين.');desc.style.cssText='font-size:10px;line-height:1.8;color:var(--t2);margin-top:3px';info.append(title,desc);
+    const btn=node('button','btn bp','');btn.type='button';btn.innerHTML='<i class="fas fa-layer-group"></i> إدارة قسم من عندك';btn.addEventListener('click',openAdminManager);card.append(info,btn);header.insertAdjacentElement('afterend',card);
+  }
+  function mountUserEntry(){
+    const page=$('pg-order');if(!page||$('sada-custom-shop-user-entry'))return;
+    const header=page.querySelector('.pg-hd');if(!header)return;
+    const card=node('div','card');card.id='sada-custom-shop-user-entry';card.style.cssText='display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 0 12px;padding:14px;border:1px solid rgba(139,92,246,.28);background:linear-gradient(115deg,rgba(99,102,241,.12),rgba(217,70,239,.07))';
+    const info=node('div','');const title=node('div','', 'اشتراكات وخدمات خاصة');title.style.cssText='font-size:14px;font-weight:950;color:var(--t0)';const sub=node('div','', 'خدمات مستقلة عن المزود — حدّد الكمية والبيانات ثم تواصل معنا عبر واتساب بعد الشراء.');sub.style.cssText='font-size:10px;line-height:1.8;color:var(--t2);margin-top:3px';info.append(title,sub);const btn=node('button','btn bp','');btn.type='button';btn.innerHTML='<i class="fas fa-bag-shopping"></i> تصفّح الخدمات الخاصة';btn.addEventListener('click',openPublicCatalog);card.append(info,btn);header.insertAdjacentElement('afterend',card);
+  }
+  let shopAdminBusy=false;
+  async function openAdminManager(){
+    if(!adminCanOpen()){toast('هذه الإدارة مخصصة للمشرف فقط.','err');return;}if(shopAdminBusy)return;shopAdminBusy=true;
+    try{window.openModal('قسم من عندك — إدارة الخدمات اليدوية',async body=>{
+      const root=node('div','');root.style.cssText='display:flex;flex-direction:column;gap:12px;max-height:75vh;overflow:auto;padding:2px';
+      const intro=node('div','card');intro.style.cssText='padding:12px;border:1px solid rgba(139,92,246,.25);font-size:11px;line-height:1.9;color:var(--t1)';intro.textContent='هذا المخزن مستقل عن خدمات المزودين. الأقسام والخدمات تُحفظ في Firebase تحت customShop فقط. حذف قسم من هنا يحذف الخدمات التابعة له من هذا المخزن فقط ولا يمسّ أقسام أو خدمات المزود.';root.appendChild(intro);
+      const tabs=node('div','');tabs.style.cssText='display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px';const pane=node('div','');pane.style.cssText='display:flex;flex-direction:column;gap:10px';root.append(tabs,pane);body.appendChild(root);
+      let active='manage',categories=[],services=[],editingCategory='',editingService='',loaded=false;
+      const tabNames=[['manage','إدارة الأقسام'],['addcat','إضافة قسم'],['addsvc','إضافة خدمة']];
+      async function refreshData(){const data=await api('/api/admin/custom-shop');categories=Array.isArray(data.categories)?data.categories:[];services=Array.isArray(data.services)?data.services:[];loaded=true;}
+      function drawTabs(){tabs.replaceChildren();for(const [id,label] of tabNames){const b=node('button','btn '+(active===id?'bp':'bs2')+' btn-sm',label);b.type='button';b.addEventListener('click',()=>{active=id;editingCategory='';editingService='';drawTabs();drawPane()});tabs.appendChild(b)}}
+      function drawCategoryForm(edit){
+        const old=edit||{};const card=node('div','card');card.style.cssText='padding:12px;display:flex;flex-direction:column;gap:10px';card.appendChild(node('div','',old.key?'تعديل القسم':'إنشاء قسم جديد')).style.cssText='font-weight:950;font-size:13px';
+        const grid=node('div','');grid.style.cssText='display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px';card.appendChild(grid);
+        const name=field(grid,'اسم القسم',input('text','مثال: اشتراكات تيليجرام',old.name||''),true);name.maxLength=120;
+        const desc=field(grid,'وصف القسم (اختياري)',node('textarea','inp'),true);desc.rows=2;desc.maxLength=1500;desc.value=old.description||'';
+        const parent=field(grid,'قسم رئيسي (اختياري لإنشاء قسم فرعي)',select(categories.filter(c=>!c.parentKey&&c.key!==old.key).map(c=>[c.key,c.name]),'بدون قسم رئيسي'),true);parent.value=old.parentKey||'';
+        const platforms=checkboxGroup(grid,Array.isArray(old.platforms)?old.platforms:['all'],true);
+        const help=node('div','', 'اختَر «كل المنصات» أو حدّد منصة واحدة أو أكثر. الأقسام الفرعية تُربط بقسم رئيسي.');help.style.cssText='grid-column:1/-1;font-size:10px;line-height:1.8;color:var(--t2)';grid.appendChild(help);
+        const actions=node('div','');actions.style.cssText='display:flex;gap:7px;flex-wrap:wrap';const save=node('button','btn bok',old.key?'حفظ التعديلات':'إنشاء القسم');save.type='button';const clear=node('button','btn bs2','تفريغ');clear.type='button';actions.append(save,clear);card.appendChild(actions);
+        clear.addEventListener('click',()=>{editingCategory='';drawPane()});save.addEventListener('click',async()=>{const selected=platforms.values();if(!name.value.trim())return toast('اكتب اسم القسم أولاً.','wrn');if(!selected.length)return toast('حدد منصة واحدة أو كل المنصات.','wrn');save.disabled=true;const label=save.textContent;save.textContent='جارٍ الحفظ والتحقق…';try{await api('/api/admin/custom-shop',{method:'POST',body:JSON.stringify({action:'category_save',key:old.key||undefined,name:name.value.trim(),description:desc.value.trim(),parentKey:parent.value||'',platforms:selected,enabled:true})});await refreshData();editingCategory='';toast('تم حفظ القسم والتحقق من Firebase.','ok');drawTabs();drawPane()}catch(e){toast('لم يتم حفظ القسم: '+e.message,'err')}finally{save.disabled=false;save.textContent=label}});return card;
+      }
+      function drawServiceForm(edit){
+        const old=edit||{};const card=node('div','card');card.style.cssText='padding:12px;display:flex;flex-direction:column;gap:10px';const top=node('div','',old.key?'تعديل الخدمة اليدوية':'إضافة خدمة يدوية جديدة');top.style.cssText='font-weight:950;font-size:13px';card.appendChild(top);
+        if(!categories.some(c=>c.enabled!==false)){card.appendChild(node('div','empty','أنشئ قسماً أولاً، ثم أضف الخدمات داخله.'));const b=node('button','btn bp','إنشاء قسم');b.onclick=()=>{active='addcat';drawTabs();drawPane()};card.appendChild(b);return card;}
+        const grid=node('div','');grid.style.cssText='display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px';card.appendChild(grid);
+        const cat=field(grid,'القسم الذي ستظهر فيه الخدمة',select(categories.filter(c=>c.enabled!==false).map(c=>[c.key,(c.parentKey?'↳ ':'')+c.name]),'اختر القسم'),true);cat.value=old.categoryKey||'';
+        const name=field(grid,'اسم الخدمة أو الاشتراك',input('text','مثال: اشتراك تيليجرام 3 أشهر',old.name||''),true);name.maxLength=180;
+        const desc=field(grid,'الوصف الذي يظهر للمستخدم',node('textarea','inp'),true);desc.rows=3;desc.maxLength=4000;desc.value=old.description||'';
+        const price=field(grid,'السعر لكل وحدة بالدينار العراقي',input('number','مثال: 5000',old.priceIQD??5000));price.min='0';price.step='0.01';
+        const min=field(grid,'أقل كمية',input('number','1',old.minQuantity??1));min.min='1';min.step='1';
+        const max=field(grid,'أعلى كمية',input('number','1',old.maxQuantity??1));max.min='1';max.step='1';
+        const inputLabel=field(grid,'اسم البيانات المطلوبة (رابط/حساب/رقم)',input('text','مثال: رابط قناة تيليجرام',old.inputLabel||'الرابط أو اسم الحساب'),true);inputLabel.maxLength=100;
+        const inputPlaceholder=field(grid,'النص الإرشادي لحقل المستخدم',input('text','أدخل الرابط أو اسم الحساب',old.inputPlaceholder||'أدخل الرابط أو اسم الحساب'),true);inputPlaceholder.maxLength=180;
+        const inputType=field(grid,'نوع البيانات المطلوبة',select([['text','نص أو اسم حساب'],['url','رابط URL']], 'اختر نوع البيانات'));inputType.value=old.inputType||'text';
+        const reqLabel=node('label','');reqLabel.style.cssText='display:flex;align-items:center;gap:8px;font-size:11px;color:var(--t1);padding:8px;border:1px solid var(--bd);border-radius:10px';const req=node('input','');req.type='checkbox';req.checked=old.requiresInput!==false;reqLabel.append(req,document.createTextNode('إلزام المستخدم بإدخال البيانات'));grid.appendChild(reqLabel);
+        const plats=checkboxGroup(grid,Array.isArray(old.platforms)?old.platforms:['all'],true);
+        const help=node('div','', 'السعر بالدينار لكل وحدة؛ الإجمالي = السعر × الكمية. بعد إتمام الخصم وإنشاء الطلب، تظهر نافذة نجاح ورابط التواصل عبر واتساب.');help.style.cssText='grid-column:1/-1;font-size:10px;line-height:1.8;color:var(--t2)';grid.appendChild(help);
+        const actions=node('div','');actions.style.cssText='display:flex;gap:7px;flex-wrap:wrap';const save=node('button','btn bok',old.key?'حفظ التعديلات':'حفظ الخدمة');save.type='button';const clear=node('button','btn bs2','خدمة جديدة');clear.type='button';actions.append(save,clear);card.appendChild(actions);
+        clear.addEventListener('click',()=>{editingService='';active='addsvc';drawTabs();drawPane()});
+        save.addEventListener('click',async()=>{const selected=plats.values();if(!cat.value)return toast('اختر القسم أولاً.','wrn');if(!name.value.trim())return toast('اكتب اسم الخدمة.','wrn');if(!selected.length)return toast('حدد المنصات المسموحة.','wrn');if(!Number.isFinite(Number(price.value))||Number(price.value)<0)return toast('السعر غير صالح.','wrn');save.disabled=true;const label=save.textContent;save.textContent='جارٍ الحفظ والتحقق…';try{await api('/api/admin/custom-shop',{method:'POST',body:JSON.stringify({action:'service_save',key:old.key||undefined,categoryKey:cat.value,name:name.value.trim(),description:desc.value.trim(),priceIQD:Number(price.value),minQuantity:Number(min.value),maxQuantity:Number(max.value),inputLabel:inputLabel.value.trim(),inputPlaceholder:inputPlaceholder.value.trim(),inputType:inputType.value,requiresInput:req.checked,platforms:selected,enabled:true})});await refreshData();editingService='';active='manage';toast('تم حفظ الخدمة في Firebase والتحقق من بياناتها.','ok');drawTabs();drawPane()}catch(e){toast('لم يتم حفظ الخدمة: '+e.message,'err')}finally{save.disabled=false;save.textContent=label}});return card;
+      }
+      function drawManage(){
+        const catPanel=node('div','card');catPanel.style.cssText='padding:12px';const ch=node('div','');ch.style.cssText='display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px';const title=node('b','','إدارة الأقسام');const add=node('button','btn bp btn-sm','+ إضافة قسم');add.type='button';add.onclick=()=>{editingCategory='';active='addcat';drawTabs();drawPane()};ch.append(title,add);catPanel.appendChild(ch);
+        if(!categories.length)catPanel.appendChild(node('div','empty','لا توجد أقسام يدوية بعد. اضغط «إضافة قسم».'));
+        for(const c of categories){const row=node('div','');row.style.cssText='display:flex;gap:8px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;padding:10px 0;border-top:1px solid var(--bd)';const info=node('div','');info.style.cssText='min-width:0;flex:1';const nm=node('b','',(c.parentKey?'↳ ':'')+c.name);const meta=node('div','',optionPlatformRows(c.platforms)+' · '+services.filter(s=>String(s.categoryKey)===String(c.key)).length+' خدمة');meta.style.cssText='font-size:10px;line-height:1.8;color:var(--t2)';info.append(nm,meta);const tools=node('div','');tools.style.cssText='display:flex;gap:6px;flex-wrap:wrap';const edit=node('button','btn bs2 btn-sm','تعديل');edit.type='button';edit.onclick=()=>{editingCategory=c.key;active='addcat';drawTabs();pane.replaceChildren(drawCategoryForm(c))};const del=node('button','btn bdng btn-sm','حذف يدوياً');del.type='button';del.onclick=async()=>{if(!confirm('حذف القسم اليدوي «'+c.name+'» والأقسام الفرعية والخدمات التابعة له من customShop في Firebase فقط؟ لن تتأثر خدمات المزود.'))return;del.disabled=true;try{const d=await api('/api/admin/custom-shop',{method:'POST',body:JSON.stringify({action:'category_delete',key:c.key,confirmation:'DELETE_CUSTOM_SHOP_SECTION'})});await refreshData();toast('تم حذف القسم يدوياً من Firebase، والأقسام التابعة: '+Number(d.deletedCategories||0)+'، الخدمات: '+Number(d.deletedServices||0)+'.','ok');drawPane()}catch(e){toast('لم يتم تأكيد الحذف من Firebase: '+e.message,'err')}finally{del.disabled=false}};tools.append(edit,del);row.append(info,tools);catPanel.appendChild(row)}
+        const svcPanel=node('div','card');svcPanel.style.cssText='padding:12px';const sh=node('div','');sh.style.cssText='display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px';const st=node('b','','إدارة الخدمات والاشتراكات');const adds=node('button','btn bok btn-sm','+ إضافة خدمة');adds.type='button';adds.onclick=()=>{editingService='';active='addsvc';drawTabs();drawPane()};sh.append(st,adds);svcPanel.appendChild(sh);
+        if(!services.length)svcPanel.appendChild(node('div','empty','لا توجد خدمات يدوية بعد.'));
+        for(const s of services){const row=node('div','');row.style.cssText='padding:10px 0;border-top:1px solid var(--bd)';const name=node('b','',s.name||'خدمة');const meta=node('div','',(categories.find(c=>c.key===s.categoryKey)?.name||'قسم غير معروف')+' · '+optionPlatformRows(s.platforms)+' · '+Number(s.priceIQD||0).toLocaleString('ar-IQ')+' د.ع/وحدة · كمية '+s.minQuantity+'–'+s.maxQuantity);meta.style.cssText='font-size:10px;line-height:1.8;color:var(--t2)';row.append(name,meta);if(s.description){const des=node('div','',s.description);des.style.cssText='font-size:10px;line-height:1.8;color:var(--t1);margin-top:4px';row.appendChild(des)}const tools=node('div','');tools.style.cssText='display:flex;gap:6px;flex-wrap:wrap;margin-top:8px';const edit=node('button','btn bs2 btn-sm','تعديل');edit.type='button';edit.onclick=()=>{editingService=s.key;active='addsvc';drawTabs();pane.replaceChildren(drawServiceForm(s))};const removePlat=select(PLATFORMS,'إزالة الخدمة من منصة محددة');removePlat.classList.add('inp');removePlat.style.cssText='max-width:190px;min-height:32px;font-size:10px';const unlink=node('button','btn bs2 btn-sm','إزالة من المنصة');unlink.type='button';unlink.onclick=async()=>{if(!removePlat.value)return toast('اختر المنصة المراد إزالة الخدمة منها.','wrn');if(!confirm('إزالة «'+s.name+'» من '+(PLATFORMS.find(p=>p[0]===removePlat.value)?.[1]||removePlat.value)+' فقط؟'))return;unlink.disabled=true;try{const d=await api('/api/admin/custom-shop',{method:'POST',body:JSON.stringify({action:'service_unlink_platform',key:s.key,platform:removePlat.value})});await refreshData();toast(d.deleted?'لم تبقَ منصات مرتبطة بالخدمة، فحُذفت الخدمة من مخزن قسم من عندك.':'تمت إزالة الخدمة من المنصة المحددة فقط.','ok');drawPane()}catch(e){toast('تعذر تعديل المنصة: '+e.message,'err')}finally{unlink.disabled=false}};const del=node('button','btn bdng btn-sm','حذف الخدمة');del.type='button';del.onclick=async()=>{if(!confirm('حذف الخدمة اليدوية «'+s.name+'» من Firebase فقط؟ لن تتأثر خدمات المزود ولا الطلبات القديمة.'))return;del.disabled=true;try{await api('/api/admin/custom-shop',{method:'POST',body:JSON.stringify({action:'service_delete',key:s.key})});await refreshData();toast('تم حذف الخدمة من Firebase والتحقق من الحذف.','ok');drawPane()}catch(e){toast('لم يتم تأكيد حذف الخدمة: '+e.message,'err')}finally{del.disabled=false}};tools.append(edit,removePlat,unlink,del);row.appendChild(tools);svcPanel.appendChild(row)}
+        pane.append(catPanel,svcPanel);
+      }
+      async function drawPane(){pane.replaceChildren();try{if(!loaded)await refreshData();if(active==='manage')drawManage();else if(active==='addcat'){const row=categories.find(c=>c.key===editingCategory);pane.appendChild(drawCategoryForm(row));}else pane.appendChild(drawServiceForm(services.find(s=>s.key===editingService)));}catch(e){const err=node('div','card','تعذر تحميل بيانات قسم من عندك: '+e.message);err.style.cssText='padding:12px;color:#fb7185;line-height:1.8';const retry=node('button','btn bs2','إعادة المحاولة');retry.onclick=async()=>{await refreshData();drawPane()};pane.append(err,retry)}}
+      drawTabs();await refreshData();drawPane();
+    });}catch(e){toast('تعذر فتح قسم من عندك: '+e.message,'err')}finally{shopAdminBusy=false;}
+  }
+  let publicBusy=false;
+  async function openPublicCatalog(){
+    if(publicBusy)return;publicBusy=true;
+    try{window.openModal('الخدمات والاشتراكات الخاصة',async body=>{
+      const root=node('div','');root.style.cssText='display:flex;flex-direction:column;gap:12px;max-height:76vh;overflow:auto;padding:2px';const intro=node('div','card');intro.style.cssText='padding:12px;line-height:1.9;font-size:11px;color:var(--t1);border:1px solid rgba(139,92,246,.25)';intro.textContent='اختر المنصة والقسم والخدمة. بعد نجاح الشراء سيظهر لك تأكيد، ويمكنك التواصل مع الدعم عبر واتساب لإكمال التنفيذ اليدوي.';root.appendChild(intro);
+      const filters=node('div','card');filters.style.cssText='padding:10px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px';const platform=field(filters,'المنصة',select([['all','كل المنصات'],...PLATFORMS],'اختر المنصة'));platform.value='all';const cat=field(filters,'القسم',select([], 'كل الأقسام'));root.append(filters);const list=node('div','');list.style.cssText='display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr));gap:9px';root.appendChild(list);body.appendChild(root);
+      let categories=[],services=[],wa='';
+      function fillCats(){const old=cat.value;cat.replaceChildren(new Option('كل الأقسام','all'));categories.filter(c=>{const pf=platform.value;return pf==='all'||(Array.isArray(c.platforms)&&(c.platforms.includes('all')||c.platforms.includes(pf)))}).forEach(c=>cat.add(new Option((c.parentKey?'↳ ':'')+c.name,c.key)));if([...cat.options].some(o=>o.value===old))cat.value=old;}
+      function render(){list.replaceChildren();const pl=platform.value,ck=cat.value;const catsById=new Map(categories.map(c=>[String(c.key),c]));const rows=services.filter(s=>(pl==='all'||!Array.isArray(s.platforms)||s.platforms.includes('all')||s.platforms.includes(pl))&&(ck==='all'||String(s.categoryKey)===ck)&&catsById.get(String(s.categoryKey))?.enabled!==false);if(!rows.length){const empty=node('div','empty','لا توجد خدمات متاحة في هذا الاختيار حالياً.');list.appendChild(empty);return;}for(const s of rows){const card=node('div','card');card.style.cssText='padding:13px;border:1px solid var(--bd);background:linear-gradient(145deg,var(--bg1),var(--bg2));display:flex;flex-direction:column;gap:8px;min-width:0';const head=node('div','');head.style.cssText='display:flex;gap:8px;align-items:flex-start;justify-content:space-between';const info=node('div','');info.style.cssText='min-width:0;flex:1';const title=node('div','',s.name||'خدمة خاصة');title.style.cssText='font-size:13px;font-weight:950;color:var(--t0);line-height:1.5';const sub=node('div','',(catsById.get(String(s.categoryKey))?.name||'')+' · '+optionPlatformRows(s.platforms));sub.style.cssText='font-size:10px;color:var(--t2);margin-top:4px';info.append(title,sub);const price=node('b','',Number(s.priceIQD||0).toLocaleString('ar-IQ',{maximumFractionDigits:2})+' د.ع');price.style.cssText='font-size:12px;color:#5eead4;white-space:nowrap';head.append(info,price);card.appendChild(head);if(s.description){const desc=node('div','',s.description);desc.style.cssText='font-size:11px;line-height:1.9;color:var(--t1);overflow-wrap:anywhere';card.appendChild(desc)}const bounds=node('div','', 'الكمية: '+s.minQuantity+'–'+s.maxQuantity+' · السعر لكل وحدة');bounds.style.cssText='font-size:10px;color:var(--t2)';card.appendChild(bounds);const buy=node('button','btn bp btn-w','شراء الخدمة');buy.type='button';buy.addEventListener('click',()=>openBuyForm(s,pl==='all'?'':pl,wa));card.appendChild(buy);list.appendChild(card)}}
+      platform.addEventListener('change',()=>{fillCats();render()});cat.addEventListener('change',render);
+      const refresh=node('button','btn bs2 btn-w','تحديث الخدمات');refresh.type='button';refresh.onclick=async()=>{refresh.disabled=true;try{const d=await api('/api/custom-shop');categories=d.categories||[];services=d.services||[];wa=d.supportWhatsappUrl||'';fillCats();render()}catch(e){list.replaceChildren(node('div','empty','تعذر تحميل الخدمات: '+e.message))}finally{refresh.disabled=false}};root.insertBefore(refresh,list);
+      try{const d=await api('/api/custom-shop');categories=Array.isArray(d.categories)?d.categories:[];services=Array.isArray(d.services)?d.services:[];wa=String(d.supportWhatsappUrl||'');fillCats();render();}catch(e){list.replaceChildren(node('div','card','تعذر تحميل قسم من عندك: '+e.message));list.firstChild.style.cssText='padding:12px;color:#fb7185;line-height:1.8';}
+    });}catch(e){toast('تعذر فتح الخدمات الخاصة: '+e.message,'err')}finally{publicBusy=false;}
+  }
+  function openBuyForm(service,platformSelected,waUrl){
+    if(!window.CU){toast('سجّل الدخول أولاً لشراء الخدمة.','wrn');return;}
+    window.openModal('تأكيد شراء — '+String(service.name||'خدمة'),body=>{
+      const form=node('div','');form.style.cssText='display:flex;flex-direction:column;gap:10px';const desc=node('div','card');desc.style.cssText='padding:10px;font-size:11px;line-height:1.8;color:var(--t1)';desc.textContent=String(service.description||'خدمة يدوية. بعد الشراء تواصل معنا عبر واتساب لإكمال التنفيذ.');form.appendChild(desc);
+      const platforms=(service.platforms||[]).includes('all')?PLATFORMS:PLATFORMS.filter(p=>(service.platforms||[]).includes(p[0]));const pl=field(form,'المنصة',select(platforms.map(x=>[x[0],x[1]]),'اختر المنصة'));if(platforms.some(p=>p[0]===platformSelected))pl.value=platformSelected;else if(platforms.length===1)pl.value=platforms[0][0];
+      const quantity=field(form,'الكمية',input('number','الكمية',service.minQuantity));quantity.min=String(service.minQuantity||1);quantity.max=String(service.maxQuantity||1);quantity.step='1';quantity.value=String(service.minQuantity||1);
+      let details=null;if(service.requiresInput!==false){details=field(form,String(service.inputLabel||'الرابط أو اسم الحساب'),input(service.inputType==='url'?'url':'text',service.inputPlaceholder||'أدخل البيانات المطلوبة'),true);details.autocomplete='off';details.maxLength=2000;}
+      const total=node('div','card');total.style.cssText='padding:12px;text-align:center;border:1px solid rgba(94,234,212,.25)';const calc=()=>{const q=Number(quantity.value);const ok=Number.isSafeInteger(q)&&q>=Number(service.minQuantity||1)&&q<=Number(service.maxQuantity||1);total.textContent='الإجمالي: '+(ok?(Number(service.priceIQD||0)*q).toLocaleString('ar-IQ',{maximumFractionDigits:2}):'—')+' د.ع';};quantity.addEventListener('input',calc);calc();form.appendChild(total);
+      const warning=node('div','', 'سيُخصم الإجمالي من رصيدك عند نجاح العملية. هذه خدمة يدوية ولا تُرسل إلى مزود خارجي.');warning.style.cssText='font-size:10px;line-height:1.8;color:var(--t2)';form.appendChild(warning);const buy=node('button','btn bp btn-w','تأكيد الشراء');buy.type='button';form.appendChild(buy);body.appendChild(form);
+      buy.addEventListener('click',async()=>{const q=Number(quantity.value);if(!pl.value)return toast('اختر المنصة.','wrn');if(!Number.isSafeInteger(q)||q<Number(service.minQuantity||1)||q>Number(service.maxQuantity||1))return toast('الكمية خارج الحدود المحددة.','wrn');if(details&&service.requiresInput!==false&&!details.value.trim())return toast('املأ بيانات الخدمة أولاً.','wrn');if(details&&service.inputType==='url'){try{const u=new URL(details.value.trim());if(!['http:','https:'].includes(u.protocol)||!u.hostname.includes('.')||u.username||u.password)throw new Error();}catch(_){return toast('أدخل رابطاً صحيحاً يبدأ بـ http:// أو https://.','wrn');}}
+        buy.disabled=true;const old=buy.textContent;buy.textContent='جارٍ تسجيل الشراء والتحقق من الرصيد…';const localId='CST_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,10);try{const d=await api('/api/order/create',{method:'POST',body:JSON.stringify({serviceKind:'custom_shop',customShop:true,localId,serviceKey:service.key,categoryKey:service.categoryKey,platform:pl.value,quantity:q,details:details?details.value.trim():''})});try{window.closeModal?.()}catch(_){}showPurchaseSuccess(d,service,waUrl);toast('تم شراء الخدمة بنجاح.','ok');}catch(e){toast('لم يكتمل الشراء: '+e.message,'err');buy.disabled=false;buy.textContent=old;}
+      });
+    });
+  }
+  function showPurchaseSuccess(data,service,waFallback){
+    const wa=String(data.supportWhatsappUrl||waFallback||'https://wa.me/9647762267959');const orderNo=String(data.publicOrderNo||data.order?.publicOrderNo||data.siteOrderId||'');const total=Number(data.totalIQD??data.order?.totalIQD??0);
+    window.openModal('مبروك! تم شراء الخدمة',body=>{const root=node('div','');root.style.cssText='display:flex;flex-direction:column;gap:12px;text-align:center';const icon=node('div','', '🎉');icon.style.fontSize='44px';const title=node('div','', 'تم الشراء بنجاح');title.style.cssText='font-size:18px;font-weight:950;color:#5eead4';const message=node('div','', 'مبروك عليك! تم تسجيل طلب «'+String(service.name||'الخدمة')+'» بنجاح. رقم الطلب: '+orderNo+' · الإجمالي: '+total.toLocaleString('ar-IQ',{maximumFractionDigits:2})+' د.ع.');message.style.cssText='font-size:12px;line-height:2;color:var(--t1)';const note=node('div','card','هذه الخدمة تُنفّذ يدوياً. راسلنا على واتساب وأرسل رقم الطلب حتى نكمل خدمتك.');note.style.cssText='padding:12px;font-size:11px;line-height:1.9';const anchor=node('a','btn bok btn-w','');anchor.href=wa;anchor.target='_blank';anchor.rel='noopener noreferrer';anchor.style.cssText='display:block;text-decoration:none;text-align:center';anchor.innerHTML='<i class="fab fa-whatsapp"></i> راسلنا عبر واتساب';const done=node('button','btn bs2 btn-w','إغلاق');done.type='button';done.onclick=()=>window.closeModal?.();root.append(icon,title,message,note,anchor,done);body.appendChild(root)});
+  }
+  function init(){mountAdminEntry();mountUserEntry();const admin=$('adm-sub-services');if(admin)new MutationObserver(()=>mountAdminEntry()).observe(admin,{childList:true,subtree:true});const order=$('pg-order');if(order)new MutationObserver(()=>mountUserEntry()).observe(order,{childList:true,subtree:true});const prev=window.admNavTo;if(typeof prev==='function'&&!prev.__sadaCustomShop252){const wrapped=function(sub,el){const out=prev.apply(this,arguments);if(sub==='services')setTimeout(mountAdminEntry,80);return out};wrapped.__sadaCustomShop252=true;window.admNavTo=wrapped;}window.SADA_CUSTOM_SHOP_252={openAdmin:openAdminManager,openPublic:openPublicCatalog,mountAdmin:mountAdminEntry,mountUser:mountUser};}
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();window.addEventListener('load',()=>setTimeout(init,400));
+})();
+</script>
+
+<script id="sada-admin-basic-tabs-252">
+(function(){'use strict';const base=window.admNavTo;if(typeof base!=='function'||base.__sadaBasicTabs252)return;const mainTabs=new Set(['overview','payments','orders']);const wrapped=function(sub,el){if(mainTabs.has(String(sub))){const panel=document.getElementById('adm-panel');if(!panel)return;panel.querySelectorAll('.adm-sub').forEach(x=>x.classList.remove('on'));panel.querySelectorAll('.adm-sb-item').forEach(x=>x.classList.remove('on'));const target=document.getElementById('adm-sub-'+sub);if(target)target.classList.add('on');const item=el||panel.querySelector('.adm-sb-item[data-sub="'+sub+'"]');if(item)item.classList.add('on');try{if(sub==='overview')window.refreshAdmDashboard?.();else if(sub==='payments')window.loadAdmPaysFull?.();else if(sub==='orders')window.loadAdmOrdersFull?.();}catch(e){console.error('Admin tab load failed:',sub,e)}return;}return base.apply(this,arguments)};wrapped.__sadaBasicTabs252=true;window.admNavTo=wrapped;})();
+</script>
+
 </body>
 
 
@@ -14303,7 +14451,7 @@ function installWalletPage(){const current=window.CU||(typeof CU!=='undefined'?C
 const oldLaunch=window.launchApp;if(typeof oldLaunch==='function'&&!oldLaunch.__sada1599Secure){const wrapped=function(){const out=oldLaunch.apply(this,arguments);return out};wrapped.__sada1599Secure=true;window.launchApp=wrapped}
 const oldLoadAdmin=window.loadAdminPage;if(typeof oldLoadAdmin==='function'&&!oldLoadAdmin.__sada1599Secure){const wrapped=function(){const out=oldLoadAdmin.apply(this,arguments);setTimeout(loadAdmMsgs,700);return out};wrapped.__sada1599Secure=true;window.loadAdminPage=wrapped}
 document.addEventListener('DOMContentLoaded',()=>{setTimeout(startUserChatPoll,1200)});
-window.SADA_V1599_FIXES={version:'1.6.76',features:['telegram-stable-server-derived-encryption-key','telegram-channel-id-normalization','server-authoritative-asiacell-topups','server-backed-recharge-statistics','server-backed-wallet-list-and-discount-updates','privileged-server-support-chat','privileged-server-provider-service-import']};
+window.SADA_V1599_FIXES={version:'1.6.78',features:['telegram-stable-server-derived-encryption-key','telegram-channel-id-normalization','server-authoritative-asiacell-topups','server-backed-recharge-statistics','server-backed-wallet-list-and-discount-updates','privileged-server-support-chat','privileged-server-provider-service-import']};
 })();
 </script>
 
@@ -14346,7 +14494,7 @@ window.SADA_V1599_FIXES={version:'1.6.76',features:['telegram-stable-server-deri
 </style>
 <script id="sada174-version-fix">
 (function(){
-  const version='1.6.76';
+  const version='1.6.78';
   document.querySelectorAll('[data-sada-version]').forEach(el=>{el.textContent=version});
   const versionNodes=[...document.querySelectorAll('body *')].filter(el=>el.children.length===0 && /^1\.5\.73$/.test((el.textContent||'').trim()));
   versionNodes.forEach(el=>{if(!el.closest('script,style,code,pre'))el.textContent=version});
@@ -14458,7 +14606,7 @@ window.SADA_V1599_FIXES={version:'1.6.76',features:['telegram-stable-server-deri
   function init(){installAdapter(typeof DB!=='undefined'?DB:null);pinSupport();}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
   setInterval(()=>{if(document.hidden||!document.getElementById('adm-panel')?.classList.contains('on'))return;try{installAdapter(typeof DB!=='undefined'?DB:null);pinSupport()}catch(_){}},10000);
-  window.SADA_V1600={version:'1.6.76',features:['host-json-service-catalog','server-authoritative-wallet-ui','server-authoritative-orders-list','fixed-firebase-user-path-resolution','support-pinned-first','server-only-service-sync']};
+  window.SADA_V1600={version:'1.6.78',features:['host-json-service-catalog','server-authoritative-wallet-ui','server-authoritative-orders-list','fixed-firebase-user-path-resolution','support-pinned-first','server-only-service-sync']};
 })();
 </script>
 
@@ -14521,7 +14669,7 @@ window.SADA_V1599_FIXES={version:'1.6.76',features:['telegram-stable-server-deri
   function refreshStats(){const me=userNow();if(me&&me.u&&!document.hidden){window.refreshSadaUserBalance1600?.();window.loadHomeExtras67?.()}}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{pinSupportAndFinance();refreshStats()},{once:true});else{pinSupportAndFinance();refreshStats()}
   setInterval(()=>{try{pinSupportAndFinance();refreshStats();if($('adm-panel')?.classList.contains('on'))addUserFinanceButtons()}catch(_){}},25000);
-  window.SADA_V1600_FINAL={version:'1.6.76',features:['server-only-order-submission','no-browser-wallet-debits','server-backed-wallet-adjustments','server-backed-user-balance-refresh','telegram-fallback-diagnostics','pinned-support-inbox','hosting-file-service-catalog']};
+  window.SADA_V1600_FINAL={version:'1.6.78',features:['server-only-order-submission','no-browser-wallet-debits','server-backed-wallet-adjustments','server-backed-user-balance-refresh','telegram-fallback-diagnostics','pinned-support-inbox','hosting-file-service-catalog']};
 })();
 </script>
 
@@ -14568,7 +14716,7 @@ window.SADA_V1599_FIXES={version:'1.6.76',features:['telegram-stable-server-deri
   const oldAdm=window.admNavTo;if(typeof oldAdm==='function'&&!oldAdm.__sada1602DescWrapped){const wrapped=function(sub,el){if(sub==='sada-service-descriptions'){install();showEditor();return}return oldAdm.apply(this,arguments)};wrapped.__sada1602DescWrapped=true;window.admNavTo=wrapped}
   const oldLaunch=window.launchApp;if(typeof oldLaunch==='function'&&!oldLaunch.__sada1602DescWrapped){const wrapped=function(){const r=oldLaunch.apply(this,arguments);setTimeout(install,250);return r};wrapped.__sada1602DescWrapped=true;window.launchApp=wrapped}
   function init(){install()};if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();setInterval(()=>{if(document.hidden||!document.getElementById('adm-panel')?.classList.contains('on')||!document.getElementById('adm-sub-sada-service-descriptions')?.classList.contains('on'))return;try{install()}catch(_){}},15000);
-  window.SADA_SERVICE_DESCRIPTIONS={version:'1.6.76',storage:'hosting-json',features:['provider-description-preservation','manual-service-description','category-description-fallback']};
+  window.SADA_SERVICE_DESCRIPTIONS={version:'1.6.78',storage:'hosting-json',features:['provider-description-preservation','manual-service-description','category-description-fallback']};
 })();
 </script>
 
@@ -14750,7 +14898,7 @@ window.SADA_V1599_FIXES={version:'1.6.76',features:['telegram-stable-server-deri
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
  setTimeout(()=>{syncHostMeta1605().then(changed=>{if(changed)rebuildCatalogSelectors1605()});installHostCatalogRefresh1605()},1600);
  setInterval(()=>{if(document.hidden)return;try{mountOrders();installServiceWrapper();installProviderCheck();installHostCatalogRefresh1605()}catch(_){}},45000);
- window.SADA_V1605={version:'1.6.76',features:['premium-order-history','arabic-order-status','visible-service-description','custom-category-service-images','firebase-wallet-key-fix','live-provider-api-diagnostics','exact-name-unique-id-reconcile']};
+ window.SADA_V1605={version:'1.6.78',features:['premium-order-history','arabic-order-status','visible-service-description','custom-category-service-images','firebase-wallet-key-fix','live-provider-api-diagnostics','exact-name-unique-id-reconcile']};
 })();
 </script>
 
@@ -14949,7 +15097,7 @@ function polishOrderForm(){
 }
 function init(){bindAsiaCell();polishOrderForm();const entry=$('sadairaq-ac-entry');if(entry)new MutationObserver(bindAsiaCell).observe(entry,{attributes:true,attributeFilter:['onclick']});const order=$('pg-order');if(order)new MutationObserver(()=>polishOrderForm()).observe(order,{childList:true,subtree:true});}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
-window.SADA1637_UI_FIXES={version:'1.6.76',openAsiaCell:openWizard,polishOrderForm,onLogout:()=>{clearState();$('sada1637-asiacell-wizard-overlay')?.remove();document.body.style.removeProperty('overflow');}};
+window.SADA1637_UI_FIXES={version:'1.6.78',openAsiaCell:openWizard,polishOrderForm,onLogout:()=>{clearState();$('sada1637-asiacell-wizard-overlay')?.remove();document.body.style.removeProperty('overflow');}};
 })();
 </script>
 
@@ -14993,7 +15141,7 @@ window.SADA1637_UI_FIXES={version:'1.6.76',openAsiaCell:openWizard,polishOrderFo
 .sada-sidebar-version{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:10px;padding:10px 8px;border-top:1px solid var(--bd);color:var(--t2);font-size:10px;font-weight:750;letter-spacing:.15px}.sada-sidebar-version i{color:var(--blue)}.sada-sidebar-version b{display:inline-flex;align-items:center;justify-content:center;min-width:34px;padding:4px 8px;border:1px solid rgba(91,164,255,.25);border-radius:999px;background:rgba(91,164,255,.08);color:var(--blue);font-size:11px;font-weight:950}.sb-foot{padding-bottom:max(10px,env(safe-area-inset-bottom))}
 </style>
 <script id="sada-v2-sidebar-only-version">
-(function(){'use strict';const shown='2.50';function apply(){const badge=document.getElementById('sadairaq-version-badge');if(badge){badge.style.setProperty('display','none','important');badge.setAttribute('aria-hidden','true')}const v=document.querySelector('#sada-sidebar-version b');if(v&&v.textContent.trim()!==shown)v.textContent=shown;document.title='صدى العراق';}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',apply,{once:true});else apply();window.addEventListener('pageshow',apply);})();
+(function(){'use strict';const shown='2.52';function apply(){const badge=document.getElementById('sadairaq-version-badge');if(badge){badge.style.setProperty('display','none','important');badge.setAttribute('aria-hidden','true')}const v=document.querySelector('#sada-sidebar-version b');if(v&&v.textContent.trim()!==shown)v.textContent=shown;document.title='صدى العراق';}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',apply,{once:true});else apply();window.addEventListener('pageshow',apply);})();
 </script>
 
 <script id="sada-free-services-21">

@@ -1,7 +1,7 @@
 {
   "appName": "صدى العراق",
-  "version": "2.50",
-  "buildId": "SADA-1.6.76-ORDERS-PAID-USERINFO-FIREBASE-20261018",
+  "version": "2.52",
+  "buildId": "SADA-1.6.78-CUSTOM-SHOP-ADMIN-TABS-NOTICE-FIX-20261019",
   "currency": "USD",
   "exchangeRate": 1250,
   "fixedRecharge": "5000 IQD = 4 USD",
