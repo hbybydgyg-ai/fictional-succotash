@@ -44,8 +44,8 @@ function purgeCatalogServiceSnapshots(){
 }
 purgeCatalogServiceSnapshots();
 const APP_NAME = 'صدى العراق';
-const APP_VERSION = '1.6.80';
-const BUILD_ID = 'SADA-1.6.80-SERVICE-MANAGER-TELEGRAM-BASELINE-20261019';
+const APP_VERSION = '1.6.81';
+const BUILD_ID = 'SADA-1.6.81-PROVIDER-DESCRIPTION-PLATFORM-FIRST-20261019';
 // Keep the owner's admin identity available after packaging, but store only a scrypt hash
 // in the project. Railway variables can still explicitly override this packaged credential.
 function loadBundledAdminAuth(){
@@ -1471,8 +1471,25 @@ function providerServiceName(row={},id=''){
   return providerOriginalServiceName(row)||(id?('خدمة رقم '+String(id).slice(0,60)):'خدمة غير مسماة');
 }
 function providerServiceDescription(row={}){
-  for(const key of ['description','desc','serviceDescription','service_description','service_desc','details','instructions','note']){
-    const value=row?.[key];if(value!==undefined&&value!==null){const text=String(value).trim();if(text)return text.slice(0,4000);}
+  const keys=['description','desc','serviceDescription','service_description','service_desc','serviceDesc','descriptionText','description_text','serviceDescriptionText','service_description_text','details','serviceDetails','service_details','instructions','note','requirements','info','htmlDescription','descriptionHtml','description_ar','desc_ar','شرح','وصف'];
+  const candidates=[row];
+  for(const key of ['provider','service','data','details','metadata','meta','attributes']){
+    const value=row?.[key];
+    if(value&&typeof value==='object'&&!Array.isArray(value))candidates.push(value);
+  }
+  const toText=value=>{
+    if(value===undefined||value===null)return '';
+    if(typeof value==='string'||typeof value==='number')return String(value).trim();
+    if(Array.isArray(value))return value.map(toText).filter(Boolean).join('\n').trim();
+    if(typeof value==='object'){
+      for(const key of ['text','description','desc','content','value','html','plain','ar']){
+        const text=toText(value[key]);if(text)return text;
+      }
+    }
+    return '';
+  };
+  for(const candidate of candidates){
+    for(const key of keys){const text=toText(candidate?.[key]);if(text)return text.slice(0,4000);}
   }
   return '';
 }
@@ -4934,7 +4951,7 @@ async function routeAPI(req,res,urlObj){
       for(const row of remote){
         const id=String(row.service||'').trim();if(!id||seen.has(id))continue;seen.add(id);
         const rateValid=row.ratePresent===true&&Number.isFinite(Number(row.rate))&&Number(row.rate)>=0;if(!rateValid)invalidRates++;
-        services.push({service:id,name:String(row.name||('خدمة رقم '+id)).slice(0,240),rate:rateValid?Number(row.rate):null,rateValid,min:Math.max(1,Math.floor(Number(row.min||row.minimum||1)||1)),max:Math.max(Math.max(1,Math.floor(Number(row.min||row.minimum||1)||1)),Math.floor(Number(row.max||row.maximum||1000000)||1000000)),description:String(row.description||'').slice(0,3000),refill:!!row.refill,cancel:!!row.cancel,category:String(row.category||row.category_name||row.categoryName||'').slice(0,160),type:String(row.rawType||row.type||row.service_type||'').slice(0,80)});
+        services.push({service:id,name:String(row.name||('خدمة رقم '+id)).slice(0,240),rate:rateValid?Number(row.rate):null,rateValid,min:Math.max(1,Math.floor(Number(row.min||row.minimum||1)||1)),max:Math.max(Math.max(1,Math.floor(Number(row.min||row.minimum||1)||1)),Math.floor(Number(row.max||row.maximum||1000000)||1000000)),description:String(providerServiceDescription(row)||row.description||'').slice(0,3000),providerDescription:String(providerServiceDescription(row)||row.description||'').slice(0,3000),refill:!!row.refill,cancel:!!row.cancel,category:String(row.category||row.category_name||row.categoryName||'').slice(0,160),type:String(row.rawType||row.type||row.service_type||'').slice(0,80)});
       }
       const capped=services.slice(0,15000);
       return json(res,200,{ok:true,providerId,providerName:String(prov.name||providerId),services:capped,total:services.length,returned:capped.length,truncated:services.length>capped.length,invalidRateCount:invalidRates,loadedAt:nowISO()});
@@ -7242,7 +7259,7 @@ async function routeAPI(req,res,urlObj){
     try { buildFile=fs.readFileSync(path.join(ROOT,'BUILD_ID.txt'),'utf8').trim(); } catch(_) {}
     const deploymentConsistent=uiVersion===APP_VERSION && uiBuildId===BUILD_ID && versionFile===APP_VERSION && buildFile===BUILD_ID;
     const dbInfo=firebaseDatabaseDiagnosticInfo();
-    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.80',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
+    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.81',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
     // Keep operational configuration details private; only an authenticated admin can inspect them.
     if(isAdmin(req)){const credentialStatus=firebaseServiceAccountStatus();health.firebaseDatabase={host:dbInfo.host,source:dbInfo.source,databaseProjectHint:dbInfo.databaseProjectHint,serviceAccountProjectId:dbInfo.serviceAccountProjectId||null,configuredWebProjectId:dbInfo.configuredWebProjectId||null,serviceAccountProjectMatch:dbInfo.serviceAccountProjectMatch};health.securityConfig={sessionSecretConfigured:!!String(process.env.SESSION_SECRET||'').trim(),dedicatedEncryptionKeyConfigured:!!String(process.env.SADA_ENCRYPTION_KEY||'').trim(),stableEncryptionAvailable:telegramEncryptionReady(),firebaseConfigured:!!FIREBASE_DATABASE_URL,firebaseServiceAccountConfigured:credentialStatus.ok,firebaseCredentialStatus:{ok:credentialStatus.ok,code:credentialStatus.code,source:credentialStatus.source,message:credentialStatus.message},firebaseDatabaseSecretConfigured:!!String(process.env.FIREBASE_DATABASE_SECRET||'').trim(),firebaseAuthAvailable:firebaseAuthAvailable(),emailServiceConfigured:!!(String(process.env.RESEND_API_KEY||'').trim()&&String(process.env.RESEND_FROM_EMAIL||process.env.EMAIL_FROM||'').trim()),telegramTokenFromEnvironment:!!String(process.env.TELEGRAM_BOT_TOKEN||'').trim(),adminPasswordFromEnvironment:!!(String(process.env.ADMIN_PASSWORD||'').trim()||String(process.env.ADMIN_PASSWORD_HASH||'').trim()),adminPasswordConfigured:adminPasswordConfigured()};}
     return json(res,200,health);

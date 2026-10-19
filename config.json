@@ -1,7 +1,7 @@
 {
   "appName": "صدى العراق",
-  "version": "2.54",
-  "buildId": "SADA-1.6.80-SERVICE-MANAGER-TELEGRAM-BASELINE-20261019",
+  "version": "2.55",
+  "buildId": "SADA-1.6.81-PROVIDER-DESCRIPTION-PLATFORM-FIRST-20261019",
   "currency": "USD",
   "exchangeRate": 1250,
   "fixedRecharge": "5000 IQD = 4 USD",
