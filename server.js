@@ -44,8 +44,8 @@ function purgeCatalogServiceSnapshots(){
 }
 purgeCatalogServiceSnapshots();
 const APP_NAME = 'صدى العراق';
-const APP_VERSION = '1.6.78';
-const BUILD_ID = 'SADA-1.6.78-CUSTOM-SHOP-ADMIN-TABS-NOTICE-FIX-20261019';
+const APP_VERSION = '1.6.80';
+const BUILD_ID = 'SADA-1.6.80-SERVICE-MANAGER-TELEGRAM-BASELINE-20261019';
 // Keep the owner's admin identity available after packaging, but store only a scrypt hash
 // in the project. Railway variables can still explicitly override this packaged credential.
 function loadBundledAdminAuth(){
@@ -3418,10 +3418,10 @@ async function readTelegramOrderState(){
   try{const d=await firebaseGetJson('config/telegramOrderState',4000);if(d&&typeof d==='object'&&!Array.isArray(d))remote=d}catch(_){}
   const remoteSeen=remote.seen&&typeof remote.seen==='object'?remote.seen:{},localSeen=local.seen&&typeof local.seen==='object'?local.seen:{};
   const seen={};for(const key of new Set([...Object.keys(remoteSeen),...Object.keys(localSeen)]))seen[key]=mergeTelegramOrderStateEntry(remoteSeen[key],localSeen[key]);
-  return {...remote,...local,initialized:!!(remote.initialized||local.initialized),seen};
+  const localAt=Date.parse(local.updatedAt||'')||0,remoteAt=Date.parse(remote.updatedAt||'')||0;const stateSource=remoteAt>localAt?remote:local;return {...remote,...local,monitorBuildId:String(stateSource.monitorBuildId||remote.monitorBuildId||local.monitorBuildId||''),monitorStartedAt:Number(stateSource.monitorStartedAt||remote.monitorStartedAt||local.monitorStartedAt||0),initialized:!!(remote.initialized||local.initialized),seen};
 }
 async function persistTelegramOrderState(state){
-  const safe={initialized:!!state.initialized,seen:state.seen&&typeof state.seen==='object'?state.seen:{},updatedAt:nowISO()};
+  const safe={initialized:!!state.initialized,monitorBuildId:String(state.monitorBuildId||''),monitorStartedAt:Number(state.monitorStartedAt||0),seen:state.seen&&typeof state.seen==='object'?state.seen:{},updatedAt:nowISO()};
   const compact=Object.fromEntries(Object.entries(safe.seen).sort((a,b)=>Date.parse(b[1]?.sentAt||b[1]?.deliveredAt||b[1]?.lastAttemptAt||b[1]?.baselineAt||0)-Date.parse(a[1]?.sentAt||a[1]?.deliveredAt||a[1]?.lastAttemptAt||a[1]?.baselineAt||0)).slice(0,5000));safe.seen=compact;writeJSON('telegram_order_state.json',safe);try{await firebaseWriteJson('config/telegramOrderState',safe,5000);return true}catch(_){return DATA_IS_EXTERNAL;}
 }
 const TELEGRAM_ORDER_SENDS_IN_FLIGHT=new Map();
@@ -3450,6 +3450,7 @@ async function notifyTelegramNewOrder(o,meta={}){
   TELEGRAM_ORDER_SENDS_IN_FLIGHT.set(key,task);
   try{return await task;}finally{if(TELEGRAM_ORDER_SENDS_IN_FLIGHT.get(key)===task)TELEGRAM_ORDER_SENDS_IN_FLIGHT.delete(key);}
 }
+const TELEGRAM_ORDER_MONITOR_BOOT_MS=Date.now();
 async function runTelegramNewOrdersMonitor(){
   if(TELEGRAM_ORDER_MONITOR_RUNNING)return;TELEGRAM_ORDER_MONITOR_RUNNING=true;
   try{
@@ -3457,19 +3458,30 @@ async function runTelegramNewOrdersMonitor(){
     const snap=await loadOrderMonitorSnapshot();if(!snap.firebaseAvailable&&(!snap.rows||!snap.rows.length))return;
     const st=await readTelegramOrderState(),seen={...(st.seen||{})};
     const now=Date.now();
-    if(!st.initialized){
-      // Prevent an old-order flood on the first deploy, but don't silently skip orders created just now.
-      const recent=[];
-      for(const row of (snap.rows||[])){const key=telegramOrderIdentity({...row,id:row.siteOrderId||row.id||'',user:row.user||row.username||''});if(!key)continue;if(row.legacyHistory){seen[key]=seen[key]||{baselineAt:nowISO(),source:'legacy-history'};continue;}const age=Number(row.createdMs||0)>0?now-Number(row.createdMs):Infinity;if(age<=10*60*1000&&!seen[key])recent.push(row);else seen[key]=seen[key]||{baselineAt:nowISO()};}
-      await persistTelegramOrderState({initialized:true,seen});
-      for(const row of recent.slice(0,25)){const key=telegramOrderIdentity({...row,id:row.siteOrderId||row.id||'',user:row.user||row.username||''});const r=await notifyTelegramNewOrder({...row,id:row.siteOrderId||row.id||'',_firebaseKey:row._firebaseKey||row.firebaseKey||'',source:row.source||''},{source:'monitor-first-scan'});const delivered=!!(r.primaryOk||r.delivered||r.ok||(Array.isArray(r.deliveredTo)&&r.deliveredTo.length));seen[key]={...(seen[key]||{}),lastAttemptAt:nowISO(),attempts:Number(seen[key]?.attempts||0)+1,primaryOk:!!r.primaryOk,adminFallbackDelivered:!!r.fallbackSent||(!r.primaryOk&&delivered),delivered,deliveredTo:Array.isArray(r.deliveredTo)?r.deliveredTo:[],...(delivered?{sentAt:nowISO(),deliveredAt:nowISO()}:{}),source:'monitor-first-scan',lastError:delivered?'':String(r.description||r.error||'تعذر إرسال إشعار القناة').slice(0,300)};}
-      if(recent.length)await persistTelegramOrderState({initialized:true,seen});
+    // Re-baseline once per deployed build. Existing orders are marked as already examined and are NEVER broadcast just because Railway restarted.
+    // Only rows with a trustworthy creation timestamp at/after this server process boot are eligible on the first scan.
+    if(!st.initialized||String(st.monitorBuildId||'')!==BUILD_ID){
+      const createdAfterBoot=[];
+      for(const row of (snap.rows||[])){
+        const key=telegramOrderIdentity({...row,id:row.siteOrderId||row.id||'',user:row.user||row.username||''});if(!key)continue;
+        const createdMs=Number(row.createdMs||0),previous=seen[key];
+        if(!row.legacyHistory&&createdMs>=TELEGRAM_ORDER_MONITOR_BOOT_MS){if(!telegramOrderWasDelivered(previous))createdAfterBoot.push(row);continue;}
+        if(!telegramOrderWasDelivered(previous))seen[key]={...(previous||{}),baselineAt:previous?.baselineAt||nowISO(),deploymentBaseline:true,source:row.legacyHistory?'legacy-history':'deployment-baseline',pending:false};
+      }
+      await persistTelegramOrderState({initialized:true,monitorBuildId:BUILD_ID,monitorStartedAt:TELEGRAM_ORDER_MONITOR_BOOT_MS,seen});
+      for(const row of createdAfterBoot.slice(0,25)){
+        const key=telegramOrderIdentity({...row,id:row.siteOrderId||row.id||'',user:row.user||row.username||''});
+        const r=await notifyTelegramNewOrder({...row,id:row.siteOrderId||row.id||'',_firebaseKey:row._firebaseKey||row.firebaseKey||'',source:row.source||''},{source:'monitor-first-scan-new-after-boot'});
+        const delivered=!!(r.primaryOk||r.delivered||r.ok||(Array.isArray(r.deliveredTo)&&r.deliveredTo.length));
+        seen[key]={...(seen[key]||{}),lastAttemptAt:nowISO(),attempts:Number(seen[key]?.attempts||0)+1,primaryOk:!!r.primaryOk,adminFallbackDelivered:!!r.fallbackSent||(!r.primaryOk&&delivered),delivered,deliveredTo:Array.isArray(r.deliveredTo)?r.deliveredTo:[],...(delivered?{sentAt:nowISO(),deliveredAt:nowISO()}:{}),source:'monitor-first-scan-new-after-boot',lastError:delivered?'':String(r.description||r.error||'تعذر إرسال إشعار القناة').slice(0,300)};
+      }
+      if(createdAfterBoot.length)await persistTelegramOrderState({initialized:true,monitorBuildId:BUILD_ID,monitorStartedAt:TELEGRAM_ORDER_MONITOR_BOOT_MS,seen});
       return;
     }
     const retryAfterMs=5*60*1000;
-    const fresh=(snap.rows||[]).filter(row=>{const key=telegramOrderIdentity({...row,id:row.siteOrderId||row.id||'',user:row.user||row.username||''}),previous=key?seen[key]:null;if(row.legacyHistory||!key)return false;if(!previous)return true;if(telegramOrderWasDelivered(previous))return false;const last=Date.parse(previous.lastAttemptAt||'')||0;return now-last>=retryAfterMs;}).sort((a,b)=>Number(a.createdMs||0)-Number(b.createdMs||0)).slice(0,25);
+    const fresh=(snap.rows||[]).filter(row=>{const key=telegramOrderIdentity({...row,id:row.siteOrderId||row.id||'',user:row.user||row.username||''}),previous=key?seen[key]:null;if(row.legacyHistory||!key||previous?.deploymentBaseline||Number(row.createdMs||0)<Number(st.monitorStartedAt||TELEGRAM_ORDER_MONITOR_BOOT_MS))return false;if(!previous)return true;if(telegramOrderWasDelivered(previous))return false;const last=Date.parse(previous.lastAttemptAt||'')||0;return now-last>=retryAfterMs;}).sort((a,b)=>Number(a.createdMs||0)-Number(b.createdMs||0)).slice(0,25);
     for(const row of fresh){const key=telegramOrderIdentity({...row,id:row.siteOrderId||row.id||'',user:row.user||row.username||''});const siteId=String(row.siteOrderId||row.id||'');const candidateNo=String(row.publicOrderNo||row.publicOrderNumber||row.orderNumber||(/^\d{1,9}$/.test(String(row.id||''))?row.id:'')).trim();const visibleNo=/^\d{1,9}$/.test(candidateNo)?candidateNo:'قيد الترقيم';createUserNotification(row.user||row.username,{type:'order_created',orderId:siteId,status:String(row.status||'pending'),title:'تم استلام طلبك #'+visibleNo,message:'تم استلام طلب '+visibleNo+' لخدمة '+String(row.serviceName||'خدمة')+'، وسيتم تحديث الحالة هنا.',meta:{serviceName:String(row.serviceName||'خدمة'),quantity:Number(row.quantity||0),providerName:String(row.providerName||''),providerOrderId:String(row.providerOrderId||'')}});const r=await notifyTelegramNewOrder({...row,id:siteId,_firebaseKey:row._firebaseKey||row.firebaseKey||'',source:row.source||''},{source:'monitor'});const delivered=!!(r.primaryOk||r.delivered||r.ok||(Array.isArray(r.deliveredTo)&&r.deliveredTo.length));seen[key]={...(seen[key]||{}),lastAttemptAt:nowISO(),attempts:Number(seen[key]?.attempts||0)+1,primaryOk:!!r.primaryOk,adminFallbackDelivered:!!r.fallbackSent||(!r.primaryOk&&delivered),delivered,deliveredTo:Array.isArray(r.deliveredTo)?r.deliveredTo:[],...(delivered?{sentAt:nowISO(),deliveredAt:nowISO()}:{}),source:'monitor',lastError:delivered?'':String(r.description||r.error||'تعذر إرسال إشعار القناة').slice(0,300)};}
-    if(fresh.length&&Object.keys(seen).length)await persistTelegramOrderState({initialized:true,seen});
+    if(fresh.length&&Object.keys(seen).length)await persistTelegramOrderState({initialized:true,monitorBuildId:BUILD_ID,monitorStartedAt:Number(st.monitorStartedAt||TELEGRAM_ORDER_MONITOR_BOOT_MS),seen});
   }catch(e){console.warn('Telegram new-order monitor:',String(e.message||e).slice(0,180))}finally{TELEGRAM_ORDER_MONITOR_RUNNING=false;}
 }
 let TELEGRAM_ORDER_MONITOR_RUNNING=false;
@@ -3576,6 +3588,8 @@ const CUSTOM_SHOP_PLATFORMS=Object.freeze({Instagram:'إنستغرام',Tiktok:'
 let CUSTOM_SHOP_CACHE={at:0,value:null,promise:null};
 function customShopRoot(v){return v&&typeof v==='object'&&!Array.isArray(v)?{categories:v.categories&&typeof v.categories==='object'&&!Array.isArray(v.categories)?v.categories:{},services:v.services&&typeof v.services==='object'&&!Array.isArray(v.services)?v.services:{}}:{categories:{},services:{}};}
 function customShopKey(prefix='item'){return prefix+'_'+crypto.randomBytes(10).toString('hex');}
+function customShopImageUrl(value,fallback=''){const raw=String(value===undefined?fallback:(value||'')).trim().slice(0,2048);if(!raw)return '';if(/^\/media\/custom-shop\/[a-z0-9-]+\.(?:jpg|jpeg|png|webp)$/i.test(raw))return raw;if(/^https:\/\/[^\s\"'<>]+$/i.test(raw))return raw;throw new Error('رابط صورة القسم أو الخدمة غير صالح؛ ارفع صورة من حقل الصورة.');}
+function customShopRemoveImage(url){const m=String(url||'').match(/^\/media\/custom-shop\/([a-z0-9-]+\.(?:jpg|jpeg|png|webp))$/i);if(!m)return;try{fs.rmSync(path.join(DATA,'custom-shop-media',m[1]),{force:true})}catch(_){}}
 function customShopPlatforms(input){const raw=Array.isArray(input)?input.map(x=>String(x||'').trim()):[];if(raw.includes('all'))return ['all'];const valid=[...new Set(raw.filter(x=>Object.prototype.hasOwnProperty.call(CUSTOM_SHOP_PLATFORMS,x)))];return valid;}
 function customShopIncludesPlatform(row,platform){const list=Array.isArray(row?.platforms)?row.platforms:[];return list.includes('all')||(!platform||platform==='all')||list.includes(String(platform));}
 async function readCustomShopRemote(force=false){
@@ -3597,8 +3611,8 @@ async function saveCustomShopCategory(b,root,actor,at){
   if(!platforms.length)throw new Error('اختر منصة واحدة على الأقل أو اختر كل المنصات.');
   if(parentKey&&(!root.categories[parentKey]||root.categories[parentKey].enabled===false||root.categories[parentKey].parentKey))throw new Error('اختر قسماً رئيسياً موجوداً؛ لا يمكن إنشاء أكثر من مستويين للأقسام.');
   if(parentKey&&Array.isArray(root.categories[parentKey]?.platforms)&&!root.categories[parentKey].platforms.includes('all')&&!platforms.includes('all')&&platforms.some(x=>!root.categories[parentKey].platforms.includes(x)))throw new Error('منصات القسم الفرعي يجب أن تكون ضمن منصات القسم الرئيسي.');
-  const old=root.categories[key]||{},record={...old,key,name,description,parentKey,platforms,enabled:b.enabled===undefined?old.enabled!==false:b.enabled===true,createdAt:old.createdAt||at,updatedAt:at,createdBy:old.createdBy||actor,updatedBy:actor};
-  await writeCustomShopRecord('customShop/categories/'+key,record);return record;
+  const old=root.categories[key]||{},imageUrl=customShopImageUrl(b.imageUrl,old.imageUrl||''),record={...old,key,name,description,parentKey,platforms,imageUrl,enabled:b.enabled===undefined?old.enabled!==false:b.enabled===true,createdAt:old.createdAt||at,updatedAt:at,createdBy:old.createdBy||actor,updatedBy:actor};
+  await writeCustomShopRecord('customShop/categories/'+key,record);if(old.imageUrl&&old.imageUrl!==imageUrl)customShopRemoveImage(old.imageUrl);return record;
 }
 async function saveCustomShopService(b,root,actor,at){
   const key=String(b.key||'').trim()||customShopKey('service'),categoryKey=String(b.categoryKey||'').trim(),name=String(b.name||'').trim(),description=String(b.description||'').trim().slice(0,4000),platforms=customShopPlatforms(b.platforms),priceIQD=Number(b.priceIQD),minQuantity=Math.floor(Number(b.minQuantity??1)),maxQuantity=Math.floor(Number(b.maxQuantity??1)),inputLabel=String(b.inputLabel||'الرابط أو اسم الحساب').trim().slice(0,100),inputPlaceholder=String(b.inputPlaceholder||'أدخل الرابط أو اسم الحساب').trim().slice(0,180),inputType=String(b.inputType||'text'),requiresInput=b.requiresInput!==false;
@@ -3611,8 +3625,8 @@ async function saveCustomShopService(b,root,actor,at){
   if(!['text','url'].includes(inputType))throw new Error('نوع بيانات المستخدم غير صالح.');
   if(inputType==='url'&&requiresInput===false)throw new Error('خدمة الرابط يجب أن تتطلب إدخال الرابط.');
   const categoryPlatforms=customShopPlatforms(category.platforms);if(!categoryPlatforms.includes('all')&&!platforms.includes('all')&&platforms.some(x=>!categoryPlatforms.includes(x)))throw new Error('منصات الخدمة يجب أن تكون ضمن منصات القسم.');
-  const old=root.services[key]||{},record={...old,key,categoryKey,name,description,platforms,priceIQD:Number(priceIQD.toFixed(4)),minQuantity,maxQuantity,inputLabel,inputPlaceholder,inputType,requiresInput,enabled:b.enabled===undefined?old.enabled!==false:b.enabled===true,serviceKind:'custom_shop',createdAt:old.createdAt||at,updatedAt:at,createdBy:old.createdBy||actor,updatedBy:actor};
-  await writeCustomShopRecord('customShop/services/'+key,record);return record;
+  const old=root.services[key]||{},imageUrl=customShopImageUrl(b.imageUrl,old.imageUrl||''),record={...old,key,categoryKey,name,description,platforms,imageUrl,priceIQD:Number(priceIQD.toFixed(4)),minQuantity,maxQuantity,inputLabel,inputPlaceholder,inputType,requiresInput,enabled:b.enabled===undefined?old.enabled!==false:b.enabled===true,serviceKind:'custom_shop',createdAt:old.createdAt||at,updatedAt:at,createdBy:old.createdBy||actor,updatedBy:actor};
+  await writeCustomShopRecord('customShop/services/'+key,record);if(old.imageUrl&&old.imageUrl!==imageUrl)customShopRemoveImage(old.imageUrl);return record;
 }
 async function handleCustomShopOrder(req,b,username,orderSession){
   if(String(b.serviceKind||'')!=='custom_shop'&&b.customShop!==true)return null;
@@ -4836,6 +4850,10 @@ async function routeAPI(req,res,urlObj){
     if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
     try{const root=await readCustomShopRemote(true);return json(res,200,{ok:true,categories:Object.entries(root.categories).map(([key,v])=>({...v,key})).sort((a,b)=>(Date.parse(a.createdAt||0)||0)-(Date.parse(b.createdAt||0)||0)),services:Object.entries(root.services).map(([key,v])=>({...v,key})).sort((a,b)=>(Date.parse(b.updatedAt||b.createdAt||0)||0)-(Date.parse(a.updatedAt||a.createdAt||0)||0)),storage:'Firebase Realtime Database',path:'customShop'});}catch(e){return json(res,503,{ok:false,error:'تعذر قراءة قسم من عندك من Firebase: '+String(e.message||e).slice(0,160)});}
   }
+  if(p==='/api/admin/custom-shop/image'&&req.method==='POST'){
+    if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
+    try{const b=await bodyJSON(req,512*1024),data=String(b.imageData||'').trim(),m=data.match(/^data:image\/(png|jpe?g|webp);base64,([A-Za-z0-9+/=]+)$/i);if(!m)return json(res,422,{ok:false,error:'صيغة الصورة غير مدعومة. استخدم PNG أو JPG أو WebP.'});const bytes=Buffer.from(m[2],'base64');if(!bytes.length||bytes.length>320*1024)return json(res,413,{ok:false,error:'حجم الصورة بعد الضغط يجب ألا يتجاوز 320 كيلوبايت.'});const type=m[1].toLowerCase().replace('jpeg','jpg'),sig=type==='png'?bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])):type==='jpg'?bytes[0]===255&&bytes[1]===216:type==='webp'?bytes.toString('ascii',0,4)==='RIFF'&&bytes.toString('ascii',8,12)==='WEBP':false;if(!sig)return json(res,422,{ok:false,error:'محتوى الصورة لا يطابق نوع الملف.'});const ext=type==='jpg'?'jpg':type,dir=path.join(DATA,'custom-shop-media');fs.mkdirSync(dir,{recursive:true});const file='custom-'+crypto.randomUUID().replace(/-/g,'')+'.'+ext;fs.writeFileSync(path.join(dir,file),bytes,{flag:'wx'});return json(res,200,{ok:true,imageUrl:'/media/custom-shop/'+file,size:bytes.length,storageMode:DATA_IS_EXTERNAL?'persistent-volume':'release-local',warning:!DATA_IS_EXTERNAL?'لضمان بقاء الصور بعد إعادة النشر، اربط Railway Volume واضبط SADA_DATA_DIR.':''});}catch(e){return json(res,500,{ok:false,error:'تعذر حفظ صورة القسم/الخدمة: '+String(e.message||e).slice(0,140)});}
+  }
   if(p==='/api/admin/custom-shop'&&req.method==='POST'){
     if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});
     const b=await bodyJSON(req,512*1024),action=String(b.action||''),actor=String(session(req)?.username||ADMIN_USER),at=nowISO();
@@ -4845,7 +4863,7 @@ async function routeAPI(req,res,urlObj){
       if(action==='service_save'){const service=await saveCustomShopService(b,root,actor,at);return json(res,200,{ok:true,service,storage:'firebase',verified:true});}
       if(action==='service_delete'){
         const key=String(b.key||'').trim();if(!key||!root.services[key])return json(res,404,{ok:false,error:'الخدمة غير موجودة في قاعدة البيانات.'});
-        await writeCustomShopRecord('customShop/services/'+key,null);return json(res,200,{ok:true,deleted:true,key,storage:'firebase',verified:true});
+        await writeCustomShopRecord('customShop/services/'+key,null);customShopRemoveImage(root.services[key]?.imageUrl);return json(res,200,{ok:true,deleted:true,key,storage:'firebase',verified:true});
       }
       if(action==='service_unlink_platform'){
         const key=String(b.key||'').trim(),platform=String(b.platform||'').trim(),old=root.services[key];if(!old)return json(res,404,{ok:false,error:'الخدمة غير موجودة.'});if(!Object.prototype.hasOwnProperty.call(CUSTOM_SHOP_PLATFORMS,platform))return json(res,422,{ok:false,error:'اختر منصة صحيحة لإزالتها.'});
@@ -4857,7 +4875,7 @@ async function routeAPI(req,res,urlObj){
         const key=String(b.key||'').trim();if(!key||!root.categories[key])return json(res,404,{ok:false,error:'القسم غير موجود في قاعدة البيانات.'});if(b.confirmation!=='DELETE_CUSTOM_SHOP_SECTION')return json(res,422,{ok:false,error:'تأكيد حذف القسم غير صحيح.'});
         const targets=new Set([key]);let changed=true;while(changed){changed=false;for(const [k,c] of Object.entries(root.categories))if(c&&targets.has(String(c.parentKey||''))&&!targets.has(k)){targets.add(k);changed=true;}}
         const serviceKeys=Object.entries(root.services).filter(([,x])=>x&&targets.has(String(x.categoryKey||''))).map(([k])=>k);const patch={};for(const k of targets)patch['categories/'+k]=null;for(const k of serviceKeys)patch['services/'+k]=null;
-        await firebasePatchJsonSilent('customShop',patch,20000);const verify=customShopRoot(await firebaseGetJson('customShop',12000));if([...targets].some(k=>verify.categories[k])||serviceKeys.some(k=>verify.services[k]))throw new Error('لم يتم تأكيد إزالة كل السجلات التابعة للقسم.');CUSTOM_SHOP_CACHE={at:0,value:null,promise:null};return json(res,200,{ok:true,deleted:true,key,deletedCategories:targets.size,deletedServices:serviceKeys.length,storage:'firebase',verified:true});
+        await firebasePatchJsonSilent('customShop',patch,20000);const verify=customShopRoot(await firebaseGetJson('customShop',12000));if([...targets].some(k=>verify.categories[k])||serviceKeys.some(k=>verify.services[k]))throw new Error('لم يتم تأكيد إزالة كل السجلات التابعة للقسم.');for(const k of targets)customShopRemoveImage(root.categories[k]?.imageUrl);for(const k of serviceKeys)customShopRemoveImage(root.services[k]?.imageUrl);CUSTOM_SHOP_CACHE={at:0,value:null,promise:null};return json(res,200,{ok:true,deleted:true,key,deletedCategories:targets.size,deletedServices:serviceKeys.length,storage:'firebase',verified:true});
       }
       return json(res,422,{ok:false,error:'الإجراء غير مدعوم.'});
     }catch(e){return json(res,503,{ok:false,error:'لم يتم تأكيد حفظ التغيير في Firebase: '+String(e.message||e).slice(0,180),verified:false});}
@@ -6144,7 +6162,7 @@ async function routeAPI(req,res,urlObj){
     catch(e){try{writeJSON('services.json',rootBefore);SITE_SERVICE_IDS_DIRTY=true;}catch(_){}return json(res,503,{ok:false,error:'تعذر تأكيد تحديث الخدمات في Firebase؛ لم نعلن التحديث نجاحاً. '+String(e.message||e).slice(0,160)});}
   }
   if(p==='/api/admin/sync-users' && req.method==='POST'){
-    if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});const b=await bodyJSON(req);const list=Array.isArray(b.users)?b.users:[];const store=readJSON('users.json',{users:{}});let n=0;for(const x of list.slice(0,10000)){const u=String(x?.username||'').trim();const bal=Number(x?.balance);if(!u||!Number.isFinite(bal)||bal<0)continue;store.users[u]={...(store.users[u]||{name:u,role:'user'}),balance:Number(bal.toFixed(4)),totalSpent:Number(x?.totalSpent||store.users[u]?.totalSpent||0),totalOrders:Number(x?.totalOrders||store.users[u]?.totalOrders||0),discountPct:Number(x?.discountPct??store.users[u]?.discountPct??0)};n++;}writeJSON('users.json',store);return json(res,200,{ok:true,count:n});
+    if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});const b=await bodyJSON(req);const list=Array.isArray(b.users)?b.users:[];const store=readJSON('users.json',{users:{}});let n=0;for(const x of list.slice(0,10000)){const u=String(x?.username||'').trim();const bal=Number(x?.balance);if(!u||!Number.isFinite(bal)||bal<0)continue;store.users[u]={...(store.users[u]||{name:u,role:'user'}),balance:Number(bal.toFixed(4)),totalSpent:Number(x?.totalSpent||store.users[u]?.totalSpent||0),totalOrders:Number(x?.totalOrders||store.users[u]?.totalOrders||0),discountPct:Number(x?.discountPct??store.users[u]?.discountPct??0)};n++;}writeJSON('users.json',store);ADMIN_USERS_COUNT_CACHE={at:0,value:null};ADMIN_DASHBOARD_CACHE={at:0,value:null,promise:null};return json(res,200,{ok:true,count:n});
   }
   if(p==='/api/admin/stats' && req.method==='GET'){
     if(!isAdmin(req))return json(res,403,{ok:false,error:'غير مصرح'});const range=String(urlObj.searchParams.get('range')||'all');if(!['today','7d','month','all'].includes(range))return json(res,422,{ok:false,error:'نطاق غير صالح'});
@@ -6161,7 +6179,9 @@ async function routeAPI(req,res,urlObj){
     ADMIN_DASHBOARD_CACHE.promise=(async()=>{
       const localUsersStore=readJSON('users.json',{users:{}}),localUsers=localUsersStore&&localUsersStore.users&&typeof localUsersStore.users==='object'?localUsersStore.users:{};
       const localOrders=readJSON('orders.json',[]),localPayments=readJSON('payments.json',[]);
-      let remoteOrders=null,remotePayments=null,orderWarning='',paymentWarning='';
+      let remoteOrders=null,remotePayments=null,orderWarning='',paymentWarning='',remoteUserKeys=null,userCountWarning='';
+      // Shallow read returns keys only, not user balances/profiles. Cache the key count for 60 seconds: shallow mode returns keys only, with minimal RTDB bytes.
+      try{if(ADMIN_USERS_COUNT_CACHE.value&&nowMs-ADMIN_USERS_COUNT_CACHE.at<60*1000){remoteUserKeys=ADMIN_USERS_COUNT_CACHE.value;}else{remoteUserKeys=await firebaseGetQueryJson('users',{shallow:'true'},10000);ADMIN_USERS_COUNT_CACHE={at:Date.now(),value:remoteUserKeys};}}catch(e){userCountWarning=String(e.message||e).slice(0,120);remoteUserKeys=null;}
       // `$key` is Firebase's built-in ordering and does not require adding `.indexOn` rules.
       // Only a bounded recent window is read; older records are already mirrored in the hosting ledger.
       try{remoteOrders=await firebaseGetQueryJson('orders',{orderBy:'"$key"',limitToLast:1000},10000);}catch(e){orderWarning=String(e.message||e).slice(0,140);}
@@ -6178,10 +6198,16 @@ async function routeAPI(req,res,urlObj){
       for(const p of Array.isArray(localPayments)?localPayments:[])if(p&&typeof p==='object')payMap.set(String(p._key||p.id||p.transactionId||p.createdAt||payMap.size),p);
       for(const [key,p] of collectionEntries(remotePayments))if(p&&typeof p==='object'&&!Array.isArray(p))payMap.set(String(key),p);
       const pendingPayments=[...payMap.values()].filter(p=>String(p.status||'pending')==='pending').length;
-      const knownUserKeys=Object.keys(localUsers).filter(k=>String(localUsers[k]?.role||'user')!=='admin');
-      const uniqueUsers=new Set(knownUserKeys.map(k=>String(localUsers[k]?.username||k).trim().toLowerCase()).filter(Boolean));
-      // The dashboard never downloads the full `users` or `orders` nodes. User count is explicitly marked as the local mirror count.
-      const payload={ok:true,source:'bounded-firebase-window+hosting-ledger',users:uniqueUsers.size,usersApproximate:true,orders:orders.length,revenueIQD,pendingOrders,pendingPayments,checkedAt:nowISO(),window:{orders:Math.min(1000,orders.length),payments:Math.min(300,payMap.size)},warning:[orderWarning,paymentWarning].filter(Boolean).join(' | ')||undefined};
+      const localNonAdmins=Object.entries(localUsers).filter(([k,u])=>u&&String(u.role||'user')!=='admin').map(([k,u])=>String(u.username||k).trim().toLowerCase()).filter(Boolean);
+      const localUserKeys=new Set(localNonAdmins);
+      let usersCount=localUserKeys.size,usersApproximate=true,userCountSource='local-ledger';
+      if(remoteUserKeys&&typeof remoteUserKeys==='object'&&!Array.isArray(remoteUserKeys)){
+        const keys=Object.keys(remoteUserKeys);const knownAdmin=new Set([String(ADMIN_USER||'').toLowerCase(),...Object.entries(localUsers).filter(([,u])=>String(u?.role||'')==='admin').flatMap(([k,u])=>[String(k||'').toLowerCase(),String(u?.username||'').toLowerCase()])].filter(Boolean));
+        // RTDB shallow mode returns names only; exclude the configured administrator key if it is among those names.
+        usersCount=keys.filter(k=>!knownAdmin.has(String(k).toLowerCase())).length;usersApproximate=false;userCountSource='firebase-shallow-keys';
+      }
+      // Exact Firebase key count via a shallow/key-only response, cached separately for 10 minutes.
+      const payload={ok:true,source:'bounded-firebase-window+hosting-ledger',users:usersCount,usersApproximate,usersCountSource:userCountSource,orders:orders.length,revenueIQD,pendingOrders,pendingPayments,checkedAt:nowISO(),window:{orders:Math.min(1000,orders.length),payments:Math.min(300,payMap.size)},warning:[orderWarning,paymentWarning,userCountWarning].filter(Boolean).join(' | ')||undefined};
       ADMIN_DASHBOARD_CACHE={at:Date.now(),value:payload,promise:null};return payload;
     })();
     try{return json(res,200,await ADMIN_DASHBOARD_CACHE.promise);}catch(e){ADMIN_DASHBOARD_CACHE.promise=null;return json(res,503,{ok:false,error:'تعذر تحديث الإحصائيات: '+String(e.message||e).slice(0,180),source:'unavailable'});}
@@ -7216,7 +7242,7 @@ async function routeAPI(req,res,urlObj){
     try { buildFile=fs.readFileSync(path.join(ROOT,'BUILD_ID.txt'),'utf8').trim(); } catch(_) {}
     const deploymentConsistent=uiVersion===APP_VERSION && uiBuildId===BUILD_ID && versionFile===APP_VERSION && buildFile===BUILD_ID;
     const dbInfo=firebaseDatabaseDiagnosticInfo();
-    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.78',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
+    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.80',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
     // Keep operational configuration details private; only an authenticated admin can inspect them.
     if(isAdmin(req)){const credentialStatus=firebaseServiceAccountStatus();health.firebaseDatabase={host:dbInfo.host,source:dbInfo.source,databaseProjectHint:dbInfo.databaseProjectHint,serviceAccountProjectId:dbInfo.serviceAccountProjectId||null,configuredWebProjectId:dbInfo.configuredWebProjectId||null,serviceAccountProjectMatch:dbInfo.serviceAccountProjectMatch};health.securityConfig={sessionSecretConfigured:!!String(process.env.SESSION_SECRET||'').trim(),dedicatedEncryptionKeyConfigured:!!String(process.env.SADA_ENCRYPTION_KEY||'').trim(),stableEncryptionAvailable:telegramEncryptionReady(),firebaseConfigured:!!FIREBASE_DATABASE_URL,firebaseServiceAccountConfigured:credentialStatus.ok,firebaseCredentialStatus:{ok:credentialStatus.ok,code:credentialStatus.code,source:credentialStatus.source,message:credentialStatus.message},firebaseDatabaseSecretConfigured:!!String(process.env.FIREBASE_DATABASE_SECRET||'').trim(),firebaseAuthAvailable:firebaseAuthAvailable(),emailServiceConfigured:!!(String(process.env.RESEND_API_KEY||'').trim()&&String(process.env.RESEND_FROM_EMAIL||process.env.EMAIL_FROM||'').trim()),telegramTokenFromEnvironment:!!String(process.env.TELEGRAM_BOT_TOKEN||'').trim(),adminPasswordFromEnvironment:!!(String(process.env.ADMIN_PASSWORD||'').trim()||String(process.env.ADMIN_PASSWORD_HASH||'').trim()),adminPasswordConfigured:adminPasswordConfigured()};}
     return json(res,200,health);
@@ -7250,8 +7276,8 @@ function serveStatic(req,res,urlObj){
     const m=readJSON('settings.json',{}).maintenance||{};
     if(m.enabled===true){const escapeHtml=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const title=escapeHtml(m.title||'التطبيق متوقف مؤقتاً'),message=escapeHtml(m.message||'نعتذر عن الإزعاج، التطبيق تحت الصيانة المؤقتة.'),reason=escapeHtml(m.reason||''),image=String(m.imageUrl||'');const imageHtml=/^\/media\/maintenance\/[a-z0-9-]+\.(?:jpg|jpeg|png|webp)$/i.test(image)?'<img alt="" style="max-width:min(88vw,420px);max-height:34vh;object-fit:contain;border-radius:18px;margin:0 auto 20px" src="'+image+'">':'';const html='<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+title+'</title><body style="margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(ellipse at top,#171d43,#070918 70%);color:#f4f3ff;font-family:system-ui,sans-serif;padding:22px;box-sizing:border-box;text-align:center"><main style="max-width:560px;width:100%;padding:28px;border:1px solid #38336c;border-radius:24px;background:#10152ee8;box-sizing:border-box">'+imageHtml+'<div style="font-size:42px;margin-bottom:10px">🛠️</div><h1 style="font-size:clamp(23px,5vw,32px)">'+title+'</h1><p style="font-size:16px;line-height:2">'+message+'</p>'+(reason?'<p style="font-size:13px;line-height:1.8;color:#aaa9c9">السبب: '+reason+'</p>':'')+'<p style="font-size:11px;color:#8b8caf;margin-top:22px">سنعود للعمل بعد انتهاء الصيانة. شكراً لصبركم.</p><a href="/?admin=1" style="display:inline-block;margin-top:9px;color:#aaa0ff;font-size:11px;text-decoration:none">دخول الإدارة</a></main></body></html>';res.statusCode=200;res.setHeader('Content-Type','text/html; charset=utf-8');res.setHeader('Cache-Control','no-store');res.setHeader('Content-Length',String(Buffer.byteLength(html)));return req.method==='HEAD'?res.end():res.end(html);}
   }
-  const mediaMatch=p.match(/^\/media\/(push|maintenance)\/([a-z0-9-]+\.(?:jpg|jpeg|png|webp))$/i);
-  if(mediaMatch){const folder=mediaMatch[1].toLowerCase()==='push'?'push-media':'maintenance-media',file=mediaMatch[2],full=path.join(DATA,folder,file);return fs.readFile(full,(err,buf)=>{if(err)return json(res,404,{error:'Not found'});res.statusCode=200;res.setHeader('Content-Type',mediaTypeForImage(path.extname(file)));res.setHeader('Cache-Control','public, max-age=3600');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Content-Length',String(buf.length));return req.method==='HEAD'?res.end():res.end(buf);});}
+  const mediaMatch=p.match(/^\/media\/(push|maintenance|custom-shop)\/([a-z0-9-]+\.(?:jpg|jpeg|png|webp))$/i);
+  if(mediaMatch){const mediaType=mediaMatch[1].toLowerCase(),folder=mediaType==='push'?'push-media':mediaType==='maintenance'?'maintenance-media':'custom-shop-media',file=mediaMatch[2],full=path.join(DATA,folder,file);return fs.readFile(full,(err,buf)=>{if(err)return json(res,404,{error:'Not found'});res.statusCode=200;res.setHeader('Content-Type',mediaTypeForImage(path.extname(file)));res.setHeader('Cache-Control','public, max-age=3600');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Content-Length',String(buf.length));return req.method==='HEAD'?res.end():res.end(buf);});}
   const bundled=bundledAssetRecord(p);
   if(bundled){res.statusCode=200;res.setHeader('Content-Type',bundled.contentType);res.setHeader('Cache-Control','public, max-age=300, must-revalidate');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Content-Length',String(bundled.buffer.length));res.setHeader('ETag','"'+crypto.createHash('sha1').update(bundled.buffer).digest('hex')+'"');return req.method==='HEAD'?res.end():res.end(bundled.buffer);}
   const baseName=path.posix.basename(p).toLowerCase();
@@ -7434,6 +7460,7 @@ ensureTelegramDefaults();
 // Startup must never move, hide, or delete service rows/categories. Imports require an explicit admin action.
 startGlobalPriceSyncScheduler();
 let ADMIN_DASHBOARD_CACHE={at:0,value:null,promise:null};
+let ADMIN_USERS_COUNT_CACHE={at:0,value:null};
 let ADMIN_PAYMENTS_CACHE={at:0,value:null,promise:null,limit:0};
 const server=http.createServer(async (req,res)=>{
   try{
