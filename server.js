@@ -44,8 +44,8 @@ function purgeCatalogServiceSnapshots(){
 }
 purgeCatalogServiceSnapshots();
 const APP_NAME = 'صدى العراق';
-const APP_VERSION = '1.6.88';
-const BUILD_ID = 'SADA-1.6.88-SPEED-LAZY-SERVICE-LIST-20261020';
+const APP_VERSION = '1.6.89';
+const BUILD_ID = 'SADA-1.6.89-ORDERS-INDEX-FALLBACK-20261020';
 // Keep the owner's admin identity available after packaging, but store only a scrypt hash
 // in the project. Railway variables can still explicitly override this packaged credential.
 function loadBundledAdminAuth(){
@@ -2272,6 +2272,34 @@ async function firebaseGetQueryJson(pathname,query={},timeoutMs=8000){
     if(!r.ok){const detail=typeof data==='string'?data:(data&&typeof data==='object'?JSON.stringify(data):'');throw new Error('Firebase query HTTP '+r.status+(detail?': '+detail.slice(0,180):''));}
     return data;
   }finally{clearTimeout(timer);}
+}
+// A missing RTDB .indexOn rule must not make a user's saved orders disappear from the UI.
+// Prefer the indexed query; only use a server-side owner-filtered root read for the specific
+// missing-index failure. Cache that failure per process to avoid repeatedly issuing a query
+// known to fail until the deployed Firebase rules are corrected.
+let firebaseOrdersUserIndexMissing = false;
+function isMissingFirebaseIndexError(error){
+  const message=String(error?.message||error||'');
+  return /index\s+(?:not\s+defined|undefined)|indexOn/i.test(message);
+}
+async function firebaseGetUserOrders(username,timeoutMs=8000){
+  const owner=String(username||'').trim();
+  if(!owner)return {data:{},source:'firebase-indexed'};
+  if(!firebaseOrdersUserIndexMissing){
+    try{
+      const data=await firebaseGetQueryJson('orders',{orderBy:JSON.stringify('user'),equalTo:JSON.stringify(owner)},timeoutMs);
+      return {data,source:'firebase-indexed'};
+    }catch(error){
+      if(!isMissingFirebaseIndexError(error))throw error;
+      firebaseOrdersUserIndexMissing=true;
+      console.warn('Firebase /orders is missing the user index; using the temporary owner-filtered fallback. Deploy database.rules.json to restore indexed reads.');
+    }
+  }
+  // Service-account server read only; callers below filter by the authenticated username before
+  // returning anything. This is a resilience fallback, not a replacement for deploying the index.
+  const all=await firebaseGetJson('orders',timeoutMs);
+  const ownEntries=collectionEntries(all).filter(([,order])=>order&&typeof order==='object'&&!Array.isArray(order)&&String(order.user||order.username||order.userName||'')===owner);
+  return {data:Object.fromEntries(ownEntries),source:'firebase-index-fallback'};
 }
 async function firebaseWriteJson(pathname,value,timeoutMs=8000){
   if(firebaseAdminEnabled()){
@@ -6804,7 +6832,7 @@ async function routeAPI(req,res,urlObj){
     const username=String(s.username||''),merged=new Map(),firebaseKeyById=new Map();
     const add=(o,key='',source='')=>{if(!o||typeof o!=='object'||o.event||String(o.user||o.username||o.userName||'')!==username)return;const id=String(o.id||o.siteOrderId||o.localId||o.orderId||o.order_id||key||'');if(!id)return;const old=merged.get(id)||{};merged.set(id,{...old,...o,id:String(o.id||old.id||id),user:username,_k:String(o._k||o.firebaseKey||key||old._k||''),source:source||old.source||'local'});if(source==='firebase')firebaseKeyById.set(id,String(key||''));};
     for(const o of readJSON('orders.json',[]))add(o,o.id,'hosting-file');
-    let firebaseAvailable=false,warning='';try{const remote=await firebaseGetQueryJson('orders',{orderBy:JSON.stringify('user'),equalTo:JSON.stringify(username)},8000);firebaseAvailable=true;for(const [key,o] of collectionEntries(remote))add(o,key,'firebase');}catch(e){warning='تعذر قراءة طلبات هذا المستخدم من Firebase؛ تم عرض طلبات الخادم المحفوظة. '+String(e.message||e).slice(0,100);}
+    let firebaseAvailable=false,warning='',firebaseOrderSource='hosting-file';try{const remoteResult=await firebaseGetUserOrders(username,8000);firebaseAvailable=true;firebaseOrderSource=remoteResult.source==='firebase-index-fallback'?'hosting-file+firebase-index-fallback':'hosting-file+firebase';for(const [key,o] of collectionEntries(remoteResult.data))add(o,key,'firebase');}catch(e){warning='تعذر قراءة طلبات هذا المستخدم من Firebase؛ تم عرض طلبات الخادم المحفوظة. '+String(e.message||e).slice(0,100);}
     const mergedRows=[...merged.values()];
     // Existing REQ_* IDs stay as internal tracking IDs, while older records receive a permanent public number starting at 3000.
     const needsNumber=mergedRows.filter(o=>{if(o.legacyHistory)return false;const p=String(o.publicOrderNo||'').trim(),id=String(o.id||'').trim();const validPublic=/^\d{1,9}$/.test(p)&&Number(p)>=3000;const numericId=/^\d{1,9}$/.test(id)&&Number(id)>=3000;return !validPublic&&!numericId;}).sort((a,b)=>(Date.parse(a.createdAt||0)||0)-(Date.parse(b.createdAt||0)||0));
@@ -6824,7 +6852,7 @@ async function routeAPI(req,res,urlObj){
       if(localChanged)writeJSON('orders.json',localRows);
     }
     const orders=mergedRows.sort((a,b)=>(Date.parse(b.createdAt||0)||0)-(Date.parse(a.createdAt||0)||0)).slice(0,500);
-    return json(res,200,{ok:true,orders,source:firebaseAvailable?'hosting-file+firebase':'hosting-file',warning:warning||undefined});
+    return json(res,200,{ok:true,orders,source:firebaseAvailable?firebaseOrderSource:'hosting-file',warning:warning||undefined});
   }
   if(p==='/api/user/summary' && req.method==='GET'){
     const s=session(req);if(!s||!['user','admin'].includes(s.role))return json(res,401,{ok:false,error:'يجب تسجيل الدخول'});
@@ -6836,7 +6864,7 @@ async function routeAPI(req,res,urlObj){
     const addSummaryOrder=(o,sourceKey='')=>{const id=String(o.id||o.siteOrderId||o.localId||o.orderId||o.order_id||o.providerOrderId||o.smmpartyOrderId||sourceKey||o.createdAt||'');if(!id)return;const key=usernameNorm+'|'+id;const prior=orderMap.get(key)||{};const usdRaw=o.chargeUsd??o.chargeUSD??o.totalUsd??o.priceUsd??o.amountUsd??o.amountUSD;const usd=Number(usdRaw);const iqRaw=o.totalIQD??o.chargeIqd??o.chargeIQD??o.amountIQD??o.total;const iq=Number(iqRaw);const amountUsd=Number.isFinite(usd)&&usd>=0?usd:(Number.isFinite(prior.amountUsd)?prior.amountUsd:undefined);const totalIQD=Number.isFinite(iq)&&iq>0?iq:(Number.isFinite(amountUsd)&&amountUsd>=0?Number((amountUsd*FIXED_RATE).toFixed(4)):Number(prior.totalIQD||0));const status=summaryStatus(o);const previous=String(prior.status||'pending');const mergedStatus=prior.status&&previous==='completed'?previous:status;orderMap.set(key,{...prior,...o,id,user:uname,totalIQD,amountUsd,status:mergedStatus,createdAt:String(o.createdAt||o.created_date||prior.createdAt||''),legacyHistory:!!(o.legacyHistory||prior.legacyHistory)});};
     for(const o of localOrders)addSummaryOrder(o);
     let ordersSource='hosting-file';let ordersReadWarning='';
-    try{const fbOrders=await firebaseGetQueryJson('orders',{orderBy:JSON.stringify('user'),equalTo:JSON.stringify(uname)},6500);if(fbOrders&&typeof fbOrders==='object'){for(const [key,o] of collectionEntries(fbOrders)){if(!o||typeof o!=='object'||o.event||ownerOf(o)!==usernameNorm)continue;addSummaryOrder(o,key);}ordersSource='hosting-file+firebase';}}catch(e){ordersReadWarning='تعذر قراءة بعض الطلبات من Firebase؛ الإحصائيات قد لا تتضمن السجلات البعيدة.';console.warn('user summary remote orders unavailable:',String(e.message||e).slice(0,100))}
+    try{const fbResult=await firebaseGetUserOrders(uname,6500);const fbOrders=fbResult.data;if(fbOrders&&typeof fbOrders==='object'){for(const [key,o] of collectionEntries(fbOrders)){if(!o||typeof o!=='object'||o.event||ownerOf(o)!==usernameNorm)continue;addSummaryOrder(o,key);}ordersSource=fbResult.source==='firebase-index-fallback'?'hosting-file+firebase-index-fallback':'hosting-file+firebase';}}catch(e){ordersReadWarning='تعذر قراءة بعض الطلبات من Firebase؛ الإحصائيات قد لا تتضمن السجلات البعيدة.';console.warn('user summary remote orders unavailable:',String(e.message||e).slice(0,100))}
     const orders=[...orderMap.values()];const spentIQD=orders.reduce((a,o)=>a+Math.max(0,Number(o.totalIQD||((Number(o.amountUsd)||0)*FIXED_RATE))||0),0);
     const refs=readJSON('refunds.json',[]).filter(x=>String(x.user||'')===uname);let refundedIQD=refs.reduce((a,r)=>a+Math.max(0,Number(r.amountIQD||0)),0);let remoteUser=null;try{const foundUser=await findRemoteUserByUsername(uname);remoteUser=foundUser?.user||null}catch(_){}if(remoteUser?.sadaRefunds&&typeof remoteUser.sadaRefunds==='object'){const remoteRefunded=Object.values(remoteUser.sadaRefunds).reduce((a,r)=>a+Math.max(0,Number(r?.totalIQD||0)),0);refundedIQD=Math.max(refundedIQD,remoteRefunded)}
     const er=readJSON('earn_requests.json',[]).filter(x=>String(x.user||'')===uname&&x.status==='approved');const rewardsUSD=Math.max(Number(remoteUser?.sadaEarnTotalUSD||0),er.reduce((a,r)=>a+Math.max(0,Number(r.rewardUSD||0)),0));const localProfile=readJSON('users.json',{users:{}}).users?.[uname]||{};const localBalance=localProfile.balance;const balanceIQD=Number(remoteUser?.balance??localBalance??s.balance??0);const email=String(remoteUser?.email||remoteUser?.mail||localProfile.email||'');const verifiedRaw=remoteUser?.emailVerified??localProfile.emailVerified;const emailVerified=verifiedRaw===true||String(verifiedRaw||'').toLowerCase()==='true';const requiredRaw=remoteUser?.emailVerificationRequired??localProfile.emailVerificationRequired;const emailVerificationRequired=requiredRaw!==false;const profile={username:uname,name:String(remoteUser?.name||remoteUser?.fullName||localProfile.name||localProfile.fullName||uname),email,emailVerified,emailVerificationRequired,phone:String(remoteUser?.phone||localProfile.phone||''),joined:String(remoteUser?.joined||remoteUser?.createdAt||localProfile.joined||localProfile.createdAt||''),createdAt:String(remoteUser?.createdAt||localProfile.createdAt||localProfile.joined||''),lastLoginAt:String(remoteUser?.lastLoginAt||localProfile.lastLoginAt||''),level:String(remoteUser?.level||localProfile.level||'مبتدئ')};
@@ -7338,7 +7366,7 @@ async function routeAPI(req,res,urlObj){
     try { buildFile=fs.readFileSync(path.join(ROOT,'BUILD_ID.txt'),'utf8').trim(); } catch(_) {}
     const deploymentConsistent=uiVersion===APP_VERSION && uiBuildId===BUILD_ID && versionFile===APP_VERSION && buildFile===BUILD_ID;
     const dbInfo=firebaseDatabaseDiagnosticInfo();
-    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.88',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
+    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.89',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
     // Keep operational configuration details private; only an authenticated admin can inspect them.
     if(isAdmin(req)){const credentialStatus=firebaseServiceAccountStatus();health.firebaseDatabase={host:dbInfo.host,source:dbInfo.source,databaseProjectHint:dbInfo.databaseProjectHint,serviceAccountProjectId:dbInfo.serviceAccountProjectId||null,configuredWebProjectId:dbInfo.configuredWebProjectId||null,serviceAccountProjectMatch:dbInfo.serviceAccountProjectMatch};health.securityConfig={sessionSecretConfigured:!!String(process.env.SESSION_SECRET||'').trim(),dedicatedEncryptionKeyConfigured:!!String(process.env.SADA_ENCRYPTION_KEY||'').trim(),stableEncryptionAvailable:telegramEncryptionReady(),firebaseConfigured:!!FIREBASE_DATABASE_URL,firebaseServiceAccountConfigured:credentialStatus.ok,firebaseCredentialStatus:{ok:credentialStatus.ok,code:credentialStatus.code,source:credentialStatus.source,message:credentialStatus.message},firebaseDatabaseSecretConfigured:!!String(process.env.FIREBASE_DATABASE_SECRET||'').trim(),firebaseAuthAvailable:firebaseAuthAvailable(),emailServiceConfigured:!!(String(process.env.RESEND_API_KEY||'').trim()&&String(process.env.RESEND_FROM_EMAIL||process.env.EMAIL_FROM||'').trim()),telegramTokenFromEnvironment:!!String(process.env.TELEGRAM_BOT_TOKEN||'').trim(),adminPasswordFromEnvironment:!!(String(process.env.ADMIN_PASSWORD||'').trim()||String(process.env.ADMIN_PASSWORD_HASH||'').trim()),adminPasswordConfigured:adminPasswordConfigured()};}
     return json(res,200,health);

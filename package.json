@@ -1,16 +1,16 @@
 {
   "name": "sadairaq-railway",
-  "version": "1.6.88",
+  "version": "1.6.89",
   "private": true,
   "description": "صدى العراق — server-authoritative catalog/orders, quantity-based manual pricing, and responsive order selector",
   "scripts": {
     "start": "node server.js",
-    "test": "node --check server.js && node --check tests/performance-release.test.js && node tests/performance-release.test.js"
+    "test": "node --check server.js && node --check tests/performance-release.test.js && node tests/performance-release.test.js && node tests/orders-index-fallback.test.js"
   },
   "engines": {
     "node": ">=22"
   },
-  "buildId": "SADA-1.6.88-SPEED-LAZY-SERVICE-LIST-20261020",
+  "buildId": "SADA-1.6.89-ORDERS-INDEX-FALLBACK-20261020",
   "dependencies": {
     "google-auth-library": "^11.2.0",
     "firebase-admin": "^14.5.0"
