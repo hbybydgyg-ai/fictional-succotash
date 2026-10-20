@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
-<meta name="sada-version" content="1.6.86">
-<meta name="sada-build-id" content="SADA-1.6.86-FLAT-ORDER-PRICE-20261020">
+<meta name="sada-version" content="1.6.87">
+<meta name="sada-build-id" content="SADA-1.6.87-ORDER-CATALOG-RESPONSIVENESS-20261020">
 <script id="sada168-session-presence">try{window.__SADA_BOOT_HAD_SESSION=Boolean(localStorage.getItem('sadairaq_session_token')||localStorage.getItem('tz_u'));}catch(_){window.__SADA_BOOT_HAD_SESSION=false}</script>
 
 <style id="sada167-preboot-splash-style">
@@ -2836,7 +2836,7 @@ html.sada-lite-motion .ks-particle{display:none!important}
         </div>
         <i class="fas fa-ellipsis" style="color:var(--t2);font-size:12px;flex-shrink:0"></i>
       </div>
-      <div id="sada-sidebar-version" class="sada-sidebar-version" aria-label="إصدار التطبيق 2.60"><i class="fas fa-code-branch" aria-hidden="true"></i><span>إصدار التطبيق</span><b>2.60</b></div>
+      <div id="sada-sidebar-version" class="sada-sidebar-version" aria-label="إصدار التطبيق 2.62"><i class="fas fa-code-branch" aria-hidden="true"></i><span>إصدار التطبيق</span><b>2.62</b></div>
     </div>
   </div>
 
@@ -12747,7 +12747,7 @@ curl -X POST ${base}/order -H "Authorization: Bearer YOUR_API_KEY" -H "Content-T
   function clearPreviousService(){
     try{if(typeof SEL_SVC!=='undefined')SEL_SVC=null}catch(_){}
     window.SEL_SVC=null;
-    const search=$('svc-search-inp');if(search){search.value='';search.dispatchEvent(new Event('input',{bubbles:true}));}
+    const search=$('svc-search-inp');if(search)search.value='';
     const label=$('svc-label');if(label){label.textContent='اختر الخدمة...';label.removeAttribute('title')}
     const icon=$('svc-icon');if(icon)icon.replaceChildren();
     const info=$('svc-info-box');if(info){info.style.display='none';info.replaceChildren()}
@@ -12761,12 +12761,10 @@ curl -X POST ${base}/order -H "Authorization: Bearer YOUR_API_KEY" -H "Content-T
   // state so switching categories immediately renders the new category, even on mobile.
   document.addEventListener('click',function(e){
     const option=e.target?.closest?.('#cat-options .cdd-option');if(!option)return;
+    // Clear the old selection before the option's own handler runs. The current category
+    // handler already rebuilds the service dropdown; rebuilding it again here doubled the
+    // full-catalog filter/sort work on every category tap.
     clearPreviousService();
-    setTimeout(()=>{
-      const cat=String(window.SEL_CAT??(typeof SEL_CAT!=='undefined'?SEL_CAT:'__all__')??'__all__')||'__all__';
-      try{window.buildSvcDD?.(cat)}catch(err){console.error('Sada v1.5.76 category refresh',err)}
-      const search=$('svc-search-inp');if(search)search.value='';
-    },0);
   },true);
   // If code changes the category programmatically, synchronize the UI as well.
   let lastCat=null;
@@ -12774,7 +12772,13 @@ curl -X POST ${base}/order -H "Authorization: Bearer YOUR_API_KEY" -H "Content-T
   syncInitial();
   const nativeSelectPlat=window.selectPlat;
   if(typeof nativeSelectPlat==='function'&&!nativeSelectPlat.__sada1560Wrapped){
-    const wrapped=function(){clearPreviousService();const result=nativeSelectPlat.apply(this,arguments);const search=$('svc-search-inp');if(search)search.value='';setTimeout(()=>{try{window.buildCatDD?.();window.buildSvcDD?.(window.SEL_CAT||'__all__')}catch(_){}},0);return result};
+    const wrapped=function(){
+      clearPreviousService();
+      // The active native selectPlat already refreshes category and service menus. Do not
+      // queue a second full catalog render after it returns.
+      const search=$('svc-search-inp');if(search)search.value='';
+      return nativeSelectPlat.apply(this,arguments);
+    };
     wrapped.__sada1560Wrapped=true;window.selectPlat=wrapped;
   }
   window.__SADA_V1560_DIAGNOSTIC__={version:'1.6.86',features:['compact-binance-wallet-card','no-inline-order-whatsapp','left-floating-whatsapp','category-change-clears-stale-service-and-search']};
@@ -13048,7 +13052,7 @@ body:has(#modal-mask.on) #wa-float{display:none!important}
 <script id="sada1666-welcome-refunds-admin-splash">
 (function(){
  'use strict';
- const BUILD='SADA-1.6.86-FLAT-ORDER-PRICE-20261020';
+ const BUILD='SADA-1.6.87-ORDER-CATALOG-RESPONSIVENESS-20261020';
  const $=id=>document.getElementById(id);
  const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
  const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -13254,7 +13258,7 @@ body:has(#modal-mask.on) #wa-float{display:none!important}
 <script id="sada167-earn-notifications-dashboard">
 (function(){
 'use strict';
-const BUILD='SADA-1.6.86-FLAT-ORDER-PRICE-20261020';
+const BUILD='SADA-1.6.87-ORDER-CATALOG-RESPONSIVENESS-20261020';
 const $=id=>document.getElementById(id);
 const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const money=v=>'$'+Math.max(0,Number(v)||0).toFixed(2);
@@ -14660,12 +14664,13 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
   }
   // Correct every service row, including cards rendered by later legacy UI scripts.
   function correctLabels(root=document){
-    root.querySelectorAll('.sada226-price-label').forEach(el=>{const row=el.closest('.sada1550-service-row');const menu=$('svc-options');const s=row&&menu?menu._sada1550RowServices?.get(row):null;if(s&&manual(s)){const mn=Math.max(1,num(s.min,100)),mx=Math.max(mn,num(s.max,10000));el.textContent=mn===mx&&mx<1000?'السعر الكامل لكمية '+mx:'السعر الكامل للطلب';}});
+    root.querySelectorAll('.sada226-price-label').forEach(el=>{const row=el.closest('.sada1550-service-row');const menu=$('svc-options');const s=row&&menu?menu._sada1550RowServices?.get(row):null;if(s&&manual(s)){const mn=Math.max(1,num(s.min,100)),mx=Math.max(mn,num(s.max,10000));const next=mn===mx&&mx<1000?'السعر الكامل لكمية '+mx:'السعر الكامل للطلب';if(el.textContent!==next)el.textContent=next;}});
   }
   document.addEventListener('input',e=>{if(e.target?.id==='order-qty'||e.target?.id==='order-range')setTimeout(update,0)},true);
   document.addEventListener('click',e=>{if(e.target?.closest?.('#svc-options'))setTimeout(()=>{patchSelect();update();correctLabels()},0)},true);
-  const obs=new MutationObserver(()=>{patchSelect();correctLabels();});
-  function init(){patchSelect();correctLabels();const menu=$('svc-options');if(menu)obs.observe(menu,{childList:true,subtree:true});}
+  let labelsRefreshQueued=false;
+  const obs=new MutationObserver(()=>{if(labelsRefreshQueued)return;labelsRefreshQueued=true;requestAnimationFrame(()=>{labelsRefreshQueued=false;patchSelect();correctLabels();});});
+  function init(){patchSelect();correctLabels();const menu=$('svc-options');if(menu&&!menu.dataset.sada261LabelObserver){menu.dataset.sada261LabelObserver='1';obs.observe(menu,{childList:true,subtree:true});}}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
   window.addEventListener('pageshow',init);
   window.SADA_261_SMALL_QUANTITY_PRICE={manual,update,fixedUsd};
@@ -14712,21 +14717,45 @@ window.SADA_V1599_FIXES={version:'1.6.86',features:['telegram-stable-server-deri
 <script id="sada-1.6.86-remove-legacy-custom-shop-order-card">
 (()=>{'use strict';
  const pattern=/(?:اشتراكات\s*و\s*خدمات\s*خاصة|تصفح\s*الخدمات\s*الخاصة|خدمات\s+مستقلة\s+عن\s+المزود)/i;
+ const legacySelectors='#sada-custom-shop-user-entry,#sada-custom-shop-order-entry,#sada-custom-shop-promo,.sada-custom-shop-order-entry,[data-sada-custom-shop-order]';
  let observed=null,observer=null;
- function clean(){
+ function clean(root=document.getElementById('pg-order')){
   const page=document.getElementById('pg-order');if(!page)return;
-  page.querySelectorAll('#sada-custom-shop-user-entry,#sada-custom-shop-order-entry,#sada-custom-shop-promo,.sada-custom-shop-order-entry,[data-sada-custom-shop-order]').forEach(el=>el.remove());
-  const matches=el=>pattern.test(String(el.innerText||el.textContent||'').replace(/\s+/g,' '));
-  const matchingCards=[...page.querySelectorAll('.card')].filter(matches).filter(el=>el.id!=='order-form-card'&&el.id!=='svc-dropdown-card'&&el.id!=='svc-info-box'&&!el.classList.contains('order-layout'));
-  // Prefer the most specific matching card so the surrounding order form stays intact.
-  const leafCards=matchingCards.filter(el=>![...el.querySelectorAll('.card')].some(child=>matches(child)));
-  if(leafCards.length){leafCards.forEach(el=>el.remove());return;}
-  if(matchingCards.length){matchingCards.sort((a,b)=>a.querySelectorAll('*').length-b.querySelectorAll('*').length).slice(0,1).forEach(el=>el.remove());return;}
-  for(const el of [...page.querySelectorAll('section,article')]){if(!matches(el)||el.id==='order-form-card'||el.id==='svc-dropdown-card')continue;if(el.querySelector('#order-form-card,#svc-dropdown-card,#svc-info-box'))continue;el.remove();}
+  const scope=root&&root.nodeType===1&&page.contains(root)?root:page;
+  const explicit=[];if(scope.matches?.(legacySelectors))explicit.push(scope);scope.querySelectorAll?.(legacySelectors).forEach(el=>explicit.push(el));
+  for(const el of new Set(explicit)){if(el.closest('#adm-panel,.sb-body,[role=\"dialog\"],.modal-overlay,.modal-wrap'))continue;el.remove();}
+  // Full-text cleanup only runs for a candidate card that actually resembles the retired promo.
+  const candidates=[];if(scope.matches?.('.card,section,article,aside'))candidates.push(scope);scope.querySelectorAll?.('.card,section,article,aside').forEach(el=>candidates.push(el));
+  for(const el of new Set(candidates)){
+   if(!el.isConnected||el.closest('#adm-panel,.sb-body,[role=\"dialog\"],.modal-overlay,.modal-wrap'))continue;
+   if(el.id==='order-form-card'||el.id==='svc-dropdown-card'||el.id==='svc-info-box'||el.classList.contains('order-layout')||el.querySelector('#order-form-card,#svc-dropdown-card,#svc-info-box'))continue;
+   const txt=String(el.innerText||el.textContent||'').replace(/\s+/g,' ').trim();
+   if(txt.length<1800&&pattern.test(txt)&&/تصفح\s*الخدمات\s*الخاصة/i.test(txt))el.remove();
+  }
  }
- function attach(){const page=document.getElementById('pg-order');if(page!==observed){observer?.disconnect();observed=page;observer=null;if(page&&window.MutationObserver){observer=new MutationObserver(()=>clean());observer.observe(page,{childList:true,subtree:true,characterData:true});}}clean();}
+ function looksLikePromo(node){
+  if(!node||node.nodeType!==1)return false;
+  if(node.matches?.(legacySelectors)||node.querySelector?.(legacySelectors))return true;
+  let card=node.matches?.('.card,section,article,aside')?node:node.closest?.('.card,section,article,aside');
+  if(!card||card.id==='order-form-card'||card.id==='svc-dropdown-card'||card.id==='svc-info-box'||card.querySelector('#order-form-card,#svc-dropdown-card,#svc-info-box'))return false;
+  const txt=String(card.innerText||card.textContent||'').replace(/\s+/g,' ').trim();
+  return txt.length<1800&&pattern.test(txt)&&/تصفح\s*الخدمات\s*الخاصة/i.test(txt);
+ }
+ function attach(){
+  const page=document.getElementById('pg-order');
+  if(page!==observed){observer?.disconnect();observed=page;observer=null;if(page&&window.MutationObserver){observer=new MutationObserver(records=>{
+    for(const rec of records){
+      if(rec.type==='characterData'){if(looksLikePromo(rec.target?.parentElement)) {clean(rec.target.parentElement.closest?.('.card,section,article,aside')||rec.target.parentElement);return;}continue;}
+      for(const node of rec.addedNodes||[]){if(looksLikePromo(node)){clean(node);return;}}
+    }
+  });observer.observe(page,{childList:true,subtree:true,characterData:true});}}
+  // The initial full scan is limited to one initialization; subsequent mutations are filtered.
+  if(page&&!page.dataset.sadaLegacyShopInitialScan){page.dataset.sadaLegacyShopInitialScan='1';clean(page);}
+ }
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',attach,{once:true});else attach();
- if(document.body&&window.MutationObserver)new MutationObserver(attach).observe(document.body,{childList:true,subtree:true});
+ if(document.body&&window.MutationObserver)new MutationObserver(records=>{
+   for(const rec of records){for(const node of rec.addedNodes||[]){if(node.nodeType!==1)continue;if(node.id==='pg-order'||node.querySelector?.('#pg-order')){attach();return;}if(looksLikePromo(node)){clean(node.closest?.('#pg-order')||document.getElementById('pg-order'));return;}}}
+ }).observe(document.body,{childList:true,subtree:true});
  window.SADA_REMOVE_LEGACY_CUSTOM_SHOP_ORDER_CARD_162={clean,attach};
 })();
 </script>
@@ -15431,7 +15460,7 @@ window.SADA1637_UI_FIXES={version:'1.6.86',openAsiaCell:openWizard,polishOrderFo
 .sada-sidebar-version{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:10px;padding:10px 8px;border-top:1px solid var(--bd);color:var(--t2);font-size:10px;font-weight:750;letter-spacing:.15px}.sada-sidebar-version i{color:var(--blue)}.sada-sidebar-version b{display:inline-flex;align-items:center;justify-content:center;min-width:34px;padding:4px 8px;border:1px solid rgba(91,164,255,.25);border-radius:999px;background:rgba(91,164,255,.08);color:var(--blue);font-size:11px;font-weight:950}.sb-foot{padding-bottom:max(10px,env(safe-area-inset-bottom))}
 </style>
 <script id="sada-v2-sidebar-only-version">
-(function(){'use strict';const shown='2.60';function apply(){const badge=document.getElementById('sadairaq-version-badge');if(badge){badge.style.setProperty('display','none','important');badge.setAttribute('aria-hidden','true')}const v=document.querySelector('#sada-sidebar-version b');if(v&&v.textContent.trim()!==shown)v.textContent=shown;document.title='صدى العراق';}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',apply,{once:true});else apply();window.addEventListener('pageshow',apply);})();
+(function(){'use strict';const shown='2.62';function apply(){const badge=document.getElementById('sadairaq-version-badge');if(badge){badge.style.setProperty('display','none','important');badge.setAttribute('aria-hidden','true')}const v=document.querySelector('#sada-sidebar-version b');if(v&&v.textContent.trim()!==shown)v.textContent=shown;document.title='صدى العراق';}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',apply,{once:true});else apply();window.addEventListener('pageshow',apply);})();
 </script>
 
 <script id="sada-free-services-21">
@@ -15868,7 +15897,7 @@ window.SADA1637_UI_FIXES={version:'1.6.86',openAsiaCell:openWizard,polishOrderFo
 </style>
 <script id="sada-1.6.86-final-ui-enforcement">
 (()=>{'use strict';
- const BUILD='SADA-1.6.86-FLAT-ORDER-PRICE-20261020';
+ const BUILD='SADA-1.6.87-ORDER-CATALOG-RESPONSIVENESS-20261020';
  const $=id=>document.getElementById(id);
  const oldPromo=/(?:اشتراكات\s*و\s*خدمات\s*خاصة|تصفح\s*الخدمات\s*الخاصة|خدمات\s+مستقلة\s+عن\s+المزود)/i;
  const browse=/تصفح\s*الخدمات\s*الخاصة/i;
@@ -15881,11 +15910,14 @@ window.SADA1637_UI_FIXES={version:'1.6.86',openAsiaCell:openWizard,polishOrderFo
    });
    if(!page)return;
    // Some historical scripts append the card outside #pg-order. Its distinctive CTA identifies only the old promo.
-   const candidates=[...document.body.querySelectorAll('.card,section,article,aside,div')].filter(el=>{
+   // Inspect only likely card roots, never every nested DIV. The previous implementation
+   // walked every DIV and read innerText after every DOM mutation; rendering a category with
+   // many services could trigger repeated whole-page scans and lock up mobile browsers.
+   const candidates=[...document.querySelectorAll('.card,section,article,aside,[data-sada-custom-shop-order]')].filter(el=>{
      if(el.closest('#adm-panel,.sb-body,[role="dialog"],.modal-overlay,.modal-wrap'))return false;
      if(el.id==='order-form-card'||el.querySelector('#order-form-card,#order-plat-grid'))return false;
      const text=String(el.innerText||el.textContent||'').replace(/\s+/g,' ').trim();
-     return oldPromo.test(text)&&browse.test(text)&&text.length<1800;
+     return text.length<1800&&oldPromo.test(text)&&browse.test(text);
    });
    const targetCards=new Set();
    for(const el of candidates){
@@ -15901,7 +15933,26 @@ window.SADA1637_UI_FIXES={version:'1.6.86',openAsiaCell:openWizard,polishOrderFo
  let cleanQueued=false;
  function queueClean(){if(cleanQueued)return;cleanQueued=true;queueMicrotask(()=>{cleanQueued=false;try{removeLegacyOrderPromo()}catch(e){console.warn('legacy order promo cleanup',e)}})}
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',queueClean,{once:true});else queueClean();
- if(document.body&&window.MutationObserver)new MutationObserver(queueClean).observe(document.body,{childList:true,subtree:true,characterData:true});
+ // Respond only when a newly-added card (or a known legacy promo node) could be the
+ // retired promo. Normal changes to the category/service dropdown are deliberately ignored.
+ const legacyPromoSelectors='#sada-custom-shop-user-entry,#sada-custom-shop-order-entry,#sada-custom-shop-promo,.sada-custom-shop-order-entry,[data-sada-custom-shop-order]';
+ function mayBeLegacyPromo(node){
+   if(!node||node.nodeType!==1)return false;
+   if(node.matches?.(legacyPromoSelectors)||node.querySelector?.(legacyPromoSelectors))return true;
+   if(!node.matches?.('.card,section,article,aside'))return false;
+   const txt=String(node.innerText||node.textContent||'').replace(/\s+/g,' ').trim();
+   return txt.length<1800&&oldPromo.test(txt)&&browse.test(txt);
+ }
+ if(document.body&&window.MutationObserver)new MutationObserver(records=>{
+   for(const rec of records){
+     if(rec.type==='characterData'){
+       const root=rec.target?.parentElement?.closest?.('.card,section,article,aside');
+       if(root&&mayBeLegacyPromo(root)){queueClean();return;}
+       continue;
+     }
+     for(const node of rec.addedNodes||[]){if(mayBeLegacyPromo(node)){queueClean();return;}}
+   }
+ }).observe(document.body,{childList:true,subtree:true,characterData:true});
  function fixMastercard(){
    const wallet=$('pg-wallet');if(!wallet)return;
    const card=$('sadairaq-mastercard-card');if(!card)return;
