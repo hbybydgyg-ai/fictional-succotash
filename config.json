@@ -1,7 +1,7 @@
 {
   "appName": "صدى العراق",
-  "version": "2.58",
-  "buildId": "SADA-1.6.84-MANUAL-SUCCESS-WHATSAPP-20261020",
+  "version": "2.59",
+  "buildId": "SADA-1.6.85-PROVIDERLESS-ORDER-FIX-20261020",
   "currency": "USD",
   "exchangeRate": 1250,
   "fixedRecharge": "5000 IQD = 4 USD",

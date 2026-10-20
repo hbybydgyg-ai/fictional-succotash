@@ -44,8 +44,8 @@ function purgeCatalogServiceSnapshots(){
 }
 purgeCatalogServiceSnapshots();
 const APP_NAME = 'صدى العراق';
-const APP_VERSION = '1.6.84';
-const BUILD_ID = 'SADA-1.6.84-MANUAL-SUCCESS-WHATSAPP-20261020';
+const APP_VERSION = '1.6.85';
+const BUILD_ID = 'SADA-1.6.85-PROVIDERLESS-ORDER-FIX-20261020';
 // Keep the owner's admin identity available after packaging, but store only a scrypt hash
 // in the project. Railway variables can still explicitly override this packaged credential.
 function loadBundledAdminAuth(){
@@ -4826,11 +4826,26 @@ async function releaseManualSupportUsageAndWallet(userPath,username,serviceKey,l
   }catch(e){console.error('manual support reservation release failed:',String(e.message||e).slice(0,150));return {ok:false,error:String(e.message||e)};}
 }
 async function handleManualSupportOrder(req,res,b,username,orderSession){
-  const providerId=String(b.providerId||'').trim(),serviceKey=String(b.manualServiceKey||b.adminManualServiceKey||'').trim(),serviceKind=String(b.serviceKind||'').trim();
+  const providerId=String(b.providerId||'').trim();let serviceKey=String(b.manualServiceKey||b.adminManualServiceKey||'').trim();const serviceKind=String(b.serviceKind||'').trim();
   const isManual=serviceKind==='manual_support'||b.manualService===true||providerId==='manual-support';
   if(!isManual)return null;
   const supportWhatsappUrl=normalizeWhatsAppUrl(readJSON('settings.json',{}).waUrl||readJSON('settings.json',{}).waNum||'https://wa.me/9647762267959');
   const localId=String(b.localId||'').trim(),requestedSiteId=String(b.siteServiceId||b.serviceId||b.catalogServiceId||'').trim();
+  // Some legacy catalog rows do not expose their Firebase key after the picker normalizes them.
+  // Resolve by the site's internal ID, but only among records with no actual upstream provider.
+  const isProviderlessCatalogRow=(row)=>{
+    if(!row||typeof row!=='object'||Array.isArray(row)||row.deleted===true||row.enabled===false||row.adminFreeService===true)return false;
+    const pid=String(row.providerId||'').trim();
+    const externalId=String(row.smmpartyId||row.providerServiceId||row.provider_service_id||row.smmServiceId||row.supplierServiceId||'').trim();
+    const source=String(row.source||row.providerType||'').trim().toLowerCase();
+    if(pid&&pid!=='manual-support')return false;
+    if(externalId)return false;
+    if(['smmparty','provider_catalog','provider','external-provider','imported_provider','provider-import'].includes(source))return false;
+    return true;
+  };
+  if(!serviceKey&&requestedSiteId){
+    try{const all=catalogReadPath('services').value||{};const hit=Object.entries(all).find(([key,row])=>isProviderlessCatalogRow(row)&&String(row.siteServiceId||row.internalServiceId||row.sadaServiceId||row.id||'').trim()===requestedSiteId);if(hit)serviceKey=String(hit[0]);}catch(_){}
+  }
   if(!localId||localId.length>100||!/^[A-Za-z0-9_-]+$/.test(localId))return {status:422,body:{ok:false,error:'رقم تتبع الطلب غير صالح.',stage:'manual_validate'}};
   const ownedLocal=(readJSON('orders.json',[])||[]).find(o=>String(o.user||o.username||'')===username&&String(o.localId||'')===localId&&String(o.serviceKind||'')==='manual_support');
   let oldOrder=ownedLocal||null;
@@ -4842,21 +4857,21 @@ async function handleManualSupportOrder(req,res,b,username,orderSession){
   }
   if(!serviceKey)return {status:422,body:{ok:false,error:'معرّف الخدمة اليدوية مطلوب.',stage:'manual_service_key'}};
   let found=findAdminManualService(serviceKey,requestedSiteId);
-  // Services manually created from the main Admin Services screen remain in the Firebase
-  // service catalog (not manual_services.json). Resolve those records too, but only when
-  // the explicit manual-support markers are present; normal provider services are rejected.
+  // Services manually created from the primary Admin Services screen live in the normal
+  // Firebase catalog. Normalize providerless rows into the server-side manual workflow instead
+  // of letting the generic provider order path reject them. Real provider-backed services fail closed.
   if(!found&&serviceKey){
     let candidate=null;
     try{candidate=catalogReadPath('services/'+serviceKey).value;}catch(_){}
     if(!candidate||typeof candidate!=='object'){
       try{candidate=await firebaseGetJson('services/'+firebaseSafeKey(serviceKey),8000);}catch(_){}
     }
-    if(candidate&&typeof candidate==='object'&&!Array.isArray(candidate)&&candidate.serviceKind==='manual_support'&&candidate.manualService===true&&candidate.adminManualService===true&&candidate.deleted!==true&&candidate.enabled!==false){
-      found={key:serviceKey,row:{...candidate,siteServiceId:String(candidate.siteServiceId||candidate.internalServiceId||candidate.sadaServiceId||'')}};
+    if(isProviderlessCatalogRow(candidate)){
+      found={key:serviceKey,row:{...candidate,siteServiceId:String(candidate.siteServiceId||candidate.internalServiceId||candidate.sadaServiceId||candidate.id||''),providerId:'manual-support',serviceKind:'manual_support',manualService:true,adminManualService:true,catalogLocalManual:true}};
     }
   }
   const svc=found?.row;
-  if(!found||!svc||found.key!==serviceKey||svc.serviceKind!=='manual_support'||svc.manualService!==true||svc.adminManualService!==true||svc.deleted===true||svc.enabled===false)return {status:409,body:{ok:false,error:'الخدمة اليدوية غير متاحة حالياً. حدّث قائمة الخدمات قبل إعادة الطلب.',stage:'manual_service_lookup'}};
+  if(!found||!svc||found.key!==serviceKey||svc.serviceKind!=='manual_support'||svc.manualService!==true||svc.adminManualService!==true||svc.deleted===true||svc.enabled===false||!isProviderlessCatalogRow(svc))return {status:409,body:{ok:false,error:'الخدمة اليدوية غير متاحة حالياً أو مرتبطة بمزوّد خارجي. حدّث قائمة الخدمات قبل إعادة الطلب.',stage:'manual_service_lookup'}};
   const siteServiceId=String(svc.siteServiceId||svc.id||'').trim();
   if(!siteServiceId|| (requestedSiteId&&requestedSiteId!==siteServiceId))return {status:409,body:{ok:false,error:'معرّف خدمة صدى العراق لا يطابق الخدمة اليدوية المحددة.',stage:'manual_service_id'}};
   const link=String(b.link||'').trim(),quantity=Number(b.quantity);
@@ -7323,7 +7338,7 @@ async function routeAPI(req,res,urlObj){
     try { buildFile=fs.readFileSync(path.join(ROOT,'BUILD_ID.txt'),'utf8').trim(); } catch(_) {}
     const deploymentConsistent=uiVersion===APP_VERSION && uiBuildId===BUILD_ID && versionFile===APP_VERSION && buildFile===BUILD_ID;
     const dbInfo=firebaseDatabaseDiagnosticInfo();
-    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.84',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
+    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.85',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
     // Keep operational configuration details private; only an authenticated admin can inspect them.
     if(isAdmin(req)){const credentialStatus=firebaseServiceAccountStatus();health.firebaseDatabase={host:dbInfo.host,source:dbInfo.source,databaseProjectHint:dbInfo.databaseProjectHint,serviceAccountProjectId:dbInfo.serviceAccountProjectId||null,configuredWebProjectId:dbInfo.configuredWebProjectId||null,serviceAccountProjectMatch:dbInfo.serviceAccountProjectMatch};health.securityConfig={sessionSecretConfigured:!!String(process.env.SESSION_SECRET||'').trim(),dedicatedEncryptionKeyConfigured:!!String(process.env.SADA_ENCRYPTION_KEY||'').trim(),stableEncryptionAvailable:telegramEncryptionReady(),firebaseConfigured:!!FIREBASE_DATABASE_URL,firebaseServiceAccountConfigured:credentialStatus.ok,firebaseCredentialStatus:{ok:credentialStatus.ok,code:credentialStatus.code,source:credentialStatus.source,message:credentialStatus.message},firebaseDatabaseSecretConfigured:!!String(process.env.FIREBASE_DATABASE_SECRET||'').trim(),firebaseAuthAvailable:firebaseAuthAvailable(),emailServiceConfigured:!!(String(process.env.RESEND_API_KEY||'').trim()&&String(process.env.RESEND_FROM_EMAIL||process.env.EMAIL_FROM||'').trim()),telegramTokenFromEnvironment:!!String(process.env.TELEGRAM_BOT_TOKEN||'').trim(),adminPasswordFromEnvironment:!!(String(process.env.ADMIN_PASSWORD||'').trim()||String(process.env.ADMIN_PASSWORD_HASH||'').trim()),adminPasswordConfigured:adminPasswordConfigured()};}
     return json(res,200,health);
