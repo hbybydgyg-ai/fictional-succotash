@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
-<meta name="sada-version" content="1.6.87">
-<meta name="sada-build-id" content="SADA-1.6.87-ORDER-CATALOG-RESPONSIVENESS-20261020">
+<meta name="sada-version" content="1.6.88">
+<meta name="sada-build-id" content="SADA-1.6.88-SPEED-LAZY-SERVICE-LIST-20261020">
 <script id="sada168-session-presence">try{window.__SADA_BOOT_HAD_SESSION=Boolean(localStorage.getItem('sadairaq_session_token')||localStorage.getItem('tz_u'));}catch(_){window.__SADA_BOOT_HAD_SESSION=false}</script>
 
 <style id="sada167-preboot-splash-style">
@@ -7720,7 +7720,7 @@ function admPays(){nav('admin');setTimeout(()=>admNavTo('payments',null),150);}
   }
 })();
 </script>
-<script src="api-addon.js"></script>
+
 
 <script>
 /* ===== صدى العراق — آسياسيل فقط ===== */
@@ -13052,7 +13052,7 @@ body:has(#modal-mask.on) #wa-float{display:none!important}
 <script id="sada1666-welcome-refunds-admin-splash">
 (function(){
  'use strict';
- const BUILD='SADA-1.6.87-ORDER-CATALOG-RESPONSIVENESS-20261020';
+ const BUILD='SADA-1.6.88-SPEED-LAZY-SERVICE-LIST-20261020';
  const $=id=>document.getElementById(id);
  const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
  const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -13258,7 +13258,7 @@ body:has(#modal-mask.on) #wa-float{display:none!important}
 <script id="sada167-earn-notifications-dashboard">
 (function(){
 'use strict';
-const BUILD='SADA-1.6.87-ORDER-CATALOG-RESPONSIVENESS-20261020';
+const BUILD='SADA-1.6.88-SPEED-LAZY-SERVICE-LIST-20261020';
 const $=id=>document.getElementById(id);
 const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const money=v=>'$'+Math.max(0,Number(v)||0).toFixed(2);
@@ -14387,7 +14387,12 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
     ensureAdminPage('sada237-services','إدارة الخدمات','fa-list-check','اختر المنصة أولاً، ثم اختر قسماً من أقسامها حتى تظهر الخدمات وأسعارها وأوصافها. يمكنك إضافة خدمة للقسم أو إزالتها يدوياً دون المساس بطلباتك السابقة.',loadServicesManagerX);
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',initNewAdminPagesX,{once:true});else initNewAdminPagesX();
-  if(document.body&&window.MutationObserver){let queued=false;new MutationObserver(()=>{if(queued)return;queued=true;setTimeout(()=>{queued=false;initNewAdminPagesX()},120)}).observe(document.body,{childList:true,subtree:true});}
+  // Initialize these admin-only pages after login, rather than observing every DOM change site-wide.
+  const previousLaunchForAdminPages=window.launchApp;
+  if(typeof previousLaunchForAdminPages==='function'&&!previousLaunchForAdminPages.__sada237AdminInit){
+    const launchWithAdminPages=function(){const result=previousLaunchForAdminPages.apply(this,arguments);setTimeout(initNewAdminPagesX,0);return result;};
+    launchWithAdminPages.__sada237AdminInit=true;window.launchApp=launchWithAdminPages;
+  }
   window.__SADA237_ADMIN_PAGES__={loadRefunds:loadAdminRefundsX,loadServices:loadServicesManagerX};
 })();
 </script>
@@ -14674,6 +14679,58 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
   window.addEventListener('pageshow',init);
   window.SADA_261_SMALL_QUANTITY_PRICE={manual,update,fixedUsd};
+})();
+</script>
+
+
+
+<!-- Sada Iraq 1.6.88: lightweight service dropdown pagination -->
+<script id="sadairaq-v263-performance-optimizations">
+(function(){
+  'use strict';
+  const PAGE_SIZE=80;
+  const menu=()=>document.getElementById('svc-options');
+  const base=window.buildSvcDD;
+  if(typeof base!=='function')return;
+  let cache={category:null,platform:null,source:null,length:-1,list:[]};
+  let view={key:'',page:1,renderedAt:0};
+  function getSource(category){return category==='__all__'||!category?ALL_SVCS_ARR:(ALL_CATS?.[category]||[])}
+  function platformOf(){return String(typeof SEL_PLAT!=='undefined'?(SEL_PLAT||'all'):'all').toLowerCase()}
+  function serviceApps(s){const vals=[];if(s?.app)vals.push(String(s.app));for(const x of Array.isArray(s?.apps)?s.apps:Array.isArray(s?.platforms)?s.platforms:[])if(x)vals.push(String(x));return vals.map(x=>x.trim().toLowerCase())}
+  function listFor(category){
+    const source=getSource(category),platform=platformOf();
+    if(cache.category===category&&cache.platform===platform&&cache.source===source&&cache.length===source.length)return cache.list;
+    let rows=Array.isArray(source)?source.slice():[];
+    if(platform!=='all')rows=rows.filter(s=>serviceApps(s).includes(platform));
+    const seen=new Set();rows=rows.filter(s=>{const id=String(s?.fbKey||s?.providerId+'|'+(s?.smmpartyId||s?.providerServiceId)||s?.siteServiceId||s?.id||s?.name||'');if(seen.has(id))return false;seen.add(id);return true});
+    if(category==='__all__'||!category)rows.sort((a,b)=>String(a?.name||'').localeCompare(String(b?.name||''),'ar'));
+    cache={category,platform,source,length:source.length,list:rows};return rows;
+  }
+  function render(category,reset){
+    const target=menu();if(!target)return base.call(this,category);
+    const cat=category||'__all__', source=getSource(cat), rows=listFor(cat), key=cat+'|'+platformOf()+'|'+rows.length;
+    if(reset||view.key!==key){view={key,page:1,renderedAt:0};}
+    if(view.key===key&&target.childElementCount>0&&Date.now()-view.renderedAt<500)return;
+    const limit=Math.min(rows.length,view.page*PAGE_SIZE),subset=rows.slice(0,limit);
+    const oldAll=ALL_SVCS_ARR,oldCategory=ALL_CATS?.[cat];
+    try{
+      if(cat==='__all__'||!cat)ALL_SVCS_ARR=subset;
+      else ALL_CATS[cat]=subset;
+      base.call(this,cat);
+    }finally{
+      if(cat==='__all__'||!cat)ALL_SVCS_ARR=oldAll;
+      else if(ALL_CATS)ALL_CATS[cat]=oldCategory;
+    }
+    if(rows.length>limit){
+      const wrap=document.createElement('div');wrap.className='sada263-more-wrap';wrap.style.cssText='padding:10px;display:flex;justify-content:center;position:sticky;bottom:0;background:var(--bg2,#10152a);z-index:2';
+      const button=document.createElement('button');button.type='button';button.className='btn bs2 btn-w';button.textContent='عرض المزيد ('+limit+' من '+rows.length+')';
+      button.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();view.page++;view.renderedAt=0;render(cat,false)});
+      wrap.appendChild(button);target.appendChild(wrap);
+    }
+    view.renderedAt=Date.now();
+  }
+  window.buildSvcDD=function(category){return render.call(this,category,false)};
+  window.SADA_PERFORMANCE_1688={pageSize:PAGE_SIZE,reset:()=>{cache={category:null,platform:null,source:null,length:-1,list:[]};view={key:'',page:1,renderedAt:0};},renderServices:(category)=>render(category||'__all__',true)};
 })();
 </script>
 
@@ -15897,7 +15954,7 @@ window.SADA1637_UI_FIXES={version:'1.6.86',openAsiaCell:openWizard,polishOrderFo
 </style>
 <script id="sada-1.6.86-final-ui-enforcement">
 (()=>{'use strict';
- const BUILD='SADA-1.6.87-ORDER-CATALOG-RESPONSIVENESS-20261020';
+ const BUILD='SADA-1.6.88-SPEED-LAZY-SERVICE-LIST-20261020';
  const $=id=>document.getElementById(id);
  const oldPromo=/(?:اشتراكات\s*و\s*خدمات\s*خاصة|تصفح\s*الخدمات\s*الخاصة|خدمات\s+مستقلة\s+عن\s+المزود)/i;
  const browse=/تصفح\s*الخدمات\s*الخاصة/i;
@@ -15999,8 +16056,15 @@ window.SADA1637_UI_FIXES={version:'1.6.86',openAsiaCell:openWizard,polishOrderFo
    const wrapped=function(sub,el){const out=base.apply(this,arguments);if(sub==='services')setTimeout(()=>{bindNativeServicesManager();window.loadAdmSvcsFull?.()},80);if(sub==='sada237-services')setTimeout(()=>window.__SADA237_ADMIN_PAGES__?.loadServices?.(),80);return out};
    wrapped.__sada1683PlatformFirst=true;window.admNavTo=wrapped;
  }
- function init(){bindNativeServicesManager();wrapAdminNav();if($('adm-svcs-content')&&$('adm-sub-services')?.classList.contains('on'))window.loadAdmSvcsFull?.();}
- init();if(window.addEventListener)window.addEventListener('load',init);if(document.body&&window.MutationObserver){let queued=false;new MutationObserver(()=>{if(queued)return;queued=true;setTimeout(()=>{queued=false;init()},100)}).observe(document.body,{childList:true,subtree:true})}
+ function init(){bindNativeServicesManager();wrapAdminNav();}
+ // Do not attach a whole-document MutationObserver here: the old callback could reload
+ // the complete service catalogue after every DOM edit while the admin page was open.
+ init();if(window.addEventListener)window.addEventListener('load',init,{once:true});
+ const previousLaunchForServiceManager=window.launchApp;
+ if(typeof previousLaunchForServiceManager==='function'&&!previousLaunchForServiceManager.__sada1683ServiceInit){
+   const launchWithServiceInit=function(){const result=previousLaunchForServiceManager.apply(this,arguments);setTimeout(init,0);return result;};
+   launchWithServiceInit.__sada1683ServiceInit=true;window.launchApp=launchWithServiceInit;
+ }
  window.SADA_FINAL_UI_1683={buildId:BUILD,removeLegacyOrderPromo,fixMastercard,loadServicesPlatformFirst:()=>window.loadAdmSvcsFull?.()};
 })();
 </script>
