@@ -44,8 +44,8 @@ function purgeCatalogServiceSnapshots(){
 }
 purgeCatalogServiceSnapshots();
 const APP_NAME = 'صدى العراق';
-const APP_VERSION = '1.6.82';
-const BUILD_ID = 'SADA-1.6.82-ORDER-CUSTOMSHOP-PLATFORM-FIRST-MASTERCARD-20261019';
+const APP_VERSION = '1.6.84';
+const BUILD_ID = 'SADA-1.6.84-MANUAL-SUCCESS-WHATSAPP-20261020';
 // Keep the owner's admin identity available after packaging, but store only a scrypt hash
 // in the project. Railway variables can still explicitly override this packaged credential.
 function loadBundledAdminAuth(){
@@ -2391,10 +2391,15 @@ function auditNormalizeRecord(order={},source='firebase',sourceKey=''){
     platform:auditPlatform(o),serviceApp:String(o.serviceApp||o.app||o.platform||'').trim(),
     orderSource:String(o.orderSource||o.origin||o.sourceType||o.source||'').trim(),origin:String(o.origin||o.orderSource||o.sourceType||o.source||'').trim(),
     apiCreated:!!o.apiCreated,externalProviderOrder:!!o.externalProviderOrder,providerDirect:!!o.providerDirect,
-    free:!!(o.free||o.isFree),memberId:String(o.memberId||o.userId||o.uid||o.firebaseUid||o.telegramUserId||''),
+    free:!!(o.free||o.isFree||o.is_free||o.adminFreeService||o.admin_free_service),
+    adminFreeService:!!(o.adminFreeService||o.admin_free_service),
+    serviceKind:String(o.serviceKind||o.service_kind||o.kind||'').trim(),
+    paymentStatus:String(o.paymentStatus||o.payment_status||o.paymentState||o.payment_state||'').trim().toLowerCase(),
+    memberId:String(o.memberId||o.userId||o.uid||o.firebaseUid||o.telegramUserId||''),
     link:String(o.link||o.url||o.target||o.targetUrl||''),quantity:Number(o.quantity??o.qty??0)||0,
     status:auditStatus(rawStatus),rawStatus:rawStatus||'غير مسجلة',createdAt:o.createdAt||o.created_at||o.timestamp||o.date||null,createdMs,
-    providerName:String(o.providerName||o.provider||o.smmProviderName||'').trim(),providerId:String(o.providerId||o.provider_id||o.smmProviderId||'').trim(),providerOrderId,amountIQD:Number(o.totalIQD??o.total??o.amountIQD??NaN),
+    providerName:String(o.providerName||o.provider||o.smmProviderName||'').trim(),providerId:String(o.providerId||o.provider_id||o.smmProviderId||'').trim(),providerOrderId,
+    amountIQD:Number(o.totalIQD??o.totalIqd??o.total_iqd??o.amountIQD??o.amountIqd??o.chargeIQD??o.chargeIqd??o.priceIQD??o.priceIqd??o.amount??NaN),
     lastCheckedAt:o.lastCheckedAt||o.lastChecked||o.providerCheckedAt||null,
     updatedAt:o.updatedAt||o.updated_at||o.lastUpdatedAt||null,
     completedAt:o.completedAt||o.completed_at||o.finishedAt||null,
@@ -2404,9 +2409,17 @@ function auditNormalizeRecord(order={},source='firebase',sourceKey=''){
     source, firebaseKey:source==='firebase'?String(sourceKey||''):'',
     legacyHistory:!!o.legacyHistory, readOnly:!!o.readOnly,
     siteLocalId:source==='server'?String(id||''):'',
-    amountUsd:Number(o.chargeUsd??o.totalUsd??o.priceUsd??NaN),
+    amountUsd:Number(o.chargeUsd??o.chargeUSD??o.totalUsd??o.totalUSD??o.priceUsd??o.priceUSD??o.amountUsd??o.amountUSD??o.amount_usd??NaN),
     sourceTimestamp:createdMs||0
   };
+}
+function auditIsPaidOrder(row={}){
+  const kind=String(row.serviceKind||row.service_kind||'').trim().toLowerCase().replace(/[\s-]+/g,'_');
+  const payment=String(row.paymentStatus||row.payment_status||'').trim().toLowerCase();
+  if(row.free===true||row.isFree===true||row.adminFreeService===true||row.admin_free_service===true||['free','free_service','admin_free','free_order'].includes(kind))return false;
+  if(['paid','charged','completed','success','successful'].includes(payment))return true;
+  const usd=Number(row.amountUsd),iqd=Number(row.amountIQD);
+  return (Number.isFinite(usd)&&usd>0)||(Number.isFinite(iqd)&&iqd>0);
 }
 function auditIdentity(row){
   const id=String(row.id||row.publicOrderNo||'').trim(),u=String(row.user||'').trim();
@@ -2556,7 +2569,9 @@ async function runOrderAuditMonitor(){
     const snap=await loadOrderMonitorSnapshot();if(!snap.firebaseAvailable)return;
     const now=Date.now(),state=await getOrderAuditState(),alerts={...(state.alerts||{})};let changed=false;
     // Escalation levels are fixed at 3/6/12 hours; the dashboard's configurable filter remains separate.
-    const rows=snap.rows.map(r=>auditPublicRecord(r,now,cfg.delayHours)).filter(r=>!r.legacyHistory&&Number(r.ageMs||0)>=3*3600000&&!auditTerminalStatus(r.status)).sort((a,b)=>b.ageMs-a.ageMs).slice(0,150);
+    // The overdue channel is reserved for paid orders. Explicitly exclude free-service flags
+    // before constructing audit rows so free or zero-charge requests never trigger an alert.
+    const rows=snap.rows.filter(auditIsPaidOrder).map(r=>auditPublicRecord(r,now,cfg.delayHours)).filter(r=>!r.legacyHistory&&Number(r.ageMs||0)>=3*3600000&&!auditTerminalStatus(r.status)).sort((a,b)=>b.ageMs-a.ageMs).slice(0,150);
     const levels=[{h:3,label:'🟠 إنذار أول — تأخير 3 ساعات',kind:'warning'},{h:6,label:'🔴 إنذار مرتفع — تأخير 6 ساعات',kind:'danger'},{h:12,label:'🚨 خطر حرج — تأخير 12 ساعة',kind:'critical'}];
     const work=[];
     for(const o of rows){const key=String(o.siteOrderId||o.id||o.providerOrderId||'');if(!key)continue;const old=alerts[key];const known={...(old&&typeof old==='object'?old:{}),levels:{...(old?.levels||{})}};if(old?.sentAt&&!known.levels['3'])known.levels['3']={sentAt:old.sentAt,status:old.status||''};for(const level of levels){if(Number(o.ageMs||0)>=level.h*3600000&&!known.levels[String(level.h)])work.push({o,key,level});}}
@@ -2978,7 +2993,15 @@ async function runProviderPriceSync(options={}){
     if(result.recovered)root=readJSON('services.json',{});
     const rows=Object.entries(root).filter(([k,v])=>v&&typeof v==='object'&&!Array.isArray(v)&&v.unapprovedAutoImport!==true);
     if(!rows.length)throw new Error('كتالوج الخدمات على الاستضافة فارغ؛ لم تُجرَ مزامنة. استورد الخدمات أولاً أو تحقق من ملف services.json.');
-    const rowsByProvider=new Map();for(const pair of rows){const pid=String(pair[1]?.providerId||'').trim();if(!pid)continue;if(!rowsByProvider.has(pid))rowsByProvider.set(pid,[]);rowsByProvider.get(pid).push(pair)}
+    // Local/manual and free services are fulfilled without an external provider. Never attempt provider price sync for them.
+    const providerBackedRows=rows.filter(([,svc])=>{
+      const kind=String(svc?.serviceKind||svc?.service_kind||'').trim().toLowerCase();
+      const pid=String(svc?.providerId||'').trim().toLowerCase();
+      return svc?.adminFreeService!==true && svc?.free!==true && svc?.isFree!==true &&
+        svc?.manualService!==true && svc?.adminManualService!==true && svc?.catalogLocalManual!==true &&
+        kind!=='manual_support' && kind!=='free_service' && kind!=='admin_free' && pid!=='manual-support' && pid!=='free-service' && !!pid;
+    });
+    const rowsByProvider=new Map();for(const pair of providerBackedRows){const pid=String(pair[1]?.providerId||'').trim();if(!rowsByProvider.has(pid))rowsByProvider.set(pid,[]);rowsByProvider.get(pid).push(pair)}
     const providerIds=[...rowsByProvider.keys()];
     if(!providerIds.length){result.ok=false;result.providerErrors.push('لا توجد خدمات مرتبطة بمزود وسعر تكلفة محفوظ');}
     const pct=cleanGlobalPricing(cfg).markupPct;
@@ -3607,8 +3630,34 @@ function customShopRoot(v){return v&&typeof v==='object'&&!Array.isArray(v)?{cat
 function customShopKey(prefix='item'){return prefix+'_'+crypto.randomBytes(10).toString('hex');}
 function customShopImageUrl(value,fallback=''){const raw=String(value===undefined?fallback:(value||'')).trim().slice(0,2048);if(!raw)return '';if(/^\/media\/custom-shop\/[a-z0-9-]+\.(?:jpg|jpeg|png|webp)$/i.test(raw))return raw;if(/^https:\/\/[^\s\"'<>]+$/i.test(raw))return raw;throw new Error('رابط صورة القسم أو الخدمة غير صالح؛ ارفع صورة من حقل الصورة.');}
 function customShopRemoveImage(url){const m=String(url||'').match(/^\/media\/custom-shop\/([a-z0-9-]+\.(?:jpg|jpeg|png|webp))$/i);if(!m)return;try{fs.rmSync(path.join(DATA,'custom-shop-media',m[1]),{force:true})}catch(_){}}
-function customShopPlatforms(input){const raw=Array.isArray(input)?input.map(x=>String(x||'').trim()):[];if(raw.includes('all'))return ['all'];const valid=[...new Set(raw.filter(x=>Object.prototype.hasOwnProperty.call(CUSTOM_SHOP_PLATFORMS,x)))];return valid;}
-function customShopIncludesPlatform(row,platform){const list=Array.isArray(row?.platforms)?row.platforms:[];return list.includes('all')||(!platform||platform==='all')||list.includes(String(platform));}
+function customShopPlatformKey(value){
+  const raw=String(value??'').trim();if(!raw)return '';
+  const key=raw.toLocaleLowerCase('ar').normalize('NFKC').replace(/[\u200B-\u200F\uFEFF]/g,'').replace(/[أإآٱ]/g,'ا').replace(/ى/g,'ي').replace(/[\s_-]+/g,'');
+  if(['all','__all__','الكل','جميعالمنصات','كلالمنصات'].includes(key))return 'all';
+  const aliases={
+    Instagram:['instagram','insta','انستغرام','انستجرام','انستقرام','انستا','انستغرام'],
+    Tiktok:['tiktok','tiktokapp','تيكتوك','تيكتوك','تيكتوك','تيك توك'],
+    Youtube:['youtube','يوتيوب'],Facebook:['facebook','فيسبوك','فيس','فيس بوك'],
+    Telegram:['telegram','تلجرام','تيليجرام','تليجرام','تلغرام'],Twitter:['twitter','x','x.com','تويتر','تويترx'],
+    Snapchat:['snapchat','سناب','سنابشات','سناب شات'],Whatsapp:['whatsapp','واتساب','واتس اب'],
+    Linkedin:['linkedin','لينكدان','لينكدإن'],Other:['other','اخرى','أخرى','عام','smm']
+  };
+  for(const [id,values] of Object.entries(aliases))if(values.some(v=>String(v).toLocaleLowerCase('ar').normalize('NFKC').replace(/[أإآٱ]/g,'ا').replace(/ى/g,'ي').replace(/[\s_-]+/g,'')===key))return id;
+  return Object.prototype.hasOwnProperty.call(CUSTOM_SHOP_PLATFORMS,raw)?raw:'';
+}
+function customShopPlatforms(input){
+  const raw=Array.isArray(input)?input:[input];
+  const normalized=raw.map(customShopPlatformKey).filter(Boolean);
+  if(normalized.includes('all'))return ['all'];
+  return [...new Set(normalized)];
+}
+function customShopIncludesPlatform(row,platform){
+  const target=customShopPlatformKey(platform);if(!target||target==='all')return true;
+  let list=Array.isArray(row?.platforms)?row.platforms:[];
+  if(!list.length){const legacy=row?.platform??row?.app??row?.serviceApp??row?.servicePlatform;if(legacy!==undefined&&legacy!==null&&String(legacy).trim())list=[legacy];else return true;}
+  const normalized=list.map(customShopPlatformKey).filter(Boolean);
+  return normalized.includes('all')||normalized.includes(target);
+}
 async function readCustomShopRemote(force=false){
   const now=Date.now();if(!force&&CUSTOM_SHOP_CACHE.value&&now-CUSTOM_SHOP_CACHE.at<12000)return CUSTOM_SHOP_CACHE.value;
   if(!force&&CUSTOM_SHOP_CACHE.promise)return CUSTOM_SHOP_CACHE.promise;
@@ -4780,6 +4829,7 @@ async function handleManualSupportOrder(req,res,b,username,orderSession){
   const providerId=String(b.providerId||'').trim(),serviceKey=String(b.manualServiceKey||b.adminManualServiceKey||'').trim(),serviceKind=String(b.serviceKind||'').trim();
   const isManual=serviceKind==='manual_support'||b.manualService===true||providerId==='manual-support';
   if(!isManual)return null;
+  const supportWhatsappUrl=normalizeWhatsAppUrl(readJSON('settings.json',{}).waUrl||readJSON('settings.json',{}).waNum||'https://wa.me/9647762267959');
   const localId=String(b.localId||'').trim(),requestedSiteId=String(b.siteServiceId||b.serviceId||b.catalogServiceId||'').trim();
   if(!localId||localId.length>100||!/^[A-Za-z0-9_-]+$/.test(localId))return {status:422,body:{ok:false,error:'رقم تتبع الطلب غير صالح.',stage:'manual_validate'}};
   const ownedLocal=(readJSON('orders.json',[])||[]).find(o=>String(o.user||o.username||'')===username&&String(o.localId||'')===localId&&String(o.serviceKind||'')==='manual_support');
@@ -4788,11 +4838,25 @@ async function handleManualSupportOrder(req,res,b,username,orderSession){
   if(oldOrder){
     if(serviceKey&&String(oldOrder.manualServiceKey||'')!==serviceKey)return {status:409,body:{ok:false,error:'رقم التتبع مستخدم مسبقاً لطلب خدمة مختلفة.',stage:'manual_duplicate'}};
     const supportMessage=String(oldOrder.supportMessage||manualSupportMessage(oldOrder));
-    return {status:200,body:{ok:true,idempotent:true,siteOrderId:String(oldOrder.id||localId),publicOrderNo:String(oldOrder.publicOrderNo||''),siteServiceId:String(oldOrder.siteServiceId||''),serviceId:String(oldOrder.siteServiceId||''),providerId:'manual-support',providerName:'التنفيذ عبر الدعم الفني',providerOrderId:'',chargeUsd:Number(oldOrder.chargeUsd||0),totalIQD:Number(oldOrder.totalIQD??oldOrder.total??0),createdAt:oldOrder.createdAt||nowISO(),supportMessage,order:oldOrder}};
+    return {status:200,body:{ok:true,idempotent:true,siteOrderId:String(oldOrder.id||localId),publicOrderNo:String(oldOrder.publicOrderNo||''),siteServiceId:String(oldOrder.siteServiceId||''),serviceId:String(oldOrder.siteServiceId||''),serviceName:String(oldOrder.serviceName||'خدمة خاصة'),providerId:'manual-support',providerName:'التنفيذ عبر الدعم الفني',providerOrderId:'',chargeUsd:Number(oldOrder.chargeUsd||0),totalIQD:Number(oldOrder.totalIQD??oldOrder.total??0),createdAt:oldOrder.createdAt||nowISO(),supportWhatsappUrl,supportMessage,order:oldOrder}};
   }
   if(!serviceKey)return {status:422,body:{ok:false,error:'معرّف الخدمة اليدوية مطلوب.',stage:'manual_service_key'}};
-  const found=findAdminManualService(serviceKey,requestedSiteId),svc=found?.row;
-  if(!found||!svc||found.key!==serviceKey||svc.serviceKind!=='manual_support'||svc.deleted===true||svc.enabled===false)return {status:409,body:{ok:false,error:'الخدمة اليدوية غير متاحة حالياً. حدّث قائمة الخدمات قبل إعادة الطلب.',stage:'manual_service_lookup'}};
+  let found=findAdminManualService(serviceKey,requestedSiteId);
+  // Services manually created from the main Admin Services screen remain in the Firebase
+  // service catalog (not manual_services.json). Resolve those records too, but only when
+  // the explicit manual-support markers are present; normal provider services are rejected.
+  if(!found&&serviceKey){
+    let candidate=null;
+    try{candidate=catalogReadPath('services/'+serviceKey).value;}catch(_){}
+    if(!candidate||typeof candidate!=='object'){
+      try{candidate=await firebaseGetJson('services/'+firebaseSafeKey(serviceKey),8000);}catch(_){}
+    }
+    if(candidate&&typeof candidate==='object'&&!Array.isArray(candidate)&&candidate.serviceKind==='manual_support'&&candidate.manualService===true&&candidate.adminManualService===true&&candidate.deleted!==true&&candidate.enabled!==false){
+      found={key:serviceKey,row:{...candidate,siteServiceId:String(candidate.siteServiceId||candidate.internalServiceId||candidate.sadaServiceId||'')}};
+    }
+  }
+  const svc=found?.row;
+  if(!found||!svc||found.key!==serviceKey||svc.serviceKind!=='manual_support'||svc.manualService!==true||svc.adminManualService!==true||svc.deleted===true||svc.enabled===false)return {status:409,body:{ok:false,error:'الخدمة اليدوية غير متاحة حالياً. حدّث قائمة الخدمات قبل إعادة الطلب.',stage:'manual_service_lookup'}};
   const siteServiceId=String(svc.siteServiceId||svc.id||'').trim();
   if(!siteServiceId|| (requestedSiteId&&requestedSiteId!==siteServiceId))return {status:409,body:{ok:false,error:'معرّف خدمة صدى العراق لا يطابق الخدمة اليدوية المحددة.',stage:'manual_service_id'}};
   const link=String(b.link||'').trim(),quantity=Number(b.quantity);
@@ -4834,7 +4898,7 @@ async function handleManualSupportOrder(req,res,b,username,orderSession){
   if(!isAdminSession){try{await finalizeProviderOrderAccounting(username,localId,chargeIQD,createdAt);}catch(e){console.warn('manual support account counters reconciliation:',String(e.message||e).slice(0,100));}}
   try{createUserNotification(username,{type:'order_created',orderId:siteOrderId,status:'pending',title:'تم إنشاء طلب خدمة خاصة #'+publicOrderNo,message:'تم استلام طلبك لخدمة '+String(order.serviceName||'خدمة خاصة')+'. أرسل رسالة الطلب إلى الدعم الفني لإتمام التنفيذ.',meta:{serviceName:order.serviceName,quantity,publicOrderNo,serviceKind:'manual_support'}});}catch(_){}
   notifyTelegramNewOrder(order,{source:'manual-support'}).catch(()=>{});
-  return {status:200,body:{ok:true,siteOrderId,publicOrderNo,siteServiceId,serviceId:siteServiceId,providerId:'manual-support',providerName:'التنفيذ عبر الدعم الفني',providerOrderId:'',chargeUsd:calculatedChargeUsd,totalIQD:chargeIQD,discountPct:userDiscount,createdAt,supportMessage:order.supportMessage,order}};
+  return {status:200,body:{ok:true,siteOrderId,publicOrderNo,siteServiceId,serviceId:siteServiceId,serviceName:order.serviceName,quantity,totalIQD:chargeIQD,supportWhatsappUrl,providerId:'manual-support',providerName:'التنفيذ عبر الدعم الفني',providerOrderId:'',chargeUsd:calculatedChargeUsd,discountPct:userDiscount,createdAt,supportMessage:order.supportMessage,order}};
 }
 
 async function routeAPI(req,res,urlObj){
@@ -7259,7 +7323,7 @@ async function routeAPI(req,res,urlObj){
     try { buildFile=fs.readFileSync(path.join(ROOT,'BUILD_ID.txt'),'utf8').trim(); } catch(_) {}
     const deploymentConsistent=uiVersion===APP_VERSION && uiBuildId===BUILD_ID && versionFile===APP_VERSION && buildFile===BUILD_ID;
     const dbInfo=firebaseDatabaseDiagnosticInfo();
-    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.82',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
+    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.84',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
     // Keep operational configuration details private; only an authenticated admin can inspect them.
     if(isAdmin(req)){const credentialStatus=firebaseServiceAccountStatus();health.firebaseDatabase={host:dbInfo.host,source:dbInfo.source,databaseProjectHint:dbInfo.databaseProjectHint,serviceAccountProjectId:dbInfo.serviceAccountProjectId||null,configuredWebProjectId:dbInfo.configuredWebProjectId||null,serviceAccountProjectMatch:dbInfo.serviceAccountProjectMatch};health.securityConfig={sessionSecretConfigured:!!String(process.env.SESSION_SECRET||'').trim(),dedicatedEncryptionKeyConfigured:!!String(process.env.SADA_ENCRYPTION_KEY||'').trim(),stableEncryptionAvailable:telegramEncryptionReady(),firebaseConfigured:!!FIREBASE_DATABASE_URL,firebaseServiceAccountConfigured:credentialStatus.ok,firebaseCredentialStatus:{ok:credentialStatus.ok,code:credentialStatus.code,source:credentialStatus.source,message:credentialStatus.message},firebaseDatabaseSecretConfigured:!!String(process.env.FIREBASE_DATABASE_SECRET||'').trim(),firebaseAuthAvailable:firebaseAuthAvailable(),emailServiceConfigured:!!(String(process.env.RESEND_API_KEY||'').trim()&&String(process.env.RESEND_FROM_EMAIL||process.env.EMAIL_FROM||'').trim()),telegramTokenFromEnvironment:!!String(process.env.TELEGRAM_BOT_TOKEN||'').trim(),adminPasswordFromEnvironment:!!(String(process.env.ADMIN_PASSWORD||'').trim()||String(process.env.ADMIN_PASSWORD_HASH||'').trim()),adminPasswordConfigured:adminPasswordConfigured()};}
     return json(res,200,health);

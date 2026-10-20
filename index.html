@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
-<meta name="sada-version" content="1.6.82">
-<meta name="sada-build-id" content="SADA-1.6.82-ORDER-CUSTOMSHOP-PLATFORM-FIRST-MASTERCARD-20261019">
+<meta name="sada-version" content="1.6.84">
+<meta name="sada-build-id" content="SADA-1.6.84-MANUAL-SUCCESS-WHATSAPP-20261020">
 <script id="sada168-session-presence">try{window.__SADA_BOOT_HAD_SESSION=Boolean(localStorage.getItem('sadairaq_session_token')||localStorage.getItem('tz_u'));}catch(_){window.__SADA_BOOT_HAD_SESSION=false}</script>
 
 <style id="sada167-preboot-splash-style">
@@ -2836,7 +2836,7 @@ html.sada-lite-motion .ks-particle{display:none!important}
         </div>
         <i class="fas fa-ellipsis" style="color:var(--t2);font-size:12px;flex-shrink:0"></i>
       </div>
-      <div id="sada-sidebar-version" class="sada-sidebar-version" aria-label="إصدار التطبيق 2.56"><i class="fas fa-code-branch" aria-hidden="true"></i><span>إصدار التطبيق</span><b>2.56</b></div>
+      <div id="sada-sidebar-version" class="sada-sidebar-version" aria-label="إصدار التطبيق 2.58"><i class="fas fa-code-branch" aria-hidden="true"></i><span>إصدار التطبيق</span><b>2.58</b></div>
     </div>
   </div>
 
@@ -6570,7 +6570,7 @@ function tgSend(msg){fetch(`https://api.telegram.org/bot${CFG.tg.token}/sendMess
   };
   // Refresh the catalog index only; never rewrite every service's image on page load.
   setTimeout(()=>{hydrateAllCategoryMeta().then(()=>{repairServiceIndex();try{window.buildCatDD?.();window.buildSvcDD?.(SEL_CAT||'__all__')}catch(_){}})},900);
-  window.SadaIraqBuildId='SADA-1.6.82-ORDER-CUSTOMSHOP-PLATFORM-FIRST-MASTERCARD-20261019';
+  window.SadaIraqBuildId='SADA-1.6.84-MANUAL-SUCCESS-WHATSAPP-20261020';
 })();
 
 </script>
@@ -8168,7 +8168,7 @@ function admPays(){nav('admin');setTimeout(()=>admNavTo('payments',null),150);}
 ═══════════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
-  const SADA_VERSION='1.6.82';
+  const SADA_VERSION='1.6.84';
   const RATE=1250;
   const ATHIR_NUMBER='07903221783';
     window.SadaIraqVersion=SADA_VERSION;
@@ -8189,7 +8189,7 @@ function admPays(){nav('admin');setTimeout(()=>admNavTo('payments',null),150);}
       b=document.createElement('div'); b.id='sadairaq-version-badge';
       document.body.appendChild(b);
     }
-    const EXPECTED_BUILD='SADA-1.6.82-ORDER-CUSTOMSHOP-PLATFORM-FIRST-MASTERCARD-20261019';
+    const EXPECTED_BUILD='SADA-1.6.84-MANUAL-SUCCESS-WHATSAPP-20261020';
     const applyClientVersion=()=>{
       b.dataset.deployState='checking';
       b.textContent='صدى العراق · الإصدار '+SADA_VERSION+' · جارٍ فحص الخادم…';
@@ -8516,7 +8516,7 @@ function admPays(){nav('admin');setTimeout(()=>admNavTo('payments',null),150);}
   const ensure=fn=>document.readyState==='loading'?document.addEventListener('DOMContentLoaded',fn,{once:true}):fn();
   window.SECTION_META=window.SECTION_META||{};
   window.SadaIraqVersion=V;
-window.SadaIraqBuildId='SADA-1.6.82-ORDER-CUSTOMSHOP-PLATFORM-FIRST-MASTERCARD-20261019';
+window.SadaIraqBuildId='SADA-1.6.84-MANUAL-SUCCESS-WHATSAPP-20261020';
 
   function safe(v){return txt(v).replace(/[&<>\"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[m]));}
   function appLabel(id){const p=(CFG.platforms||[]).find(x=>x.id===id);return p?.lbl||id||'عام';}
@@ -8747,7 +8747,7 @@ window.SadaIraqBuildId='SADA-1.6.82-ORDER-CUSTOMSHOP-PLATFORM-FIRST-MASTERCARD-2
     try{
       const reply=await sadaHostingCatalogRequest1605('/api/catalog?path=services');
       const value=reply.value&&typeof reply.value==='object'?reply.value:{};
-      const arr=Object.entries(value).filter(([key,s])=>s&&typeof s==='object'&&s.unapprovedAutoImport!==true&&s.adminFreeService!==true&&s.serviceKind!=='manual_support'&&s.manualService!==true&&!s.deleted)
+      const arr=Object.entries(value).filter(([key,s])=>s&&typeof s==='object'&&s.unapprovedAutoImport!==true&&s.adminFreeService!==true&&(!(s.serviceKind==='manual_support'||s.manualService===true||s.adminManualService===true)||s.catalogLocalManual===true)&&!s.deleted)
         .map(([key,s])=>({...s,fbKey:String(s.fbKey||key)})).sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''),'ar'));
       window.SADA_ADMIN_SERVICE_ROWS_29=arr;
       let visibleLimit=80;
@@ -8943,7 +8943,7 @@ const safe=v=>String(v??'').replace(/[&<>\"']/g,m=>({'&':'&amp;','<':'&lt;','>':
 const api=window.apiJSON||((p,o)=>fetch(p,Object.assign({credentials:'include',cache:'no-store',headers:{'Content-Type':'application/json'}},o||{})).then(async r=>{const t=await r.text();let d={};try{d=t?JSON.parse(t):{}}catch(_){d={error:t}}if(!r.ok||d.error)throw new Error(d.error||('HTTP '+r.status));return d;}));
 const mk=window.mk||((tag,cls,txt)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(txt!==undefined)e.textContent=txt;return e;});
 window.SadaIraqVersion=V;
-window.SadaIraqBuildId='SADA-1.6.82-ORDER-CUSTOMSHOP-PLATFORM-FIRST-MASTERCARD-20261019';
+window.SadaIraqBuildId='SADA-1.6.84-MANUAL-SUCCESS-WHATSAPP-20261020';
 
 function setVersion(){
   const b=$('sadairaq-version-badge');
@@ -9598,7 +9598,7 @@ setTimeout(repairNow,250);
     const ac=wallet.querySelector('#sadairaq-ac-entry')?.closest('.card');const ath=wallet.querySelector('#sadairaq-athir-entry')?.closest('.card');const hist=wallet.querySelector('#pay-hist')?.closest('.card');
     if(ac&&ath&&ac.parentElement===ath.parentElement&&ac.nextElementSibling!==ath)ac.parentElement.insertBefore(ath,ac.nextElementSibling);
     const card=document.createElement('div');card.id='sadairaq-mastercard-card';card.className='card sada-v158-mc';
-    const head=document.createElement('button');head.type='button';head.className='sada-v158-mc-head';head.innerHTML='<img class="sada-v158-mc-logo" src="/mastercard-logo.png?v=1.6.82" alt="شعار ماستر كارد" loading="eager"><span style="flex:1"><strong style="display:block;font-size:16px;color:var(--t0)">شحن ماستر كارد</strong><span style="font-size:11px;color:var(--t2)">الدفع باستخدام بطاقة ماستر كارد</span></span><i class="fas fa-chevron-down"></i>';
+    const head=document.createElement('button');head.type='button';head.className='sada-v158-mc-head';head.innerHTML='<img class="sada-v158-mc-logo" src="/mastercard-logo.png?v=1.6.84" alt="شعار ماستر كارد" loading="eager"><span style="flex:1"><strong style="display:block;font-size:16px;color:var(--t0)">شحن ماستر كارد</strong><span style="font-size:11px;color:var(--t2)">الدفع باستخدام بطاقة ماستر كارد</span></span><i class="fas fa-chevron-down"></i>';
     const details=document.createElement('div');details.className='sada-v158-mc-details';details.innerHTML='<div class="sada-v158-mc-box"><div style="font-size:11px;color:var(--t2)">رقم التحويل</div><div class="sada-v158-mc-number"><strong>3494089927</strong><button type="button" class="btn bs2 btn-sm">📋 نسخ</button></div><div class="sada-v158-mc-note"><b style="color:var(--t0)">تعليمات شحن الرصيد:</b><div style="margin-top:7px">1️⃣ حوّل المبلغ المطلوب إلى رقم ماستر كارد: <b dir="ltr">3494089927</b><br>2️⃣ بعد التحويل خذ Screenshot واضح لإثبات العملية.<br>3️⃣ اضغط زر واتساب وأرسل صورة إثبات التحويل إلى الدعم الفني.<br>4️⃣ بعد تأكيد التحويل من الدعم يتم إضافة الرصيد إلى حسابك.<br><br>⚠️ لا ترفع الصورة داخل الموقع. أرسل صورة الإثبات مباشرة داخل واتساب.</div></div><button type="button" class="btn bp btn-lg sada-v158-mc-wa"><i class="fab fa-whatsapp"></i> إرسال إثبات التحويل عبر واتساب الدعم الفني</button></div>';
     head.onclick=()=>{const open=details.style.display==='block';details.style.display=open?'none':'block';head.querySelector('i:last-child').style.transform=open?'':'rotate(180deg)';};
     details.querySelector('.btn.bs2').onclick=()=>{try{copyText('3494089927',details.querySelector('.btn.bs2'))}catch(_){} };
@@ -11173,7 +11173,17 @@ curl -X POST ${base}/order -H "Authorization: Bearer YOUR_API_KEY" -H "Content-T
       const preview=document.createElement('div');preview.style.cssText='display:flex;align-items:center;gap:10px;margin:8px 0 12px;padding:10px;border:1px solid var(--bd);border-radius:12px;background:rgba(255,255,255,.02)';const pi=document.createElement('img');pi.style.cssText='width:44px;height:44px;border-radius:11px;object-fit:cover;background:var(--c2)';const pt=document.createElement('div');pt.className='sada32-field-note';preview.append(pi,pt);body.appendChild(preview);
       const refresh=()=>{const dest=nw.style.display!=='none'?clean(nw.value):clean(cat.value)||'__all__';const im=icon(app.value)||icon('Other');pi.src=im;pi.onerror=()=>{pi.onerror=null;pi.src=icon('Other')};pt.textContent=dest?'ستُحفظ أيقونة '+(app.options[app.selectedIndex]?.textContent||'المنصة')+' على الخدمة والطلب.':'اختر القسم أولاً.'};cat.onchange=refresh;app.onchange=()=>{const was=cat.value;refillCategories(was);refresh()};nw.oninput=refresh;provider.onchange=()=>{sid.disabled=!provider.value};
       const save=document.createElement('button');save.className='btn bp btn-w';save.textContent='💾 حفظ الخدمة';body.appendChild(save);refresh();
-      save.onclick=async()=>{if(!DB)return toast?.('واجهة كتالوج ملفات الاستضافة غير متاحة','err');if(!app.value)return toast?.('اختر المنصة أولاً','wrn');const dest=nw.style.display!=='none'?clean(nw.value):clean(cat.value);const pr=Number(price.value);const lo=Math.max(1,parseInt(min.value)||100);const hi=Math.max(lo,parseInt(max.value)||10000);const pid=clean(provider.value);const serviceId=clean(sid.value);const nm=clean(name.value);if(!dest)return toast?.('اختر القسم أو أنشئ قسم جديد','wrn');if(!nm)return toast?.('أدخل اسم الخدمة','wrn');if(!Number.isFinite(pr)||pr<0)return toast?.('السعر غير صالح','wrn');if(pid&&!serviceId)return toast?.('أدخل Service ID للمزود','wrn');save.disabled=true;try{const im=icon(app.value)||icon('Other');const key=DB.ref('services').push().key;const isAllTarget=dest==='__all__';const targetGroups=isAllTarget?[]:[dest];const providerDesc=String(description.value||'').trim();const data={app:app.value,apps:[app.value],platforms:[app.value],name:nm,groups:targetGroups,categories:targetGroups.slice(),category:isAllTarget?'':dest,scope:isAllTarget?'all':'category',showInAll:isAllTarget,price:Number((pr*RATE).toFixed(4)),basePrice:Number((pr*RATE).toFixed(4)),sellingUsd:Number(pr.toFixed(6)),smmRateUsd:pid?Number(pr.toFixed(6)):0,smmRate:pid?Number(pr.toFixed(6)):0,markupPct:0,min:lo,max:hi,quality:'عادي',speed:'24-48h',source:pid?'smmparty':'local',providerId:pid||null,smmpartyId:serviceId||null,providerServiceId:serviceId||null,refill:false,cancel:false,desc:providerDesc,description:providerDesc,providerDescription:pid?providerDesc:'',descriptionOverride:pid?'':providerDesc,image:im,categoryImage:im,sectionImage:im,groupImage:im,createdAt:new Date().toISOString(),createdBy:CU?.u||'admin',free:pr===0};await DB.ref('services/'+key).set(data);if(!isAllTarget){const ck=catKey(dest);await DB.ref('categoryMeta/'+ck).transaction(v=>{const o=v&&typeof v==='object'?v:{};return {...o,name:dest,image:im,imagePlatform:app.value,platform:app.value,platforms:[app.value],serviceKeys:[...(Array.isArray(o.serviceKeys)?o.serviceKeys.map(String):[]),String(key)],updatedAt:new Date().toISOString(),updatedBy:CU?.u||'admin'}});window.SECTION_META=window.SECTION_META||{};window.SECTION_META[dest]={...(meta(dest)||{}),name:dest,image:im,imagePlatform:app.value,platform:app.value,platforms:[app.value]};window.SADA31_ORDER=window.SADA31_ORDER||{categories:[],services:{}};if(!window.SADA31_ORDER.categories.some(x=>k(x)===k(dest)))window.SADA31_ORDER.categories.push(dest);await DB.ref('settings/catalogOrder').set(window.SADA31_ORDER);}await DB.ref('settings/svcsVersion').set(String(Date.now()));await window.loadAllSvcs?.(true);toast?.('✅ تمت إضافة الخدمة وربطها بالقسم والصورة','ok');window.loadAdmSvcsFull?.();window.loadAdmCatsFull?.();window.renderCatalogManager32?.();closeModal();}catch(e){toast?.('❌ فشل حفظ الخدمة: '+e.message,'err');save.disabled=false}};
+      save.onclick=async()=>{if(!DB)return toast?.('واجهة كتالوج الخدمات غير متاحة','err');if(!app.value)return toast?.('اختر المنصة أولاً','wrn');const isNewSection=nw.style.display!=='none'&&!!clean(nw.value);const dest=isNewSection?clean(nw.value):clean(cat.value);const pr=Number(price.value);const lo=Math.max(1,parseInt(min.value)||100);const hi=Math.max(lo,parseInt(max.value)||10000);const pid=clean(provider.value);const serviceId=clean(sid.value);const nm=clean(name.value);if(!dest)return toast?.('اختر القسم أو أنشئ قسم جديد','wrn');if(!nm)return toast?.('أدخل اسم الخدمة','wrn');if(!Number.isFinite(pr)||pr<0)return toast?.('السعر غير صالح','wrn');if(pid&&!serviceId)return toast?.('أدخل Service ID للمزود','wrn');save.disabled=true;const oldLabel=save.textContent;save.textContent='جارٍ حفظ الخدمة والتحقق منها…';try{
+        const im=icon(app.value)||icon('Other'),key=DB.ref('services').push().key,isAllTarget=dest==='__all__',targetGroups=isAllTarget?[]:[dest],providerDesc=String(description.value||'').trim(),at=new Date().toISOString();
+        const adminRequest=async(path,payload)=>{const headers={'Content-Type':'application/json'};let token='';try{token=String(localStorage.getItem('sadairaq_session_token')||'').trim()}catch(_){}if(token){headers['X-Sada-Session']=token;headers.Authorization='Bearer '+token}const response=await fetch(path,{method:'POST',headers,credentials:'include',cache:'no-store',body:JSON.stringify(payload)});const result=await response.json().catch(()=>({}));if(!response.ok||result.ok===false||result.error||result.verified===false)throw new Error(result.error||('HTTP '+response.status));return result};
+        if(!isAllTarget&&isNewSection){const existing=categoryOrder(categoryNames()).some(x=>k(x)===k(dest));if(!existing){const result=await adminRequest('/api/admin/catalog/sections',{action:'create',sections:[{name:dest,platforms:[app.value],image:im,pinned:false}]});if(result.verified!==true)throw new Error('لم يؤكد الخادم حفظ القسم في Firebase.')}}
+        const data={app:app.value,apps:[app.value],platforms:[app.value],name:nm,groups:targetGroups,categories:targetGroups.slice(),category:isAllTarget?'':dest,scope:isAllTarget?'all':'category',showInAll:isAllTarget,price:Number((pr*RATE).toFixed(4)),basePrice:Number((pr*RATE).toFixed(4)),sellingUsd:Number(pr.toFixed(6)),smmRateUsd:pid?Number(pr.toFixed(6)):0,smmRate:pid?Number(pr.toFixed(6)):0,markupPct:0,min:lo,max:hi,quality:'عادي',speed:'24-48h',source:pid?'smmparty':'manual-support',providerId:pid||'manual-support',providerName:pid?(CFG.smm.providers||[]).find(x=>String(x.id)===pid)?.name||pid:'التنفيذ عبر الدعم الفني',smmpartyId:pid?serviceId:'',providerServiceId:pid?serviceId:'',serviceKind:pid?'provider_catalog':'manual_support',manualService:!pid,adminManualService:!pid,catalogLocalManual:!pid,adminManualServiceKey:!pid?String(key):'',refill:false,cancel:false,desc:providerDesc,description:providerDesc,providerDescription:pid?providerDesc:'',descriptionOverride:pid?'':providerDesc,image:im,categoryImage:im,sectionImage:im,groupImage:im,createdAt:at,updatedAt:at,createdBy:CU?.u||'admin',free:pr===0,enabled:true,deleted:false};
+        // The authenticated server API assigns and verifies the site's four-digit service ID and persists
+        // both the Firebase record and host mirror. Providerless services use the manual-support order flow.
+        const persisted=await adminRequest('/api/admin/catalog',{path:'services/'+String(key),mode:'set',value:data});if(persisted.verified!==true)throw new Error('لم يؤكد الخادم حفظ الخدمة في Firebase.');
+        if(!isAllTarget){const metaKey=catKey(dest);const priorMeta=meta(dest)||window.SECTION_META?.[dest]||{};const priorPlatforms=Array.isArray(priorMeta.platforms)?priorMeta.platforms.map(String):[];const platforms=[...new Set([...priorPlatforms,String(priorMeta.platform||''),String(priorMeta.imagePlatform||''),String(app.value)].filter(Boolean))];const serviceKeys=[...new Set([...(Array.isArray(priorMeta.serviceKeys)?priorMeta.serviceKeys.map(String):[]),String(key)])];const metaValue={...priorMeta,name:dest,image:priorMeta.image||im,imagePlatform:priorMeta.imagePlatform||app.value,platform:priorMeta.platform||app.value,platforms,serviceKeys,updatedAt:at,updatedBy:CU?.u||'admin'};await adminRequest('/api/admin/catalog',{path:'categoryMeta/'+metaKey,mode:'update',value:metaValue});window.SECTION_META=window.SECTION_META||{};window.SECTION_META[dest]={...priorMeta,...metaValue};}
+        await window.loadAllSvcs?.(true);await window.loadAdmSvcsFull?.();await window.loadAdmCatsFull?.();await window.renderCatalogManager32?.();toast?.('✅ تمت إضافة الخدمة وحفظها في Firebase وربطها بالقسم. '+(pid?'':'طلبات هذه الخدمة تُسجّل وتخصم الرصيد ثم تظهر تعليمات التواصل مع الدعم.'),'ok');closeModal();setTimeout(()=>{try{window.__SADA237_ADMIN_PAGES__?.loadServices?.()}catch(_){}},150);
+      }catch(e){toast?.('❌ تعذر حفظ الخدمة أو التحقق منها: '+e.message,'err');save.disabled=false;save.textContent=oldLabel}};
     });
   };
 
@@ -11303,7 +11313,7 @@ curl -X POST ${base}/order -H "Authorization: Bearer YOUR_API_KEY" -H "Content-T
       const searchField=document.createElement('div');searchField.className='sada225-filter-field';const searchLabel=document.createElement('label');searchLabel.textContent='البحث عن خدمة';const search=document.createElement('input');search.className='inp';search.type='search';search.placeholder='اسم الخدمة أو رقمها أو المزود';search.setAttribute('aria-label','ابحث ضمن خدمات المنصة');searchField.append(searchLabel,search);
       toolbar.append(field,searchField);host.appendChild(toolbar);
       const addBar=document.createElement('div');addBar.style.cssText='display:flex;gap:8px;flex-wrap:wrap;margin:0 0 10px';const addToCat=document.createElement('button');addToCat.type='button';addToCat.className='btn bok btn-sm';addToCat.textContent=selected==='__all__'?'➕ إضافة خدمة جديدة (اختر القسم اختيارياً)':'➕ إضافة خدمة داخل «'+selected+'»';addToCat.onclick=()=>window.modalAddSvc?.({platform:managerPlatform==='all'?'':managerPlatform,category:selected==='__all__'?'':selected});addBar.appendChild(addToCat);const addFromProvider=document.createElement('button');addFromProvider.type='button';addFromProvider.className='btn bp btn-sm';addFromProvider.textContent='☁️ جلب خدمة من المزود';addFromProvider.onclick=()=>window.restoreAllServices?.('selected');addBar.appendChild(addFromProvider);host.appendChild(addBar);
-      const hint=document.createElement('div');hint.className='sada225-view-summary';hint.textContent=selected==='__all__'?'تظهر كل خدمات المنصة المحددة. اختر قسماً لعرض خدماته وإزالتها أو إضافة خدمة داخله.':'يعرض كل صف سعر البيع والوصف ومصدر الخدمة، وتتوفر إزالة الخدمة من القسم أو حذفها من كتالوج الموقع.';host.appendChild(hint);
+      const hint=document.createElement('div');hint.className='sada225-view-summary';hint.textContent=selected==='__all__'?'تظهر كل خدمات المنصة المحددة. لإعادة ترتيب الخدمات اختر قسماً محدداً من قائمة «القسم (اختياري)»؛ ستظهر أزرار ↑ رفع و↓ تنزيل بجانب كل خدمة، ويُحفظ الترتيب في Firebase. ويمكنك إنشاء خدمة محلية من دون مزود من زر «إضافة خدمة جديدة».':'يعرض كل صف سعر البيع والوصف ومصدر الخدمة. استخدم ↑ رفع و↓ تنزيل لتغيير ترتيب الخدمة داخل هذا القسم؛ يُحفظ الترتيب في Firebase. ويمكنك أيضاً إزالة الخدمة من القسم أو حذفها من كتالوج الموقع.';host.appendChild(hint);
       const listHost=document.createElement('div');listHost.className='sada225-service-list';host.appendChild(listHost);
       const getBaseRows=()=>{
         let rows=selected==='__all__'?visibleManagerServices():(ALL_CATS?.[selected]||[]).filter(s=>serviceMatchesManagerPlatform(s,managerPlatform));
@@ -11330,7 +11340,7 @@ curl -X POST ${base}/order -H "Authorization: Bearer YOUR_API_KEY" -H "Content-T
           const id=document.createElement('span');id.className='sada225-order-sub';id.textContent='رقم الخدمة: '+String(s.siteServiceId||s.internalServiceId||'—')+' · المزود: '+String(s.providerName||s.providerId||'محلي');const group=document.createElement('span');group.className='sada225-order-sub';group.textContent='المنصة: '+String(platforms.concat([['Other','أخرى']]).find(x=>x[0]===servicePlatform(s))?.[1]||servicePlatform(s)||'—')+' · القسم: '+(serviceGroups(s).join('، ')||'الكل');main.append(title,priceLine,desc,id,group);
           const tools=document.createElement('div');tools.className='sada32-order-tools sada225-order-tools';
           if(selected!=='__all__'){
-            const orderMove=async(delta,b)=>{const keys=baseRows.map(x=>String(x.fbKey||'')),i=keys.indexOf(String(s.fbKey||''));if(i<0||i+delta<0||i+delta>=keys.length)return;b.disabled=true;try{move(keys,i,i+delta);window.SADA31_ORDER.services[catKey(selected)]=keys;await saveOrd();renderList();window.buildSvcDD?.(selected)}catch(e){toast?.('تعذر حفظ ترتيب الخدمة: '+e.message,'err');b.disabled=false}};
+            const orderMove=async(delta,b)=>{const keys=baseRows.map(x=>String(x.fbKey||'')),i=keys.indexOf(String(s.fbKey||''));if(i<0||i+delta<0||i+delta>=keys.length)return;b.disabled=true;try{window.SADA31_ORDER=window.SADA31_ORDER&&typeof window.SADA31_ORDER==='object'?window.SADA31_ORDER:{categories:[],services:{}};if(!window.SADA31_ORDER.services||typeof window.SADA31_ORDER.services!=='object'||Array.isArray(window.SADA31_ORDER.services))window.SADA31_ORDER.services={};move(keys,i,i+delta);window.SADA31_ORDER.services[catKey(selected)]=keys;await saveOrd();renderList();window.buildSvcDD?.(selected)}catch(e){toast?.('تعذر حفظ ترتيب الخدمة: '+e.message,'err');b.disabled=false}};
             tools.append(makeAction('↑ رفع','رفع الخدمة داخل القسم','bs2',b=>orderMove(-1,b)),makeAction('↓ تنزيل','تنزيل الخدمة داخل القسم','bs2',b=>orderMove(1,b)));
             tools.append(makeAction('إزالة من القسم','إزالة الخدمة من هذا القسم فقط مع الحفاظ على ارتباطاتها الأخرى','bs2',async b=>{if(!s.fbKey)return toast?.('رقم سجل الخدمة غير متاح؛ لم يتم التعديل.','err');const others=serviceGroups(s).filter(g=>String(g).toLowerCase()!==String(selected).toLowerCase());const allScope=s.showInAll===true||String(s.scope||'').toLowerCase()==='all';const question=others.length||allScope?'إزالة «'+(s.name||'الخدمة')+'» من القسم «'+selected+'» فقط؟ ستبقى بقية الارتباطات كما هي.':'هذه آخر فئة مرتبطة بالخدمة. إزالتها ستزيل الخدمة من كتالوج الموقع فقط، ولن تحذفها لدى المزود. متابعة؟';if(!confirm(question))return;b.disabled=true;try{if(others.length||allScope){const updated={...s,groups:others,categories:others,category:others[0]||'',updatedAt:new Date().toISOString(),updatedBy:window.CU?.u||'admin'};delete updated.fbKey;await setCatalogItemX(String(s.fbKey),updated,'set')}else await setCatalogItemX(String(s.fbKey),null,'remove');await refreshManager();await svcView();toast?.(others.length?'تمت إزالة ارتباط القسم فقط.':'تمت إزالة الخدمة التي لم تعد مرتبطة بأي قسم من كتالوج الموقع.','ok')}catch(e){toast?.('تعذر إزالة الخدمة من القسم: '+e.message,'err');b.disabled=false}}));
           }
@@ -11733,7 +11743,13 @@ curl -X POST ${base}/order -H "Authorization: Bearer YOUR_API_KEY" -H "Content-T
   }
   function categoryListForActive36(){
     const active=normalizePlatform36(SEL_PLAT)||'all';
-    return categoryNames36().filter(cat=>catList36(cat).some(s=>supportsPlatform36(s,active)));
+    const metaSupports=(cat)=>{
+      if(active==='all')return true;
+      const m=metaFor36(cat)||{};
+      const values=[...(Array.isArray(m.platforms)?m.platforms:[]),m.platform,m.imagePlatform].filter(Boolean);
+      return values.some(value=>normalizePlatform36(value)===active);
+    };
+    return categoryNames36().filter(cat=>catList36(cat).some(s=>supportsPlatform36(s,active))||metaSupports(cat));
   }
   function servicesForActive36(list){const active=normalizePlatform36(SEL_PLAT)||'all';return (list||[]).filter(s=>supportsPlatform36(s,active));}
   function rebuildIndex36(arr){
@@ -12184,7 +12200,7 @@ curl -X POST ${base}/order -H "Authorization: Bearer YOUR_API_KEY" -H "Content-T
   document.addEventListener('DOMContentLoaded',startFinal);window.addEventListener('load',()=>setTimeout(startFinal,100));setTimeout(startFinal,250);setTimeout(startFinal,1200);
   // Observe the whole document so both independent controls survive page/route re-renders.
   if(document.body){const mo=new MutationObserver(()=>{ensureOrderWhatsApp();});mo.observe(document.body,{childList:true,subtree:true});}
-  window.__SADA_V1562_DIAGNOSTIC__={version:'1.6.82',buildId:'SADA-1.6.82-ORDER-CUSTOMSHOP-PLATFORM-FIRST-MASTERCARD-20261019',hasFetchGuard:true,orderAudit:true};
+  window.__SADA_V1562_DIAGNOSTIC__={version:'1.6.84',buildId:'SADA-1.6.84-MANUAL-SUCCESS-WHATSAPP-20261020',hasFetchGuard:true,orderAudit:true};
 })();
 </script>
 
@@ -12537,7 +12553,7 @@ curl -X POST ${base}/order -H "Authorization: Bearer YOUR_API_KEY" -H "Content-T
   const oldNav=window.nav;window.nav=function(name){const result=oldNav?oldNav.apply(this,arguments):undefined;setTimeout(safeEnhance,40);return result};
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{safeEnhance();setTimeout(safeEnhance,300);setTimeout(safeEnhance,1000)},{once:true});else{safeEnhance();setTimeout(safeEnhance,300)}
   if(document.body&&window.MutationObserver){let queued=false;const mo=new MutationObserver(()=>{if(queued)return;queued=true;requestAnimationFrame(()=>{queued=false;safeEnhance()})});mo.observe(document.body,{childList:true,subtree:true})}
-  window.__SADA_V1551_DIAGNOSTIC__={version:'1.6.82',features:['image-bounds','catalog-order','preserve-service-names','whatsapp-recharge','api-live-test']};
+  window.__SADA_V1551_DIAGNOSTIC__={version:'1.6.84',features:['image-bounds','catalog-order','preserve-service-names','whatsapp-recharge','api-live-test']};
 })();
 </script>
 
@@ -12640,7 +12656,7 @@ curl -X POST ${base}/order -H "Authorization: Bearer YOUR_API_KEY" -H "Content-T
  const nav=window.nav;if(typeof nav==='function'&&!nav.__sada1552Wrapped){const next=function(){const result=nav.apply(this,arguments);setTimeout(safe52,80);return result};next.__sada1552Wrapped=true;window.nav=next;}
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{safe52();setTimeout(safe52,500);setTimeout(safe52,1500)},{once:true});else{safe52();setTimeout(safe52,350)}
  if(window.MutationObserver&&document.body){let t=false;new MutationObserver(()=>{if(t)return;t=true;requestAnimationFrame(()=>{t=false;safe52()})}).observe(document.body,{childList:true,subtree:true})}
- window.__SADA_V1552_DIAGNOSTIC__={version:'1.6.82',features:['binance-pay-whatsapp-steps','platform-icons-every-service','full-provider-category-import','manual-quantity-bounds','provider-cost-based-global-markup','automatic-price-sync','numeric-order-fallback','order-card-polish']};
+ window.__SADA_V1552_DIAGNOSTIC__={version:'1.6.84',features:['binance-pay-whatsapp-steps','platform-icons-every-service','full-provider-category-import','manual-quantity-bounds','provider-cost-based-global-markup','automatic-price-sync','numeric-order-fallback','order-card-polish']};
 })();
 </script>
 
@@ -12735,7 +12751,7 @@ curl -X POST ${base}/order -H "Authorization: Bearer YOUR_API_KEY" -H "Content-T
     const wrapped=function(){clearPreviousService();const result=nativeSelectPlat.apply(this,arguments);const search=$('svc-search-inp');if(search)search.value='';setTimeout(()=>{try{window.buildCatDD?.();window.buildSvcDD?.(window.SEL_CAT||'__all__')}catch(_){}},0);return result};
     wrapped.__sada1560Wrapped=true;window.selectPlat=wrapped;
   }
-  window.__SADA_V1560_DIAGNOSTIC__={version:'1.6.82',features:['compact-binance-wallet-card','no-inline-order-whatsapp','left-floating-whatsapp','category-change-clears-stale-service-and-search']};
+  window.__SADA_V1560_DIAGNOSTIC__={version:'1.6.84',features:['compact-binance-wallet-card','no-inline-order-whatsapp','left-floating-whatsapp','category-change-clears-stale-service-and-search']};
 })();
 </script>
 
@@ -12816,7 +12832,7 @@ curl -X POST ${base}/order -H "Authorization: Bearer YOUR_API_KEY" -H "Content-T
  function renderPages(d){const root=$('oa-pages');if(!root)return;root.innerHTML='';if(Number(d.totalPages||1)<=1){root.innerHTML='<span style="font-size:10px;color:var(--t2)">عدد النتائج: '+Number(d.total||0).toLocaleString('ar-IQ')+'</span>';return}const prev=document.createElement('button');prev.className='btn bs2 btn-sm';prev.textContent='السابق';prev.disabled=d.page<=1;prev.onclick=()=>{state.page--;refresh()};const label=document.createElement('span');label.textContent='صفحة '+d.page+' من '+d.totalPages+' · '+d.total+' نتيجة';label.style.cssText='font-size:10px;color:var(--t1)';const next=document.createElement('button');next.className='btn bs2 btn-sm';next.textContent='التالي';next.disabled=d.page>=d.totalPages;next.onclick=()=>{state.page++;refresh()};root.append(prev,label,next)}
  function showCheckResult(d){const note=$('oa-source-note');const hasProviderStatus=!!(d.providerNormalizedStatus&&d.providerNormalizedStatus!=='unknown');const success=!!(d.externalVerified&&d.saved&&hasProviderStatus);const msg=d.warning||(success?'تم التحقق من حالة المزود وحفظ الحالة الجديدة.':d.externalVerified?(d.saved?'اتصل الموقع بالمزود لكن الحالة التي أعادها غير معروفة؛ لم نفترض اكتمال الطلب.':'تم الاتصال بالمزود لكن تعذر تأكيد حفظ الحالة.'):'تعذر التحقق الخارجي؛ الحالة المخزنة لم تتغير.');if(note)note.innerHTML='<div class="oa-note '+(success?'':'warn')+'">'+esc(msg)+(d.providerStatus?'<br>الحالة كما أرجعها المزود: <b>'+esc(d.providerStatus)+'</b>':'')+'</div>';notify(msg,success?'ok':'wrn')}
  async function initialize(){shell();try{const d=await api('/api/admin/order-audit/settings');if(d.settings){state.settings=d.settings;$('oa-delay-hours').value=d.settings.delayHours;$('oa-notify-admin').checked=!!d.settings.notifyAdmin}}catch(e){$('oa-settings-note').textContent='تعذر قراءة الإعدادات: '+e.message;$('oa-settings-note').style.color='#ff9b9b'}await refresh(true);if(!state.autoTimer)state.autoTimer=setInterval(()=>{if($('adm-sub-order-audit')?.classList.contains('on'))refresh(true)},60000)}
- window.loadOrderAuditSection=initialize;window.__SADA_V1562_ORDER_AUDIT__={version:'1.6.82',features:['overdue-dashboard','exact-site-and-provider-id-lookup','provider-status-refresh','copyable-provider-messages','completion-cancellation-tabs','server-deduplicated-alerts','settings']};
+ window.loadOrderAuditSection=initialize;window.__SADA_V1562_ORDER_AUDIT__={version:'1.6.84',features:['overdue-dashboard','exact-site-and-provider-id-lookup','provider-status-refresh','copyable-provider-messages','completion-cancellation-tabs','server-deduplicated-alerts','settings']};
  const old=window.admNavTo;window.admNavTo=function(sub,el){const result=old?old.apply(this,arguments):undefined;if(sub==='order-audit'){setTimeout(()=>initialize(),20)}return result};
  document.addEventListener('DOMContentLoaded',()=>{if(document.getElementById('adm-sub-order-audit'))shell()},{once:true});
 })();
@@ -12971,7 +12987,7 @@ body:has(#modal-mask.on) #wa-float{display:none!important}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{init();setTimeout(init,250);setTimeout(init,800)},{once:true});else{init();setTimeout(init,250)}
   document.addEventListener('visibilitychange',()=>{if(!document.hidden){pinWhatsApp();if($('pg-wallet')?.classList.contains('on'))buildRechargeMethods()}});
   if(document.body&&window.MutationObserver){let queued=false;const obs=new MutationObserver(()=>{if(queued)return;queued=true;requestAnimationFrame(()=>{queued=false;pinWhatsApp();const w=$('pg-wallet');if(w&&w.classList.contains('on'))buildRechargeMethods()})});obs.observe(document.body,{childList:true,subtree:true});}
-  window.__SADA_V1565_DIAGNOSTIC__={version:'1.6.82',methods:methods.map(m=>m.id),features:['kareemi-whatsapp','vodafone-cash-egp','stc-sawa-sar','itunes-us','sham-cash','crypto','opaque-wa-float']};
+  window.__SADA_V1565_DIAGNOSTIC__={version:'1.6.84',methods:methods.map(m=>m.id),features:['kareemi-whatsapp','vodafone-cash-egp','stc-sawa-sar','itunes-us','sham-cash','crypto','opaque-wa-float']};
 })();
 </script>
 
@@ -13006,7 +13022,7 @@ body:has(#modal-mask.on) #wa-float{display:none!important}
 <script id="sada1666-welcome-refunds-admin-splash">
 (function(){
  'use strict';
- const BUILD='SADA-1.6.82-ORDER-CUSTOMSHOP-PLATFORM-FIRST-MASTERCARD-20261019';
+ const BUILD='SADA-1.6.84-MANUAL-SUCCESS-WHATSAPP-20261020';
  const $=id=>document.getElementById(id);
  const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
  const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -13132,7 +13148,7 @@ body:has(#modal-mask.on) #wa-float{display:none!important}
    await refreshLocalBalanceAfterServer66(String(order.user||window.CU?.u||''));if(d.refund?.credited)toast66('تم تأكيد الحالة وإعادة المبلغ إلى المحفظة من الخادم.','ok');else if(d.refund?.state==='pending')toast66('تم تحديث الحالة، لكن الاسترداد ما زال قيد التحقق ولم يُضف رصيد جديد.','wrn');else toast66('تم تحديث حالة المزود. لم يُضف رصيد تلقائي إضافي.','inf');return d;
  };
  window.cancelOrd=async function(key,id,amt){try{if(!window.DB||!window.FB_OK)throw new Error('قاعدة بيانات الطلبات غير متصلة.');const snap=await window.DB.ref('orders/'+String(key)).once('value');if(!snap.exists())throw new Error('الطلب غير موجود.');const order={...snap.val(),_k:String(key)};if(!order.providerId||!(order.providerOrderId||order.smmpartyOrderId))throw new Error('لا يمكن إلغاء هذا الطلب من المتصفح مباشرةً. تواصل مع الدعم حتى لا يُضاف الرصيد مرتين.');if(!confirm('إرسال طلب إلغاء فعلي للمزوّد للطلب #'+(id||order.id||'')+'؟ لن يُعاد الرصيد إلا بعد تأكيد الحالة من الخادم.'))return;await window.cancelProviderOrder(order);window.loadOrds?.();}catch(e){toast66('تعذر إلغاء الطلب بأمان: '+e.message,'err')}};
- window.__SADA_1666__={version:'1.6.82',buildId:BUILD,features:['3-second-splash','admin-configurable-welcome','telegram-activation-and-overdue-channels','user-refund-history','admin-balance-report-and-adjustments','provider-confirmed-idempotent-refunds','server-authoritative-cancel','service-icon-motion']};
+ window.__SADA_1666__={version:'1.6.84',buildId:BUILD,features:['3-second-splash','admin-configurable-welcome','telegram-activation-and-overdue-channels','user-refund-history','admin-balance-report-and-adjustments','provider-confirmed-idempotent-refunds','server-authoritative-cancel','service-icon-motion']};
 })();
 </script>
 
@@ -13212,7 +13228,7 @@ body:has(#modal-mask.on) #wa-float{display:none!important}
 <script id="sada167-earn-notifications-dashboard">
 (function(){
 'use strict';
-const BUILD='SADA-1.6.82-ORDER-CUSTOMSHOP-PLATFORM-FIRST-MASTERCARD-20261019';
+const BUILD='SADA-1.6.84-MANUAL-SUCCESS-WHATSAPP-20261020';
 const $=id=>document.getElementById(id);
 const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const money=v=>'$'+Math.max(0,Number(v)||0).toFixed(2);
@@ -13281,7 +13297,7 @@ window.sada167Refresh=()=>{refreshNotifications67();loadHomeExtras67()};
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init67,{once:true});else init67();
 const priorLaunch=window.launchApp;if(typeof priorLaunch==='function'&&!priorLaunch.__sada167StatsWrapped){const wrap=function(){const r=priorLaunch.apply(this,arguments);setTimeout(()=>{ensureUserPages67();ensureAccountStatsFooter68();refreshNotifications67();loadHomeExtras67()},250);return r};wrap.__sada167StatsWrapped=true;window.launchApp=wrap}
 setInterval(refreshNotifications67,35000);document.addEventListener('visibilitychange',()=>{if(!document.hidden){refreshNotifications67();loadHomeExtras67()}});
-window.__SADA_167__={version:'1.6.82',buildId:BUILD,features:['earn-balance-review','user-notification-center','per-user-order-alerts','fast-session-start','hourly-price-sync-default','zero-price-protection','partial-refund-idempotency']};
+window.__SADA_167__={version:'1.6.84',buildId:BUILD,features:['earn-balance-review','user-notification-center','per-user-order-alerts','fast-session-start','hourly-price-sync-default','zero-price-protection','partial-refund-idempotency']};
 })();
 </script>
 
@@ -13434,7 +13450,7 @@ window.__SADA_167__={version:'1.6.82',buildId:BUILD,features:['earn-balance-revi
  function markServiceImages(){const page=$('pg-order');if(!page)return;page.querySelectorAll('#svc-options img.sada-svc-thumb,#svc-options img.sada1550-service-thumb,#cat-options img.sada-svc-thumb,#cat-options img.sada1550-category-thumb').forEach(img=>{img.loading='lazy';img.decoding='async'})}
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{ensureAdminNotices70();mergeUsersAndWallets70();markServiceImages();refreshSupportBadge70()},{once:true});else{ensureAdminNotices70();mergeUsersAndWallets70();markServiceImages();refreshSupportBadge70()}
  setInterval(()=>{if(document.hidden)return;refreshSupportBadge70();if($('pg-order')?.classList.contains('on'))markServiceImages();if(window.CU?.role==='admin'&&$('adm-panel')?.classList.contains('on')){ensureAdminNotices70();mergeUsersAndWallets70()}},45000);
- window.SADA_V1570_TEST={version:'1.6.82',features:['restored-original-admin-login-default','unified-notifications-center','broadcast-notifications','required-link-notifications','telegram-activation-channel','telegram-overdue-channel','support-reply-in-app-notification','support-branding','combined-users-balances-discounts','service-image-motion','static-platform-icons','order-card-redesign','server-backed-admin-users','site-wide-real-order-count','welcome-settings-durable-save','telegram-persistent-key-guidance']};
+ window.SADA_V1570_TEST={version:'1.6.84',features:['restored-original-admin-login-default','unified-notifications-center','broadcast-notifications','required-link-notifications','telegram-activation-channel','telegram-overdue-channel','support-reply-in-app-notification','support-branding','combined-users-balances-discounts','service-image-motion','static-platform-icons','order-card-redesign','server-backed-admin-users','site-wide-real-order-count','welcome-settings-durable-save','telegram-persistent-key-guidance']};
 })();
 </script>
 
@@ -13455,7 +13471,7 @@ window.__SADA_167__={version:'1.6.82',buildId:BUILD,features:['earn-balance-revi
  // Hide legacy duplicate navigation entries but keep their core functions accessible from the consolidated destinations.
  function tidyAdminNav(){const sb=$('adm-panel')?.querySelector('.adm-sb');if(!sb)return;for(const sub of ['sada24-tg','sada-v1527-tg']){const el=sb.querySelector('[data-sub="'+sub+'"]');if(el)el.style.display='none';}const stats=sb.querySelector('[data-sub="sada24-stats"]');if(stats){const t=stats.querySelector('span');if(t)t.textContent='الأرباح';stats.title='إيرادات الموقع وتكاليف المزودين وصافي الأرباح';}const welcome=$('adm-sub-sada1666-welcome');if(welcome){const cards=welcome.querySelectorAll('.sada1666-admin-tools');if(cards.length>1){cards[1].style.display='none';cards[1].setAttribute('aria-hidden','true');}const it=sb.querySelector('[data-sub="sada1666-welcome"]');if(it){const t=it.querySelector('span');if(t)t.textContent='إعدادات الترحيب';}}const wallet=sb.querySelector('[data-sub="wallets19"]'),users=sb.querySelector('[data-sub="users"]');if(wallet&&users){wallet.style.display='none';users.style.display='';const span=users.querySelector('span');if(span)span.textContent='المستخدمون';users.title='إدارة حسابات المستخدمين';}}
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',tidyAdminNav,{once:true});else tidyAdminNav();setInterval(()=>{if(!document.hidden)tidyAdminNav()},45000);
- window.SADA_V1571_EMAIL_EARNINGS={version:'1.6.82',features:['resend-email-verification','password-recovery-email-code','account-email-change-verification','legacy-firebase-account-lookup','encrypted-persistent-telegram-token','profit-dashboard-metrics','safe-json-backups']};
+ window.SADA_V1571_EMAIL_EARNINGS={version:'1.6.84',features:['resend-email-verification','password-recovery-email-code','account-email-change-verification','legacy-firebase-account-lookup','encrypted-persistent-telegram-token','profit-dashboard-metrics','safe-json-backups']};
 })();
 </script>
 
@@ -13785,7 +13801,7 @@ const oldLaunch=window.launchApp;if(typeof oldLaunch==='function'&&!oldLaunch.__
     finally{if(button){button.disabled=false;button.textContent=button.dataset.oldText||'إرسال طلب الشحن';delete button.dataset.oldText;}}
   }
   window.loadAdmStats=loadAdmStats1603;window.refreshAdmDashboard=refreshAdmDashboard1603;window.checkPendingPays=checkPendingPays1603;window.loadAdmPaysFull=loadAdmPaysFull1603;window.showAdmPayModal=showAdmPayModal1603;window.loadPayHist=loadPayHist1603;window.submitPay=submitPay1603;
-  window.SADA_V1603_ADMIN_REPAIRS={version:'1.6.82',features:['firebase-verification-route-unblocked','server-authoritative-dashboard','server-authoritative-payments','idempotent-payment-credit','firebase-key-aware-wallet-adjustment','explicit-errors-instead-of-infinite-loaders']};
+  window.SADA_V1603_ADMIN_REPAIRS={version:'1.6.84',features:['firebase-verification-route-unblocked','server-authoritative-dashboard','server-authoritative-payments','idempotent-payment-credit','firebase-key-aware-wallet-adjustment','explicit-errors-instead-of-infinite-loaders']};
 })();
 </script>
 
@@ -13855,7 +13871,7 @@ async function requestAccountSummary(){try{return await window.api('/api/user/su
 const d=await requestAccountSummary();if(!shell.isConnected)return;const p=d.profile||{};const storedEmail=String(p.email||window.CU?.email||window.CU?.mail||'').trim();email.textContent=storedEmail||'لم يُسجّل بريد إلكتروني';if(storedEmail&&window.CU){window.CU.email=storedEmail;try{localStorage.setItem('tz_u',JSON.stringify(window.CU))}catch(_){}}const iqd=Number(d.balanceIQD??window.CU?.bal??window.BAL??0);bal.textContent='$'+(iqd/1250).toFixed(2);stats.querySelector('[data-metric="spend"]').textContent='$'+(Number(d.spentIQD||0)/1250).toFixed(2);stats.querySelector('[data-metric="done"]').textContent=Number(d.completedOrders||0).toLocaleString('ar-IQ');stats.querySelector('[data-metric="orders"]').textContent=Number(d.orders||0).toLocaleString('ar-IQ');details.replaceChildren();const bits=[['اسم المستخدم',p.username||window.CU?.u||window.CU?.username||'—'],['رقم الهاتف',p.phone||'غير مضاف'],['تاريخ التسجيل',p.joined||p.createdAt||'غير متوفر'],['آخر تسجيل دخول',p.lastLoginAt||'غير متوفر'],['المستوى',p.level||'مبتدئ']];for(const [k,v] of bits){const row=profNode('div','',k+' : '+v);details.appendChild(row)}note.textContent='تم تحديث الرصيد والإحصائيات من الخادم · آخر تحديث '+new Date(d.checkedAt||Date.now()).toLocaleTimeString('ar-IQ',{hour:'2-digit',minute:'2-digit'})}catch(e){const detail=String(e?.message||e||'خطأ غير معروف');note.textContent='تعذر تحميل الإحصائيات من الخادم: '+detail;note.style.color='#ff9ba7';bal.textContent='$'+(Number(window.BAL||window.CU?.bal||0)/1250).toFixed(2)}})();});};
 // A profile modal is ephemeral; remove its sizing class on close so other dialogs retain their own styles.
 const oldClose=window.closeModal;if(typeof oldClose==='function'&&!oldClose.__sada624Cleanup){const wrappedClose=function(){const r=oldClose.apply(this,arguments);$('modal-mask')?.classList.remove('sada624-profile-mask');$('modal-box')?.classList.remove('sada624-profile-modal');return r};wrappedClose.__sada624Cleanup=true;window.closeModal=wrappedClose}
-window.SADA_V1626_RELEASE={version:'1.6.82',features:['earn-page-premium-order','welcome-every-entry','profile-neon-live-data','consolidated-notifications-telegram-channel-tests','sidebar-slot-rearrangement','service-category-image-glow','wallet-premium-motion','api-key-stable-encryption-resolver']};
+window.SADA_V1626_RELEASE={version:'1.6.84',features:['earn-page-premium-order','welcome-every-entry','profile-neon-live-data','consolidated-notifications-telegram-channel-tests','sidebar-slot-rearrangement','service-category-image-glow','wallet-premium-motion','api-key-stable-encryption-resolver']};
 })();
 </script>
 
@@ -13863,8 +13879,8 @@ window.SADA_V1626_RELEASE={version:'1.6.82',features:['earn-page-premium-order',
 <script id="sada1629-runtime-version-badge-fix">
 (function(){
   'use strict';
-  const EXPECTED_VERSION='1.6.82';
-  const EXPECTED_BUILD='SADA-1.6.82-ORDER-CUSTOMSHOP-PLATFORM-FIRST-MASTERCARD-20261019';
+  const EXPECTED_VERSION='1.6.84';
+  const EXPECTED_BUILD='SADA-1.6.84-MANUAL-SUCCESS-WHATSAPP-20261020';
   const $=id=>document.getElementById(id);
   function ensureBadge(){
     let b=$('sadairaq-version-badge');
@@ -14235,7 +14251,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
       main.appendChild(page);page.querySelector('[data-page-refresh]')?.addEventListener('click',()=>loader?.());
     }
   }
-  let refundQueryX='',refundTimerX=null,serviceCatalogX={},serviceMetaX={},selectedCategoryX='',selectedPlatformX='';
+  let refundQueryX='',refundTimerX=null,serviceCatalogX={},serviceMetaX={},serviceOrderCatalogX={categories:[],services:{}},selectedCategoryX='',selectedPlatformX='';
   async function loadAdminRefundsX(){
     const pane=$id('adm-sub-sada237-refunds'),root=pane?.querySelector('[data-page-content="sada237-refunds"]');if(!root)return;
     root.innerHTML='<div class="card" style="padding:18px;text-align:center;color:var(--t2)">جارٍ تحميل سجلات الاسترداد من قاعدة البيانات…</div>';
@@ -14248,9 +14264,11 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
     }catch(e){root.innerHTML='<div class="card" style="padding:16px;color:#d44">تعذر تحميل سجل الاسترداد: '+escX(e.message)+'<br><small>لم تُعرض أرقام تقديرية.</small></div>';}
   }
   function serviceGroupsX(row){const source=[...(Array.isArray(row?.groups)?row.groups:[]),...(Array.isArray(row?.categories)?row.categories:[]),row?.category].filter(Boolean);return [...new Map(source.map(x=>[String(x).trim().toLowerCase(),String(x).trim()])).values()];}
-  async function readServiceCatalogX(){const [sv,mt]=await Promise.all([apiX('/api/catalog?path=services'),apiX('/api/catalog?path=categoryMeta')]);serviceCatalogX=sv.value&&typeof sv.value==='object'?sv.value:{};serviceMetaX=mt.value&&typeof mt.value==='object'?mt.value:{};}
+  async function readServiceCatalogX(){const [sv,mt,ord]=await Promise.all([apiX('/api/catalog?path=services'),apiX('/api/catalog?path=categoryMeta'),apiX('/api/catalog?path=settings/catalogOrder').catch(()=>({value:{}}))]);serviceCatalogX=sv.value&&typeof sv.value==='object'?sv.value:{};serviceMetaX=mt.value&&typeof mt.value==='object'?mt.value:{};const order=ord.value&&typeof ord.value==='object'?ord.value:{};serviceOrderCatalogX={categories:Array.isArray(order.categories)?order.categories:[],services:order.services&&typeof order.services==='object'?order.services:{}};}
   function categoriesX(){const names=new Map();Object.values(serviceMetaX).forEach(m=>{const n=String(m?.name||'').trim();if(n)names.set(n.toLowerCase(),n)});Object.values(serviceCatalogX).forEach(s=>serviceGroupsX(s).forEach(n=>names.set(n.toLowerCase(),n)));return [...names.values()].sort((a,b)=>a.localeCompare(b,'ar'));}
   async function setCatalogItemX(key,row,mode='set') {return apiX('/api/admin/catalog',{method:'POST',body:{path:'services/'+key,mode,value:row}})}
+  function serviceOrderKeyX(cat){try{if(typeof window.categoryKey==='function')return window.categoryKey(cat)}catch(_){}return String(cat||'').trim().toLocaleLowerCase('ar').replace(/[^a-zA-Z0-9\u0600-\u06ff_-]+/g,'_')}
+  async function persistServiceOrderX(cat,keys){const order=serviceOrderCatalogX&&typeof serviceOrderCatalogX==='object'?serviceOrderCatalogX:{categories:[],services:{}};order.categories=Array.isArray(order.categories)?order.categories:[];order.services=order.services&&typeof order.services==='object'?order.services:{};order.services[serviceOrderKeyX(cat)]=keys.map(String);const r=await apiX('/api/admin/catalog',{method:'POST',body:{path:'settings/catalogOrder',mode:'set',value:order}});serviceOrderCatalogX=order;return r;}
   const SERVICE_PLATFORM_OPTIONS_X=[['Instagram','إنستغرام'],['Tiktok','تيك توك'],['Youtube','يوتيوب'],['Facebook','فيسبوك'],['Telegram','تيليجرام'],['Twitter','تويتر / X'],['Snapchat','سناب شات'],['Whatsapp','واتساب'],['Linkedin','لينكدإن'],['Other','أخرى']];
   function normalizePlatformX(value){
     const x=String(value??'').trim().toLocaleLowerCase('ar').replace(/[\s_\-]+/g,'');
@@ -14291,14 +14309,16 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
     else if(Number.isFinite(legacy)&&legacy>=0)parts.push(legacy.toLocaleString('ar-IQ',{maximumFractionDigits:4})+' د.ع/1000');
     return parts.join(' · ')||'غير محدد';
   }
-  async function loadServicesManagerX(){
-    const root=$id('adm-sub-sada237-services')?.querySelector('[data-page-content="sada237-services"]');if(!root)return;
+  async function loadServicesManagerX(targetRootId){
+    const root=targetRootId ? $id(targetRootId) : ($id('adm-sub-sada237-services')?.querySelector('[data-page-content="sada237-services"]'));
+    if(!root)return;
+    const q=id=>root.querySelector('#'+id);
     root.innerHTML='<div class="card" style="padding:18px;text-align:center">جارٍ تحميل المنصات والأقسام والخدمات من قاعدة البيانات…</div>';
     try{
       await readServiceCatalogX();
       const platformOptions=SERVICE_PLATFORM_OPTIONS_X.map(([v,l])=>'<option value="'+escX(v)+'" '+(v===selectedPlatformX?'selected':'')+'>'+escX(l)+'</option>').join('');
       root.innerHTML='<div class="card" style="padding:13px"><label for="sada237-service-platform" style="display:block;font-weight:900;margin-bottom:7px">١. اختر المنصة أولاً</label><select class="inp" id="sada237-service-platform"><option value="">اختر المنصة…</option>'+platformOptions+'</select><label for="sada237-service-category" style="display:block;font-weight:900;margin:12px 0 7px">٢. اختر قسماً من أقسام المنصة</label><select class="inp" id="sada237-service-category" disabled><option value="">اختر المنصة أولاً</option></select><p style="font-size:10px;line-height:1.8;color:var(--t2);margin:8px 0 0">بعد اختيار المنصة تظهر أقسامها فقط. ثم تظهر تفاصيل الخدمات وأسعارها وأوصافها، مع أدوات الإضافة والإزالة اليدوية.</p></div><div id="sada237-service-tools"></div>';
-      const platformSelect=$id('sada237-service-platform'),categorySelect=$id('sada237-service-category'),tools=$id('sada237-service-tools');
+      const platformSelect=q('sada237-service-platform'),categorySelect=q('sada237-service-category'),tools=q('sada237-service-tools');
       const updateCategories=()=>{
         selectedPlatformX=platformSelect.value;
         const old=selectedCategoryX;categorySelect.replaceChildren(new Option(selectedPlatformX?'اختر القسم…':'اختر المنصة أولاً',''));
@@ -14313,18 +14333,20 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
         selectedCategoryX=categorySelect.value;
         if(!selectedPlatformX){tools.innerHTML='<div class="card" style="padding:16px;color:var(--t2)">اختر المنصة أولاً حتى نعرض أقسامها وخدماتها فقط.</div>';return;}
         if(!selectedCategoryX){tools.innerHTML='<div class="card" style="padding:16px;color:var(--t2)">اختر قسماً من أقسام '+escX(SERVICE_PLATFORM_OPTIONS_X.find(x=>x[0]===selectedPlatformX)?.[1]||selectedPlatformX)+' لعرض الخدمات وتفاصيلها.</div>';return;}
-        const query=String($id('sada237-service-search')?.value||'').trim().toLocaleLowerCase('ar');
-        const rows=Object.entries(serviceCatalogX).filter(([k,v])=>v&&typeof v==='object'&&serviceMatchesPlatformX(v,selectedPlatformX)&&serviceGroupsX(v).some(g=>g.toLocaleLowerCase('ar')===selectedCategoryX.toLocaleLowerCase('ar'))&&(!query||[v.name,k,providerDescriptionX(v),v.siteServiceId,v.id].some(x=>String(x||'').toLocaleLowerCase('ar').includes(query)))).sort((a,b)=>String(a[1].name||'').localeCompare(String(b[1].name||''),'ar'));
+        const query=String(q('sada237-service-search')?.value||'').trim().toLocaleLowerCase('ar');
+        const rawRows=Object.entries(serviceCatalogX).filter(([k,v])=>v&&typeof v==='object'&&serviceMatchesPlatformX(v,selectedPlatformX)&&serviceGroupsX(v).some(g=>g.toLocaleLowerCase('ar')===selectedCategoryX.toLocaleLowerCase('ar'))&&(!query||[v.name,k,providerDescriptionX(v),v.siteServiceId,v.id].some(x=>String(x||'').toLocaleLowerCase('ar').includes(query))));const sortKey=serviceOrderKeyX(selectedCategoryX),savedKeys=Array.isArray(serviceOrderCatalogX.services?.[sortKey])?serviceOrderCatalogX.services[sortKey].map(String):[];const rowRank=new Map(savedKeys.map((k,i)=>[k,i]));const rows=rawRows.sort((a,b)=>(rowRank.get(String(a[0]))??999999)-(rowRank.get(String(b[0]))??999999)||String(a[1].name||'').localeCompare(String(b[1].name||''),'ar'));
         const candidates=Object.entries(serviceCatalogX).filter(([k,v])=>v&&typeof v==='object'&&serviceMatchesPlatformX(v,selectedPlatformX)&&!serviceGroupsX(v).some(g=>g.toLocaleLowerCase('ar')===selectedCategoryX.toLocaleLowerCase('ar'))&&v.unapprovedAutoImport!==true&&(!query||[v.name,k,providerDescriptionX(v),v.siteServiceId,v.id].some(x=>String(x||'').toLocaleLowerCase('ar').includes(query)))).sort((a,b)=>String(a[1].name||'').localeCompare(String(b[1].name||''),'ar'));
         const platformName=SERVICE_PLATFORM_OPTIONS_X.find(x=>x[0]===selectedPlatformX)?.[1]||selectedPlatformX;
-        const rowsHtml=rows.map(([key,v])=>{const other=serviceGroupsX(v).filter(g=>g.toLocaleLowerCase('ar')!==selectedCategoryX.toLocaleLowerCase('ar'));const desc=providerDescriptionX(v);return '<tr><td style="min-width:180px"><b>'+escX(v.name||'خدمة')+'</b><div style="font-size:10px;color:var(--t2);margin-top:5px;line-height:1.8">'+escX(desc||'لم يرجع المزود وصفاً لهذه الخدمة.')+'</div></td><td style="min-width:120px;color:#5eead4;font-weight:900">'+escX(catalogPriceLabelX(v))+'</td><td>'+escX(v.siteServiceId||v.id||key)+'</td><td>'+escX(other.join('، ')||'—')+'</td><td><div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn bs2 btn-sm" data-remove-service="'+escX(key)+'">إزالة من القسم</button><button class="btn bdng btn-sm" data-delete-service="'+escX(key)+'">حذف الخدمة نهائياً</button></div></td></tr>'}).join('');
+        const rowsHtml=rows.map(([key,v,idx])=>{const other=serviceGroupsX(v).filter(g=>g.toLocaleLowerCase('ar')!==selectedCategoryX.toLocaleLowerCase('ar'));const desc=providerDescriptionX(v);return '<tr><td style="min-width:180px"><b>'+escX(v.name||'خدمة')+'</b><div style="font-size:10px;color:var(--t2);margin-top:5px;line-height:1.8">'+escX(desc||'لم يرجع المزود وصفاً لهذه الخدمة.')+'</div></td><td style="min-width:120px;color:#5eead4;font-weight:900">'+escX(catalogPriceLabelX(v))+'</td><td>'+escX(v.siteServiceId||v.id||key)+'</td><td>'+escX(other.join('، ')||'—')+'</td><td><div style="display:flex;gap:5px;flex-wrap:wrap"><button type="button" class="btn bs2 btn-sm" data-order-service="'+escX(key)+'" data-step="top" title="رفع إلى الأعلى">↥</button><button type="button" class="btn bs2 btn-sm" data-order-service="'+escX(key)+'" data-step="up" title="رفع">↑</button><button type="button" class="btn bs2 btn-sm" data-order-service="'+escX(key)+'" data-step="down" title="تنزيل">↓</button><button type="button" class="btn bs2 btn-sm" data-order-service="'+escX(key)+'" data-step="bottom" title="تنزيل إلى الأسفل">↧</button><button class="btn bs2 btn-sm" data-remove-service="'+escX(key)+'">إزالة من القسم</button><button class="btn bdng btn-sm" data-delete-service="'+escX(key)+'">حذف الخدمة نهائياً</button></div></td></tr>'}).join('');
         const candidateHtml=candidates.map(([k,v])=>'<option value="'+escX(k)+'">'+escX(v.name||k)+' — '+escX(catalogPriceLabelX(v))+' — '+escX(v.app||v.platform||selectedPlatformX)+'</option>').join('');
-        tools.innerHTML='<div class="card" style="padding:13px"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><h3 style="margin:0">الخدمات داخل «'+escX(selectedCategoryX)+'» · '+escX(platformName)+'</h3><span style="font-size:11px;color:var(--t2)">'+rows.length+' خدمة</span></div><input class="inp" id="sada237-service-search" type="search" placeholder="ابحث باسم الخدمة أو وصفها أو رقمها…" style="margin-top:10px"><div style="overflow:auto;margin-top:10px"><table class="table" style="min-width:720px;width:100%"><thead><tr><th>تفاصيل الخدمة والوصف</th><th>السعر</th><th>معرّف الخدمة</th><th>أقسام أخرى</th><th>إجراء</th></tr></thead><tbody>'+(rowsHtml||'<tr><td colspan="5" style="text-align:center;color:var(--t2);padding:18px">لا توجد خدمات مرتبطة بهذا القسم والمنصة.</td></tr>')+'</tbody></table></div></div><div class="card" style="padding:13px"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap"><h3 style="margin:0 0 10px">إضافة خدمة موجودة إلى هذا القسم</h3><button type="button" class="btn bdng btn-sm" id="sada237-delete-category">حذف القسم من جميع المنصات</button></div><p style="font-size:10px;color:var(--t2);line-height:1.8;margin-top:0">إضافة خدمة تربطها بالقسم المختار فقط. الحذف الكامل أدناه يزيل هذا الاسم من جميع المنصات، ولا يمكن التراجع عنه.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><select class="inp" id="sada237-service-to-add" style="flex:1;min-width:200px"><option value="">اختر خدمة من '+escX(platformName)+'…</option>'+candidateHtml+'</select><button type="button" class="btn bp" id="sada237-service-add">إضافة للقسم</button></div><div id="sada237-service-note" style="font-size:11px;margin-top:9px;color:var(--t2)"></div></div>';
-        const searchInput=$id('sada237-service-search');searchInput?.addEventListener('input',()=>{const value=searchInput.value;const cursor=searchInput.selectionStart;renderServices();const next=$id('sada237-service-search');if(next){next.value=value;try{next.setSelectionRange(cursor,cursor)}catch(_){}}});
+        tools.innerHTML='<div class="card" style="padding:13px"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><h3 style="margin:0">الخدمات داخل «'+escX(selectedCategoryX)+'» · '+escX(platformName)+'</h3><span style="font-size:11px;color:var(--t2)">'+rows.length+' خدمة</span></div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button type="button" class="btn bp btn-sm" id="sada237-create-service">＋ إنشاء خدمة جديدة</button><span style="font-size:10px;color:var(--t2);align-self:center">يمكن تغيير ترتيب الخدمات بالأسهم، ويُحفظ الترتيب في الإعدادات.</span></div><input class="inp" id="sada237-service-search" type="search" placeholder="ابحث باسم الخدمة أو وصفها أو رقمها…" style="margin-top:10px"><div style="overflow:auto;margin-top:10px"><table class="table" style="min-width:720px;width:100%"><thead><tr><th>تفاصيل الخدمة والوصف</th><th>السعر</th><th>معرّف الخدمة</th><th>أقسام أخرى</th><th>إجراء</th></tr></thead><tbody>'+(rowsHtml||'<tr><td colspan="5" style="text-align:center;color:var(--t2);padding:18px">لا توجد خدمات مرتبطة بهذا القسم والمنصة.</td></tr>')+'</tbody></table></div></div><div class="card" style="padding:13px"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap"><h3 style="margin:0 0 10px">إضافة خدمة موجودة إلى هذا القسم</h3><button type="button" class="btn bdng btn-sm" id="sada237-delete-category">حذف القسم من جميع المنصات</button></div><p style="font-size:10px;color:var(--t2);line-height:1.8;margin-top:0">إضافة خدمة تربطها بالقسم المختار فقط. الحذف الكامل أدناه يزيل هذا الاسم من جميع المنصات، ولا يمكن التراجع عنه.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><select class="inp" id="sada237-service-to-add" style="flex:1;min-width:200px"><option value="">اختر خدمة من '+escX(platformName)+'…</option>'+candidateHtml+'</select><button type="button" class="btn bp" id="sada237-service-add">إضافة للقسم</button></div><div id="sada237-service-note" style="font-size:11px;margin-top:9px;color:var(--t2)"></div></div>';
+        const createService=q('sada237-create-service');createService?.addEventListener('click',()=>{if(typeof window.modalAddSvc!=='function'){toast('نافذة إضافة الخدمات غير متاحة حالياً.','err');return}window.modalAddSvc({platform:selectedPlatformX,category:selectedCategoryX});});
+        tools.querySelectorAll('[data-order-service]').forEach(btn=>btn.onclick=async()=>{const key=String(btn.dataset.orderService||''),step=btn.dataset.step;const keys=rows.map(([k])=>String(k));const i=keys.indexOf(key);if(i<0)return;const to=step==='top'?0:step==='bottom'?keys.length-1:step==='up'?Math.max(0,i-1):Math.min(keys.length-1,i+1);if(to===i)return;const [moved]=keys.splice(i,1);keys.splice(to,0,moved);btn.disabled=true;try{await persistServiceOrderX(selectedCategoryX,keys);toast('تم حفظ ترتيب الخدمات في قاعدة البيانات.','ok');await readServiceCatalogX();renderServices()}catch(e){toast('تعذر حفظ ترتيب الخدمات: '+e.message,'err');btn.disabled=false}});
+        const searchInput=q('sada237-service-search');searchInput?.addEventListener('input',()=>{const value=searchInput.value;const cursor=searchInput.selectionStart;renderServices();const next=q('sada237-service-search');if(next){next.value=value;try{next.setSelectionRange(cursor,cursor)}catch(_){}}});
         tools.querySelectorAll('[data-delete-service]').forEach(btn=>btn.onclick=async()=>{const key=btn.dataset.deleteService,row=serviceCatalogX[key];if(!row)return;if(!confirm('حذف الخدمة «'+(row.name||key)+'» نهائياً من كتالوج Firebase؟ سيختفي سجلها من جميع الأقسام والمنصات، لكن الطلبات السابقة لن تُحذف.'))return;btn.disabled=true;try{await setCatalogItemX(key,null,'remove');await readServiceCatalogX();toast('تم حذف سجل الخدمة من Firebase.','ok');renderServices()}catch(e){toast('تعذر حذف الخدمة: '+e.message,'err');btn.disabled=false}});
-        tools.querySelectorAll('[data-remove-service]').forEach(btn=>btn.onclick=async()=>{const key=btn.dataset.removeService,row=serviceCatalogX[key];if(!row)return;const oldGroups=serviceGroupsX(row),remain=oldGroups.filter(g=>g.toLocaleLowerCase('ar')!==selectedCategoryX.toLocaleLowerCase('ar'));if(!confirm(remain.length?'إزالة هذه الخدمة من القسم المختار فقط؟ ستبقى في أقسامها الأخرى.':'هذه الخدمة لا ترتبط إلا بهذا القسم. حذفها سيزيل سجل الخدمة من الكتالوج. هل تريد المتابعة؟'))return;btn.disabled=true;try{if(remain.length||row.showInAll===true||String(row.scope||'').toLowerCase()==='all'){const updated={...row,groups:remain,categories:remain,category:remain[0]||'',...(row.showInAll===true||String(row.scope||'').toLowerCase()==='all'?{scope:'all',showInAll:true}:{})};delete updated.fbKey;await setCatalogItemX(key,updated,'set')}else{await setCatalogItemX(key,null,'remove')}await readServiceCatalogX();toast('تم حفظ إزالة الخدمة في Firebase.','ok');renderServices()}catch(e){const note=$id('sada237-service-note');if(note)note.textContent='فشل الإزالة: '+e.message;btn.disabled=false}});
-        const add=$id('sada237-service-add');add?.addEventListener('click',async()=>{const key=$id('sada237-service-to-add')?.value,row=serviceCatalogX[key],note=$id('sada237-service-note');if(!key||!row){if(note)note.textContent='اختر خدمة أولاً.';return}add.disabled=true;if(note)note.textContent='جارٍ ربط الخدمة بالقسم…';try{const groups=serviceGroupsX(row);groups.push(selectedCategoryX);const unique=[...new Map(groups.map(g=>[g.toLowerCase(),g])).values()];const updated={...row,groups:unique,categories:unique,category:row.category||selectedCategoryX,showInAll:false,scope:'categories',updatedAt:new Date().toISOString(),updatedBy:window.CU?.u||window.CU?.username||'admin'};delete updated.fbKey;await setCatalogItemX(key,updated,'set');await readServiceCatalogX();toast('تمت إضافة الخدمة للقسم والتحقق من Firebase.','ok');renderServices()}catch(e){if(note)note.textContent='فشل الإضافة: '+e.message;add.disabled=false}});
-        const deleteCategory=$id('sada237-delete-category');deleteCategory?.addEventListener('click',async()=>{if(!confirm('تأكيد حذف القسم «'+selectedCategoryX+'» من جميع المنصات؟ ستُفك ارتباطاته من الخدمات وسيُزال تعريف القسم؛ الطلبات السابقة لن تُحذف.'))return;deleteCategory.disabled=true;try{const d=await apiX('/api/admin/catalog/sections',{method:'POST',body:{action:'delete',name:selectedCategoryX,confirmation:'DELETE_SECTION'}});await readServiceCatalogX();selectedCategoryX='';updateCategories();const note=$id('sada237-service-tools');if(note)note.insertAdjacentHTML('beforeend','<div class="card" style="padding:12px;color:#5eead4">تم حذف القسم. سجلات الطلبات القديمة محفوظة.</div>');}catch(e){toast('تعذر حذف القسم: '+e.message,'err');deleteCategory.disabled=false}});
+        tools.querySelectorAll('[data-remove-service]').forEach(btn=>btn.onclick=async()=>{const key=btn.dataset.removeService,row=serviceCatalogX[key];if(!row)return;const oldGroups=serviceGroupsX(row),remain=oldGroups.filter(g=>g.toLocaleLowerCase('ar')!==selectedCategoryX.toLocaleLowerCase('ar'));if(!confirm(remain.length?'إزالة هذه الخدمة من القسم المختار فقط؟ ستبقى في أقسامها الأخرى.':'هذه الخدمة لا ترتبط إلا بهذا القسم. حذفها سيزيل سجل الخدمة من الكتالوج. هل تريد المتابعة؟'))return;btn.disabled=true;try{if(remain.length||row.showInAll===true||String(row.scope||'').toLowerCase()==='all'){const updated={...row,groups:remain,categories:remain,category:remain[0]||'',...(row.showInAll===true||String(row.scope||'').toLowerCase()==='all'?{scope:'all',showInAll:true}:{})};delete updated.fbKey;await setCatalogItemX(key,updated,'set')}else{await setCatalogItemX(key,null,'remove')}await readServiceCatalogX();toast('تم حفظ إزالة الخدمة في Firebase.','ok');renderServices()}catch(e){const note=q('sada237-service-note');if(note)note.textContent='فشل الإزالة: '+e.message;btn.disabled=false}});
+        const add=q('sada237-service-add');add?.addEventListener('click',async()=>{const key=q('sada237-service-to-add')?.value,row=serviceCatalogX[key],note=q('sada237-service-note');if(!key||!row){if(note)note.textContent='اختر خدمة أولاً.';return}add.disabled=true;if(note)note.textContent='جارٍ ربط الخدمة بالقسم…';try{const groups=serviceGroupsX(row);groups.push(selectedCategoryX);const unique=[...new Map(groups.map(g=>[g.toLowerCase(),g])).values()];const updated={...row,groups:unique,categories:unique,category:row.category||selectedCategoryX,showInAll:false,scope:'categories',updatedAt:new Date().toISOString(),updatedBy:window.CU?.u||window.CU?.username||'admin'};delete updated.fbKey;await setCatalogItemX(key,updated,'set');await readServiceCatalogX();toast('تمت إضافة الخدمة للقسم والتحقق من Firebase.','ok');renderServices()}catch(e){if(note)note.textContent='فشل الإضافة: '+e.message;add.disabled=false}});
+        const deleteCategory=q('sada237-delete-category');deleteCategory?.addEventListener('click',async()=>{if(!confirm('تأكيد حذف القسم «'+selectedCategoryX+'» من جميع المنصات؟ ستُفك ارتباطاته من الخدمات وسيُزال تعريف القسم؛ الطلبات السابقة لن تُحذف.'))return;deleteCategory.disabled=true;try{const d=await apiX('/api/admin/catalog/sections',{method:'POST',body:{action:'delete',name:selectedCategoryX,confirmation:'DELETE_SECTION'}});await readServiceCatalogX();selectedCategoryX='';updateCategories();const note=q('sada237-service-tools');if(note)note.insertAdjacentHTML('beforeend','<div class="card" style="padding:12px;color:#5eead4">تم حذف القسم. سجلات الطلبات القديمة محفوظة.</div>');}catch(e){toast('تعذر حذف القسم: '+e.message,'err');deleteCategory.disabled=false}});
       };
       platformSelect.addEventListener('change',()=>{selectedCategoryX='';updateCategories()});categorySelect.addEventListener('change',renderServices);
       updateCategories();
@@ -14409,6 +14431,8 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 (function(){
   'use strict';
   const PLATFORMS=[['Instagram','إنستغرام'],['Tiktok','تيك توك'],['Youtube','يوتيوب'],['Facebook','فيسبوك'],['Telegram','تيليجرام'],['Twitter','تويتر / X'],['Snapchat','سناب شات'],['Whatsapp','واتساب'],['Linkedin','لينكدإن'],['Other','أخرى']];
+  const normalizeShopPlatform=value=>{const raw=String(value??'').trim();if(!raw)return '';const key=raw.toLocaleLowerCase('ar').normalize('NFKC').replace(/[\u200B-\u200F\uFEFF]/g,'').replace(/[أإآٱ]/g,'ا').replace(/ى/g,'ي').replace(/[\s_-]+/g,'');if(['all','__all__','الكل','جميعالمنصات','كلالمنصات'].includes(key))return 'all';const aliases={Instagram:['instagram','insta','انستغرام','انستجرام','انستقرام','انستا'],Tiktok:['tiktok','تيكتوك','تيك توك'],Youtube:['youtube','يوتيوب'],Facebook:['facebook','فيسبوك','فيس بوك','فيس'],Telegram:['telegram','تلجرام','تيليجرام','تليجرام','تلغرام'],Twitter:['twitter','x','x.com','تويتر'],Snapchat:['snapchat','سناب','سنابشات','سناب شات'],Whatsapp:['whatsapp','واتساب','واتس اب'],Linkedin:['linkedin','لينكدان','لينكدإن'],Other:['other','اخرى','أخرى','عام']};for(const [id,values] of Object.entries(aliases))if(values.some(v=>String(v).toLocaleLowerCase('ar').normalize('NFKC').replace(/[أإآٱ]/g,'ا').replace(/ى/g,'ي').replace(/[\s_-]+/g,'')===key))return id;return PLATFORMS.find(p=>p[0]===raw)?.[0]||''};
+  const shopPlatformAllowed=(row,platform)=>{const target=normalizeShopPlatform(platform);if(!target||target==='all')return true;let values=Array.isArray(row?.platforms)?row.platforms:[];if(!values.length){const fallback=row?.platform??row?.app??row?.serviceApp??row?.servicePlatform;values=fallback?[fallback]:[]}if(!values.length)return true;return values.some(v=>{const key=normalizeShopPlatform(v);return key==='all'||key===target})};
   const $=id=>document.getElementById(id);
   const escapeText=v=>String(v??'');
   async function api(path,opts={}){
@@ -14532,8 +14556,8 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
       const filters=node('div','card');filters.style.cssText='padding:10px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px';const platform=field(filters,'المنصة',select([['all','كل المنصات'],...PLATFORMS],'اختر المنصة'));platform.value='all';const cat=field(filters,'القسم',select([], 'كل الأقسام'));root.append(filters);const list=node('div','');list.style.cssText='display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr));gap:9px';root.appendChild(list);body.appendChild(root);
       let categories=[],services=[],wa='';
       const catPreview=node('div','');catPreview.style.cssText='display:flex;align-items:center;gap:9px;padding:0 2px;min-height:0';filters.appendChild(catPreview);
-      function fillCats(){const old=cat.value;cat.replaceChildren(new Option('كل الأقسام','all'));categories.filter(c=>{const pf=platform.value;return pf==='all'||(Array.isArray(c.platforms)&&(c.platforms.includes('all')||c.platforms.includes(pf)))}).forEach(c=>cat.add(new Option((c.parentKey?'↳ ':'')+c.name,c.key)));if([...cat.options].some(o=>o.value===old))cat.value=old;}
-      function render(){catPreview.replaceChildren();const chosen=categories.find(c=>String(c.key)===String(cat.value));if(chosen?.imageUrl){const img=node('img','');img.src=chosen.imageUrl;img.alt='صورة القسم '+chosen.name;img.style.cssText='width:58px;height:50px;object-fit:contain;border:1px solid var(--bd);border-radius:10px;padding:3px';const label=node('b','',chosen.name);label.style.cssText='font-size:12px;color:var(--t1)';catPreview.append(img,label)}list.replaceChildren();const pl=platform.value,ck=cat.value;const catsById=new Map(categories.map(c=>[String(c.key),c]));const rows=services.filter(s=>(pl==='all'||!Array.isArray(s.platforms)||s.platforms.includes('all')||s.platforms.includes(pl))&&(ck==='all'||String(s.categoryKey)===ck)&&catsById.get(String(s.categoryKey))?.enabled!==false);if(!rows.length){const empty=node('div','empty','لا توجد خدمات متاحة في هذا الاختيار حالياً.');list.appendChild(empty);return;}for(const s of rows){const card=node('div','card');card.style.cssText='padding:13px;border:1px solid var(--bd);background:linear-gradient(145deg,var(--bg1),var(--bg2));display:flex;flex-direction:column;gap:8px;min-width:0';if(s.imageUrl){const image=node('img','');image.src=s.imageUrl;image.alt='صورة '+(s.name||'الخدمة');image.loading='lazy';image.style.cssText='display:block;width:100%;height:125px;object-fit:contain;border-radius:12px;background:rgba(255,255,255,.025);border:1px solid var(--bd);padding:5px';card.appendChild(image)}const head=node('div','');head.style.cssText='display:flex;gap:8px;align-items:flex-start;justify-content:space-between';const info=node('div','');info.style.cssText='min-width:0;flex:1';const title=node('div','',s.name||'خدمة خاصة');title.style.cssText='font-size:13px;font-weight:950;color:var(--t0);line-height:1.5';const sub=node('div','',(catsById.get(String(s.categoryKey))?.name||'')+' · '+optionPlatformRows(s.platforms));sub.style.cssText='font-size:10px;color:var(--t2);margin-top:4px';info.append(title,sub);const price=node('b','',Number(s.priceIQD||0).toLocaleString('ar-IQ',{maximumFractionDigits:2})+' د.ع');price.style.cssText='font-size:12px;color:#5eead4;white-space:nowrap';head.append(info,price);card.appendChild(head);if(s.description){const desc=node('div','',s.description);desc.style.cssText='font-size:11px;line-height:1.9;color:var(--t1);overflow-wrap:anywhere';card.appendChild(desc)}const bounds=node('div','', 'الكمية: '+s.minQuantity+'–'+s.maxQuantity+' · السعر لكل وحدة');bounds.style.cssText='font-size:10px;color:var(--t2)';card.appendChild(bounds);const buy=node('button','btn bp btn-w','شراء الخدمة');buy.type='button';buy.addEventListener('click',()=>openBuyForm(s,pl==='all'?'':pl,wa));card.appendChild(buy);list.appendChild(card)}}
+      function fillCats(){const old=cat.value;cat.replaceChildren(new Option('كل الأقسام','all'));categories.filter(c=>shopPlatformAllowed(c,platform.value)).forEach(c=>cat.add(new Option((c.parentKey?'↳ ':'')+c.name,c.key)));if([...cat.options].some(o=>o.value===old))cat.value=old;}
+      function render(){catPreview.replaceChildren();const chosen=categories.find(c=>String(c.key)===String(cat.value));if(chosen?.imageUrl){const img=node('img','');img.src=chosen.imageUrl;img.alt='صورة القسم '+chosen.name;img.style.cssText='width:58px;height:50px;object-fit:contain;border:1px solid var(--bd);border-radius:10px;padding:3px';const label=node('b','',chosen.name);label.style.cssText='font-size:12px;color:var(--t1)';catPreview.append(img,label)}list.replaceChildren();const pl=platform.value,ck=cat.value;const catsById=new Map(categories.map(c=>[String(c.key),c]));const rows=services.filter(s=>shopPlatformAllowed(s,pl)&&(ck==='all'||String(s.categoryKey)===ck)&&shopPlatformAllowed(catsById.get(String(s.categoryKey))||{},pl)&&catsById.get(String(s.categoryKey))?.enabled!==false);if(!rows.length){const empty=node('div','empty','لا توجد خدمات متاحة في هذا الاختيار حالياً.');list.appendChild(empty);return;}for(const s of rows){const card=node('div','card');card.style.cssText='padding:13px;border:1px solid var(--bd);background:linear-gradient(145deg,var(--bg1),var(--bg2));display:flex;flex-direction:column;gap:8px;min-width:0';if(s.imageUrl){const image=node('img','');image.src=s.imageUrl;image.alt='صورة '+(s.name||'الخدمة');image.loading='lazy';image.style.cssText='display:block;width:100%;height:125px;object-fit:contain;border-radius:12px;background:rgba(255,255,255,.025);border:1px solid var(--bd);padding:5px';card.appendChild(image)}const head=node('div','');head.style.cssText='display:flex;gap:8px;align-items:flex-start;justify-content:space-between';const info=node('div','');info.style.cssText='min-width:0;flex:1';const title=node('div','',s.name||'خدمة خاصة');title.style.cssText='font-size:13px;font-weight:950;color:var(--t0);line-height:1.5';const sub=node('div','',(catsById.get(String(s.categoryKey))?.name||'')+' · '+optionPlatformRows(s.platforms));sub.style.cssText='font-size:10px;color:var(--t2);margin-top:4px';info.append(title,sub);const price=node('b','',Number(s.priceIQD||0).toLocaleString('ar-IQ',{maximumFractionDigits:2})+' د.ع');price.style.cssText='font-size:12px;color:#5eead4;white-space:nowrap';head.append(info,price);card.appendChild(head);if(s.description){const desc=node('div','',s.description);desc.style.cssText='font-size:11px;line-height:1.9;color:var(--t1);overflow-wrap:anywhere';card.appendChild(desc)}const bounds=node('div','', 'الكمية: '+s.minQuantity+'–'+s.maxQuantity+' · السعر لكل وحدة');bounds.style.cssText='font-size:10px;color:var(--t2)';card.appendChild(bounds);const buy=node('button','btn bp btn-w','شراء الخدمة');buy.type='button';buy.addEventListener('click',()=>openBuyForm(s,pl==='all'?'':pl,wa));card.appendChild(buy);list.appendChild(card)}}
       platform.addEventListener('change',()=>{fillCats();render()});cat.addEventListener('change',render);
       const refresh=node('button','btn bs2 btn-w','تحديث الخدمات');refresh.type='button';refresh.onclick=async()=>{refresh.disabled=true;try{const d=await api('/api/custom-shop');categories=d.categories||[];services=d.services||[];wa=d.supportWhatsappUrl||'';fillCats();render()}catch(e){list.replaceChildren(node('div','empty','تعذر تحميل الخدمات: '+e.message))}finally{refresh.disabled=false}};root.insertBefore(refresh,list);
       try{const d=await api('/api/custom-shop');categories=Array.isArray(d.categories)?d.categories:[];services=Array.isArray(d.services)?d.services:[];wa=String(d.supportWhatsappUrl||'');fillCats();render();}catch(e){list.replaceChildren(node('div','card','تعذر تحميل قسم من عندك: '+e.message));list.firstChild.style.cssText='padding:12px;color:#fb7185;line-height:1.8';}
@@ -14543,7 +14567,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
     if(!window.CU){toast('سجّل الدخول أولاً لشراء الخدمة.','wrn');return;}
     window.openModal('تأكيد شراء — '+String(service.name||'خدمة'),body=>{
       const form=node('div','');form.style.cssText='display:flex;flex-direction:column;gap:10px';const desc=node('div','card');desc.style.cssText='padding:10px;font-size:11px;line-height:1.8;color:var(--t1)';desc.textContent=String(service.description||'خدمة يدوية. بعد الشراء تواصل معنا عبر واتساب لإكمال التنفيذ.');form.appendChild(desc);
-      const platforms=(service.platforms||[]).includes('all')?PLATFORMS:PLATFORMS.filter(p=>(service.platforms||[]).includes(p[0]));const pl=field(form,'المنصة',select(platforms.map(x=>[x[0],x[1]]),'اختر المنصة'));if(platforms.some(p=>p[0]===platformSelected))pl.value=platformSelected;else if(platforms.length===1)pl.value=platforms[0][0];
+      const platforms=PLATFORMS.filter(p=>shopPlatformAllowed(service,p[0]));const pl=field(form,'المنصة',select(platforms.map(x=>[x[0],x[1]]),'اختر المنصة'));if(platforms.some(p=>p[0]===normalizeShopPlatform(platformSelected)))pl.value=normalizeShopPlatform(platformSelected);else if(platforms.length===1)pl.value=platforms[0][0];
       const quantity=field(form,'الكمية',input('number','الكمية',service.minQuantity));quantity.min=String(service.minQuantity||1);quantity.max=String(service.maxQuantity||1);quantity.step='1';quantity.value=String(service.minQuantity||1);
       let details=null;if(service.requiresInput!==false){details=field(form,String(service.inputLabel||'الرابط أو اسم الحساب'),input(service.inputType==='url'?'url':'text',service.inputPlaceholder||'أدخل البيانات المطلوبة'),true);details.autocomplete='off';details.maxLength=2000;}
       const total=node('div','card');total.style.cssText='padding:12px;text-align:center;border:1px solid rgba(94,234,212,.25)';const calc=()=>{const q=Number(quantity.value);const ok=Number.isSafeInteger(q)&&q>=Number(service.minQuantity||1)&&q<=Number(service.maxQuantity||1);total.textContent='الإجمالي: '+(ok?(Number(service.priceIQD||0)*q).toLocaleString('ar-IQ',{maximumFractionDigits:2}):'—')+' د.ع';};quantity.addEventListener('input',calc);calc();form.appendChild(total);
@@ -14568,7 +14592,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 
 
 <script id="sada-mastercard-final-253">
-(function(){'use strict';function fix(){const wallet=document.getElementById('pg-wallet'),card=document.getElementById('sadairaq-mastercard-card');if(!wallet||!card)return;const ath=wallet.querySelector('#sadairaq-athir-entry')?.closest('.card'),ac=wallet.querySelector('#sadairaq-ac-entry')?.closest('.card'),hist=wallet.querySelector('#pay-hist')?.closest('.card');if(ac&&ath&&ac.parentElement===ath.parentElement&&ac.nextElementSibling!==ath)ac.parentElement.insertBefore(ath,ac.nextElementSibling);if(ath&&card.previousElementSibling!==ath)ath.insertAdjacentElement('afterend',card);else if(!ath&&hist&&card.nextElementSibling!==hist)wallet.insertBefore(card,hist);const logo=card.querySelector('.sada-v158-mc-logo');if(logo&&logo.tagName!=='IMG'){const img=document.createElement('img');img.className='sada-v158-mc-logo';img.src='/mastercard-logo.png?v=1.6.82';img.alt='شعار ماستر كارد';img.loading='eager';logo.replaceWith(img)}const textNodes=[...card.querySelectorAll('strong,span')];for(const el of textNodes){if(/Mastercard/i.test(el.textContent||''))el.textContent=String(el.textContent||'').replace(/Mastercard/gi,'ماستر كارد')}}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(fix,180),{once:true});else setTimeout(fix,180);window.addEventListener('load',()=>setTimeout(fix,250));const w=document.getElementById('pg-wallet');if(w)new MutationObserver(()=>fix()).observe(w,{childList:true,subtree:true});window.SADA_MASTERCARD_253={fix};})();
+(function(){'use strict';function fix(){const wallet=document.getElementById('pg-wallet'),card=document.getElementById('sadairaq-mastercard-card');if(!wallet||!card)return;const ath=wallet.querySelector('#sadairaq-athir-entry')?.closest('.card'),ac=wallet.querySelector('#sadairaq-ac-entry')?.closest('.card'),hist=wallet.querySelector('#pay-hist')?.closest('.card');if(ac&&ath&&ac.parentElement===ath.parentElement&&ac.nextElementSibling!==ath)ac.parentElement.insertBefore(ath,ac.nextElementSibling);if(ath&&card.previousElementSibling!==ath)ath.insertAdjacentElement('afterend',card);else if(!ath&&hist&&card.nextElementSibling!==hist)wallet.insertBefore(card,hist);const logo=card.querySelector('.sada-v158-mc-logo');if(logo&&logo.tagName!=='IMG'){const img=document.createElement('img');img.className='sada-v158-mc-logo';img.src='/mastercard-logo.png?v=1.6.84';img.alt='شعار ماستر كارد';img.loading='eager';logo.replaceWith(img)}const textNodes=[...card.querySelectorAll('strong,span')];for(const el of textNodes){if(/Mastercard/i.test(el.textContent||''))el.textContent=String(el.textContent||'').replace(/Mastercard/gi,'ماستر كارد')}}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(fix,180),{once:true});else setTimeout(fix,180);window.addEventListener('load',()=>setTimeout(fix,250));const w=document.getElementById('pg-wallet');if(w)new MutationObserver(()=>fix()).observe(w,{childList:true,subtree:true});window.SADA_MASTERCARD_253={fix};})();
 </script>
 
 </body>
@@ -14602,13 +14626,13 @@ function installWalletPage(){const current=window.CU||(typeof CU!=='undefined'?C
 const oldLaunch=window.launchApp;if(typeof oldLaunch==='function'&&!oldLaunch.__sada1599Secure){const wrapped=function(){const out=oldLaunch.apply(this,arguments);return out};wrapped.__sada1599Secure=true;window.launchApp=wrapped}
 const oldLoadAdmin=window.loadAdminPage;if(typeof oldLoadAdmin==='function'&&!oldLoadAdmin.__sada1599Secure){const wrapped=function(){const out=oldLoadAdmin.apply(this,arguments);setTimeout(loadAdmMsgs,700);return out};wrapped.__sada1599Secure=true;window.loadAdminPage=wrapped}
 document.addEventListener('DOMContentLoaded',()=>{setTimeout(startUserChatPoll,1200)});
-window.SADA_V1599_FIXES={version:'1.6.82',features:['telegram-stable-server-derived-encryption-key','telegram-channel-id-normalization','server-authoritative-asiacell-topups','server-backed-recharge-statistics','server-backed-wallet-list-and-discount-updates','privileged-server-support-chat','privileged-server-provider-service-import']};
+window.SADA_V1599_FIXES={version:'1.6.84',features:['telegram-stable-server-derived-encryption-key','telegram-channel-id-normalization','server-authoritative-asiacell-topups','server-backed-recharge-statistics','server-backed-wallet-list-and-discount-updates','privileged-server-support-chat','privileged-server-provider-service-import']};
 })();
 </script>
 
 
 
-<script id="sada-1.6.82-remove-legacy-custom-shop-order-card">
+<script id="sada-1.6.84-remove-legacy-custom-shop-order-card">
 (()=>{'use strict';
  const pattern=/(?:اشتراكات\s*و\s*خدمات\s*خاصة|تصفح\s*الخدمات\s*الخاصة|خدمات\s+مستقلة\s+عن\s+المزود)/i;
  let observed=null,observer=null;
@@ -14668,7 +14692,7 @@ window.SADA_V1599_FIXES={version:'1.6.82',features:['telegram-stable-server-deri
 </style>
 <script id="sada174-version-fix">
 (function(){
-  const version='1.6.82';
+  const version='1.6.84';
   document.querySelectorAll('[data-sada-version]').forEach(el=>{el.textContent=version});
   const versionNodes=[...document.querySelectorAll('body *')].filter(el=>el.children.length===0 && /^1\.5\.73$/.test((el.textContent||'').trim()));
   versionNodes.forEach(el=>{if(!el.closest('script,style,code,pre'))el.textContent=version});
@@ -14780,7 +14804,7 @@ window.SADA_V1599_FIXES={version:'1.6.82',features:['telegram-stable-server-deri
   function init(){installAdapter(typeof DB!=='undefined'?DB:null);pinSupport();}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
   setInterval(()=>{if(document.hidden||!document.getElementById('adm-panel')?.classList.contains('on'))return;try{installAdapter(typeof DB!=='undefined'?DB:null);pinSupport()}catch(_){}},10000);
-  window.SADA_V1600={version:'1.6.82',features:['host-json-service-catalog','server-authoritative-wallet-ui','server-authoritative-orders-list','fixed-firebase-user-path-resolution','support-pinned-first','server-only-service-sync']};
+  window.SADA_V1600={version:'1.6.84',features:['host-json-service-catalog','server-authoritative-wallet-ui','server-authoritative-orders-list','fixed-firebase-user-path-resolution','support-pinned-first','server-only-service-sync']};
 })();
 </script>
 
@@ -14843,7 +14867,7 @@ window.SADA_V1599_FIXES={version:'1.6.82',features:['telegram-stable-server-deri
   function refreshStats(){const me=userNow();if(me&&me.u&&!document.hidden){window.refreshSadaUserBalance1600?.();window.loadHomeExtras67?.()}}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{pinSupportAndFinance();refreshStats()},{once:true});else{pinSupportAndFinance();refreshStats()}
   setInterval(()=>{try{pinSupportAndFinance();refreshStats();if($('adm-panel')?.classList.contains('on'))addUserFinanceButtons()}catch(_){}},25000);
-  window.SADA_V1600_FINAL={version:'1.6.82',features:['server-only-order-submission','no-browser-wallet-debits','server-backed-wallet-adjustments','server-backed-user-balance-refresh','telegram-fallback-diagnostics','pinned-support-inbox','hosting-file-service-catalog']};
+  window.SADA_V1600_FINAL={version:'1.6.84',features:['server-only-order-submission','no-browser-wallet-debits','server-backed-wallet-adjustments','server-backed-user-balance-refresh','telegram-fallback-diagnostics','pinned-support-inbox','hosting-file-service-catalog']};
 })();
 </script>
 
@@ -14900,12 +14924,12 @@ window.SADA_V1599_FIXES={version:'1.6.82',features:['telegram-stable-server-deri
       }else{const cat=selectedCategory();const found=Object.keys(allMeta).find(k=>normal(allMeta[k]?.name||'')===normal(cat));const key=found||categoryKey(cat),old=allMeta[key]||{};await api('/api/admin/catalog',{method:'POST',body:JSON.stringify({path:'categoryMeta/'+key,mode:'update',value:{name:cat,description,updatedAt:new Date().toISOString(),updatedBy:String(window.CU?.u||window.CU?.username||'admin')}})});allMeta[key]={...old,name:cat,description};window.SECTION_META=window.SECTION_META||{};window.SECTION_META[cat]={...(window.SECTION_META[cat]||{}),...allMeta[key],name:cat,description};note.textContent=description?'تم حفظ وصف القسم؛ سيظهر لجميع خدمات القسم قبل وصف المزود.':'تم مسح وصف القسم.';}
       try{window.toast?.('تم حفظ الوصف في Firebase وتأكيده من الخادم.','ok')}catch(_){}refreshDescription();
     }catch(e){note.textContent='فشل الحفظ: '+e.message;note.style.color='#fb8585'}finally{save.disabled=false;save.textContent=oldLabel}};
-    fetchDescriptions.onclick=async()=>{const cat=selectedCategory();const rows=currentServiceRows().filter(r=>platform.value==='all'||matchesPlatform(r.value,platform.value));if(!rows.length)return note.textContent='لا توجد خدمات ضمن الاختيار الحالي.';const groups=new Map();for(const r of rows){const v=r.value;if(!v.providerId||!(v.providerServiceId||v.smmpartyId||v.serviceId))continue;const id=String(v.providerId);if(!groups.has(id))groups.set(id,[]);groups.get(id).push(r)}if(!groups.size)return note.textContent='الخدمات المحددة لا تحتوي على معرّفات مزود محفوظة؛ لم يتم إجراء أي تعديل.';fetchDescriptions.disabled=true;const oldLabel=fetchDescriptions.textContent;fetchDescriptions.textContent='جارٍ جلب أوصاف المزود…';note.textContent='سيتم جلب كتالوج كل مزود مرة واحدة ثم تحديث أوصاف الخدمات المطابقة فقط.';try{const updates={};let updated=0,missing=0;for(const [providerId,providerRows] of groups){const d=await api('/api/admin/free-services/provider-catalog?providerId='+encodeURIComponent(providerId));const map=new Map((Array.isArray(d.services)?d.services:[]).map(x=>[String(x.service||''),String(x.description||'').trim()]));for(const r of providerRows){const id=String(r.value.providerServiceId||r.value.smmpartyId||r.value.serviceId||'');const description=map.get(id)||'';if(!description){missing++;continue}updates['services/'+r.key]={...r.value,providerDescription:description,desc:description,description,providerDescriptionUpdatedAt:new Date().toISOString()};updated++;}}if(Object.keys(updates).length){const out=await api('/api/admin/catalog/batch',{method:'POST',body:JSON.stringify({updates})});if(out.ok!==true||out.verified!==true)throw new Error('لم يؤكد الخادم حفظ دفعة الأوصاف في Firebase.');for(const [path,value] of Object.entries(updates)){const key=path.slice('services/'.length);if(allServices[key])allServices[key]={...allServices[key],...value};}}note.textContent='اكتمل جلب الأوصاف: تم تحديث '+updated+' خدمة، ولا يوجد وصف متاح لـ '+missing+' خدمة مطابقة. لم تُغيّر أسعار الخدمات أو أقسامها.';note.style.color='#34d399';try{window.toast?.('تم تحديث '+updated+' وصف من كتالوج المزودين.','ok')}catch(_){}populateCategories();}catch(e){note.textContent='تعذر جلب أوصاف المزود: '+e.message;note.style.color='#fb8585'}finally{fetchDescriptions.disabled=false;fetchDescriptions.textContent=oldLabel}};
+    fetchDescriptions.onclick=async()=>{const cat=selectedCategory();const rows=currentServiceRows().filter(r=>platform.value==='all'||matchesPlatform(r.value,platform.value));if(!rows.length)return note.textContent='لا توجد خدمات ضمن الاختيار الحالي.';const groups=new Map();for(const r of rows){const v=r.value;if(!v.providerId||!(v.providerServiceId||v.smmpartyId||v.serviceId))continue;const id=String(v.providerId);if(!groups.has(id))groups.set(id,[]);groups.get(id).push(r)}if(!groups.size)return note.textContent='الخدمات المحددة لا تحتوي على معرّفات مزود محفوظة؛ لم يتم إجراء أي تعديل.';fetchDescriptions.disabled=true;const oldLabel=fetchDescriptions.textContent;fetchDescriptions.textContent='جارٍ جلب أوصاف المزود…';note.textContent='سيتم جلب كتالوج كل مزود مرة واحدة ثم تحديث أوصاف الخدمات المطابقة فقط.';try{const updates={};let updated=0,missing=0;for(const [providerId,providerRows] of groups){const d=await api('/api/admin/free-services/provider-catalog?providerId='+encodeURIComponent(providerId));const map=new Map((Array.isArray(d.services)?d.services:[]).map(x=>[String(x.service||''),String(x.description||x.desc||x.providerDescription||x.serviceDescription||x.service_description||x.service_desc||x.serviceDesc||x.details||x.instructions||x.note||'').trim()]));for(const r of providerRows){const id=String(r.value.providerServiceId||r.value.smmpartyId||r.value.serviceId||'');const description=map.get(id)||'';if(!description){missing++;continue}updates['services/'+r.key]={...r.value,providerDescription:description,desc:description,description,providerDescriptionUpdatedAt:new Date().toISOString()};updated++;}}if(Object.keys(updates).length){const out=await api('/api/admin/catalog/batch',{method:'POST',body:JSON.stringify({updates})});if(out.ok!==true||out.verified!==true)throw new Error('لم يؤكد الخادم حفظ دفعة الأوصاف في Firebase.');for(const [path,value] of Object.entries(updates)){const key=path.slice('services/'.length);if(allServices[key])allServices[key]={...allServices[key],...value};}}note.textContent='اكتمل جلب الأوصاف: تم تحديث '+updated+' خدمة، ولا يوجد وصف متاح لـ '+missing+' خدمة مطابقة. لم تُغيّر أسعار الخدمات أو أقسامها.';note.style.color='#34d399';try{window.toast?.('تم تحديث '+updated+' وصف من كتالوج المزودين.','ok')}catch(_){}populateCategories();}catch(e){note.textContent='تعذر جلب أوصاف المزود: '+e.message;note.style.color='#fb8585'}finally{fetchDescriptions.disabled=false;fetchDescriptions.textContent=oldLabel}};
   }
   const oldAdm=window.admNavTo;if(typeof oldAdm==='function'&&!oldAdm.__sada1602DescWrapped){const wrapped=function(sub,el){if(sub==='sada-service-descriptions'){install();showEditor();return}return oldAdm.apply(this,arguments)};wrapped.__sada1602DescWrapped=true;window.admNavTo=wrapped}
   const oldLaunch=window.launchApp;if(typeof oldLaunch==='function'&&!oldLaunch.__sada1602DescWrapped){const wrapped=function(){const r=oldLaunch.apply(this,arguments);setTimeout(install,250);return r};wrapped.__sada1602DescWrapped=true;window.launchApp=wrapped}
   function init(){install()};if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();setInterval(()=>{if(document.hidden||!document.getElementById('adm-panel')?.classList.contains('on')||!document.getElementById('adm-sub-sada-service-descriptions')?.classList.contains('on'))return;try{install()}catch(_){}},15000);
-  window.SADA_SERVICE_DESCRIPTIONS={version:'1.6.82',storage:'firebase+host',features:['provider-description-preservation','manual-service-description','category-description-fallback']};
+  window.SADA_SERVICE_DESCRIPTIONS={version:'1.6.84',storage:'firebase+host',features:['provider-description-preservation','manual-service-description','category-description-fallback']};
 })();
 </script>
 
@@ -15087,7 +15111,7 @@ window.SADA_V1599_FIXES={version:'1.6.82',features:['telegram-stable-server-deri
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
  setTimeout(()=>{syncHostMeta1605().then(changed=>{if(changed)rebuildCatalogSelectors1605()});installHostCatalogRefresh1605()},1600);
  setInterval(()=>{if(document.hidden)return;try{mountOrders();installServiceWrapper();installProviderCheck();installHostCatalogRefresh1605()}catch(_){}},45000);
- window.SADA_V1605={version:'1.6.82',features:['premium-order-history','arabic-order-status','visible-service-description','custom-category-service-images','firebase-wallet-key-fix','live-provider-api-diagnostics','exact-name-unique-id-reconcile']};
+ window.SADA_V1605={version:'1.6.84',features:['premium-order-history','arabic-order-status','visible-service-description','custom-category-service-images','firebase-wallet-key-fix','live-provider-api-diagnostics','exact-name-unique-id-reconcile']};
 })();
 </script>
 
@@ -15286,7 +15310,7 @@ function polishOrderForm(){
 }
 function init(){bindAsiaCell();polishOrderForm();const entry=$('sadairaq-ac-entry');if(entry)new MutationObserver(bindAsiaCell).observe(entry,{attributes:true,attributeFilter:['onclick']});const order=$('pg-order');if(order)new MutationObserver(()=>polishOrderForm()).observe(order,{childList:true,subtree:true});}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
-window.SADA1637_UI_FIXES={version:'1.6.82',openAsiaCell:openWizard,polishOrderForm,onLogout:()=>{clearState();$('sada1637-asiacell-wizard-overlay')?.remove();document.body.style.removeProperty('overflow');}};
+window.SADA1637_UI_FIXES={version:'1.6.84',openAsiaCell:openWizard,polishOrderForm,onLogout:()=>{clearState();$('sada1637-asiacell-wizard-overlay')?.remove();document.body.style.removeProperty('overflow');}};
 })();
 </script>
 
@@ -15330,7 +15354,7 @@ window.SADA1637_UI_FIXES={version:'1.6.82',openAsiaCell:openWizard,polishOrderFo
 .sada-sidebar-version{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:10px;padding:10px 8px;border-top:1px solid var(--bd);color:var(--t2);font-size:10px;font-weight:750;letter-spacing:.15px}.sada-sidebar-version i{color:var(--blue)}.sada-sidebar-version b{display:inline-flex;align-items:center;justify-content:center;min-width:34px;padding:4px 8px;border:1px solid rgba(91,164,255,.25);border-radius:999px;background:rgba(91,164,255,.08);color:var(--blue);font-size:11px;font-weight:950}.sb-foot{padding-bottom:max(10px,env(safe-area-inset-bottom))}
 </style>
 <script id="sada-v2-sidebar-only-version">
-(function(){'use strict';const shown='2.56';function apply(){const badge=document.getElementById('sadairaq-version-badge');if(badge){badge.style.setProperty('display','none','important');badge.setAttribute('aria-hidden','true')}const v=document.querySelector('#sada-sidebar-version b');if(v&&v.textContent.trim()!==shown)v.textContent=shown;document.title='صدى العراق';}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',apply,{once:true});else apply();window.addEventListener('pageshow',apply);})();
+(function(){'use strict';const shown='2.58';function apply(){const badge=document.getElementById('sadairaq-version-badge');if(badge){badge.style.setProperty('display','none','important');badge.setAttribute('aria-hidden','true')}const v=document.querySelector('#sada-sidebar-version b');if(v&&v.textContent.trim()!==shown)v.textContent=shown;document.title='صدى العراق';}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',apply,{once:true});else apply();window.addEventListener('pageshow',apply);})();
 </script>
 
 <script id="sada-free-services-21">
@@ -15534,12 +15558,23 @@ window.SADA1637_UI_FIXES={version:'1.6.82',openAsiaCell:openWizard,polishOrderFo
   function copyText(text){return navigator.clipboard?.writeText(String(text||'')).then(()=>true).catch(()=>false)||Promise.resolve(false);}
   async function showOrderSuccess(data){
     const message=String(data.supportMessage||data.order?.supportMessage||'');
-    try{window.openModal('تم إنشاء طلب الخدمة الخاصة #'+String(data.publicOrderNo||''),body=>{
-      const root=document.createElement('div');root.style.cssText='display:flex;flex-direction:column;gap:10px';
-      const note=document.createElement('div');note.className='card';note.style.cssText='padding:12px;border:1px solid rgba(167,139,250,.28);font-size:11px;line-height:1.9;color:var(--t1)';note.textContent='تم تسجيل الطلب داخل صدى العراق. لن يُنفذ تلقائياً؛ انسخ الرسالة التالية وأرسلها إلى الدعم الفني حتى تتم متابعة طلبك.';root.appendChild(note);
-      const pre=document.createElement('pre');pre.style.cssText='margin:0;padding:12px;border:1px solid var(--bd);border-radius:12px;background:var(--bg2);white-space:pre-wrap;overflow-wrap:anywhere;direction:rtl;text-align:right;font:12px/1.9 inherit;color:var(--t0);max-height:42vh;overflow:auto';pre.textContent=message;root.appendChild(pre);
-      const copy=document.createElement('button');copy.type='button';copy.className='btn bok btn-w';copy.innerHTML='<i class="fas fa-copy"></i> نسخ رسالة الطلب';copy.onclick=async()=>{let ok=await copyText(message);if(!ok){const ta=document.createElement('textarea');ta.value=message;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();try{ok=document.execCommand('copy')}catch(_){}ta.remove()}toast(ok?'تم نسخ رسالة الطلب كاملة. أرسلها للدعم الفني.':'تعذر النسخ التلقائي؛ اضغط مطولاً على نص الرسالة لنسخه. ',ok?'ok':'err')};root.appendChild(copy);body.appendChild(root);
-    });}catch(_){toast('تم إنشاء الطلب #'+String(data.publicOrderNo||'')+'. انسخ رسالة الدعم من قسم طلباتي.','ok');}
+    const orderNo=String(data.publicOrderNo||data.order?.publicOrderNo||'');
+    const serviceName=String(data.serviceName||data.order?.serviceName||'الخدمة اليدوية');
+    const total=Number(data.totalIQD??data.order?.totalIQD??data.order?.total??0);
+    const quantity=Number(data.quantity??data.order?.quantity??0);
+    const wa=String(data.supportWhatsappUrl||'https://wa.me/9647762267959');
+    try{window.openModal('مبروك! تم شراء الخدمة',body=>{
+      const root=document.createElement('div');root.style.cssText='display:flex;flex-direction:column;gap:12px;text-align:center';
+      const icon=document.createElement('div');icon.textContent='🎉';icon.style.cssText='font-size:44px;line-height:1.2';root.appendChild(icon);
+      const title=document.createElement('div');title.textContent='تم الشراء بنجاح';title.style.cssText='font-size:18px;font-weight:950;color:#5eead4';root.appendChild(title);
+      const summary=document.createElement('div');summary.textContent='مبروك عليك! تم تسجيل طلب «'+serviceName+'» بنجاح. رقم الطلب: '+orderNo+(quantity?' · الكمية: '+quantity:'')+' · الإجمالي: '+total.toLocaleString('ar-IQ',{maximumFractionDigits:2})+' د.ع.';summary.style.cssText='font-size:12px;line-height:2;color:var(--t1);overflow-wrap:anywhere';root.appendChild(summary);
+      const note=document.createElement('div');note.className='card';note.textContent='هذه الخدمة تُنفّذ يدوياً بدون مزوّد خارجي. راسلنا عبر واتساب وأرسل رقم الطلب حتى نكمل خدمتك.';note.style.cssText='padding:12px;font-size:11px;line-height:1.9';root.appendChild(note);
+      const anchor=document.createElement('a');anchor.className='btn bok btn-w';anchor.href=wa;anchor.target='_blank';anchor.rel='noopener noreferrer';anchor.style.cssText='display:block;text-decoration:none;text-align:center';anchor.innerHTML='<i class="fab fa-whatsapp"></i> راسلنا عبر واتساب';root.appendChild(anchor);
+      if(message){const pre=document.createElement('pre');pre.style.cssText='margin:0;padding:10px;border:1px solid var(--bd);border-radius:12px;background:var(--bg2);white-space:pre-wrap;overflow-wrap:anywhere;direction:rtl;text-align:right;font:11px/1.9 inherit;color:var(--t0);max-height:25vh;overflow:auto';pre.textContent=message;root.appendChild(pre);
+        const copy=document.createElement('button');copy.type='button';copy.className='btn bs2 btn-w';copy.innerHTML='<i class="fas fa-copy"></i> نسخ رسالة الطلب';copy.onclick=async()=>{let ok=await copyText(message);if(!ok){const ta=document.createElement('textarea');ta.value=message;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();try{ok=document.execCommand('copy')}catch(_){}ta.remove()}toast(ok?'تم نسخ رسالة الطلب.':'تعذر النسخ التلقائي؛ اضغط مطولاً على نص الرسالة لنسخه.',ok?'ok':'err')};root.appendChild(copy);
+      }
+      const close=document.createElement('button');close.type='button';close.className='btn bs2 btn-w';close.textContent='إغلاق';close.onclick=()=>window.closeModal?.();root.appendChild(close);body.appendChild(root);
+    });}catch(_){toast('مبروك! تم إنشاء الطلب #'+orderNo+'. تواصل مع الدعم عبر واتساب لإكمال الخدمة.','ok');}
   }
   function normaliseUserLink(raw){let v=String(raw||'').trim();if(!/^https?:\/\//i.test(v))v='https://'+v;try{const u=new URL(v);if(!['https:','http:'].includes(u.protocol)||!u.hostname.includes('.')||u.username||u.password)return '';return u.href}catch(_){return '';}}
   let submitting=false;
@@ -15736,4 +15771,97 @@ window.SADA1637_UI_FIXES={version:'1.6.82',openAsiaCell:openWizard,polishOrderFo
 </style>
 <script id="sada254-hide-admin-customer-message-panels">
 (function(){function hide(){const panel=document.getElementById('adm-panel');if(!panel)return;panel.querySelectorAll('.adm-sb-item[data-sub="messages"]').forEach(x=>x.remove());const page=document.getElementById('adm-sub-messages');if(page)page.remove();const preview=document.getElementById('adm-msgs-preview');const card=preview?.closest('.card');if(card)card.remove();}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',hide,{once:true});else hide();const panel=document.getElementById('adm-panel');if(panel&&window.MutationObserver)new MutationObserver(hide).observe(panel,{childList:true,subtree:true});window.SADA_ADMIN_CUSTOMER_MESSAGES_HIDDEN_254=true;})();
+</script>
+
+
+<!-- Sada Iraq 1.6.84 final UI enforcement: remove legacy order promo, use Mastercard image, bind native services page to platform-first manager -->
+<style id="sada1683-final-ui-style">
+.sada-v257-mastercard-image{width:78px!important;height:52px!important;max-width:78px!important;object-fit:contain!important;object-position:center!important;display:block!important;flex:0 0 78px!important;box-sizing:border-box!important;border:1px solid #e5e7eb!important;border-radius:10px!important;padding:4px!important;background:#fff!important;mix-blend-mode:normal!important;color:transparent!important}
+</style>
+<script id="sada-1.6.84-final-ui-enforcement">
+(()=>{'use strict';
+ const BUILD='SADA-1.6.84-MANUAL-SUCCESS-WHATSAPP-20261020';
+ const $=id=>document.getElementById(id);
+ const oldPromo=/(?:اشتراكات\s*و\s*خدمات\s*خاصة|تصفح\s*الخدمات\s*الخاصة|خدمات\s+مستقلة\s+عن\s+المزود)/i;
+ const browse=/تصفح\s*الخدمات\s*الخاصة/i;
+ function removeLegacyOrderPromo(){
+   const page=$('pg-order');
+   // Remove legacy IDs wherever an old script tries to recreate the card, but preserve the sidebar entry.
+   document.querySelectorAll('#sada-custom-shop-user-entry,#sada-custom-shop-order-entry,#sada-custom-shop-promo,.sada-custom-shop-order-entry,[data-sada-custom-shop-order]').forEach(n=>{
+     if(n.closest('#adm-panel,.sb-body,[role="dialog"],.modal-overlay,.modal-wrap'))return;
+     n.remove();
+   });
+   if(!page)return;
+   // Some historical scripts append the card outside #pg-order. Its distinctive CTA identifies only the old promo.
+   const candidates=[...document.body.querySelectorAll('.card,section,article,aside,div')].filter(el=>{
+     if(el.closest('#adm-panel,.sb-body,[role="dialog"],.modal-overlay,.modal-wrap'))return false;
+     if(el.id==='order-form-card'||el.querySelector('#order-form-card,#order-plat-grid'))return false;
+     const text=String(el.innerText||el.textContent||'').replace(/\s+/g,' ').trim();
+     return oldPromo.test(text)&&browse.test(text)&&text.length<1800;
+   });
+   const targetCards=new Set();
+   for(const el of candidates){
+     const card=el.closest('.card')||el.closest('[data-sada-custom-shop-order]')||el.closest('section,article,aside')||el;
+     if(!card||card===page||card.id==='pg-order'||card.querySelector?.('#order-form-card,#order-plat-grid'))continue;
+     if(card.closest('#adm-panel,.sb-body,[role="dialog"],.modal-overlay,.modal-wrap'))continue;
+     // Never remove containers holding the real order selector/form, even if their parent text matches.
+     if(card.contains(page)||card.contains($('order-form-card'))||card.contains($('order-plat-grid')))continue;
+     targetCards.add(card);
+   }
+   for(const card of targetCards){if(card.isConnected)card.remove();}
+ }
+ let cleanQueued=false;
+ function queueClean(){if(cleanQueued)return;cleanQueued=true;queueMicrotask(()=>{cleanQueued=false;try{removeLegacyOrderPromo()}catch(e){console.warn('legacy order promo cleanup',e)}})}
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',queueClean,{once:true});else queueClean();
+ if(document.body&&window.MutationObserver)new MutationObserver(queueClean).observe(document.body,{childList:true,subtree:true,characterData:true});
+ function fixMastercard(){
+   const wallet=$('pg-wallet');if(!wallet)return;
+   const card=$('sadairaq-mastercard-card');if(!card)return;
+   const src='/mastercard-logo.png?v=1.6.84';
+   const replace=(el)=>{
+     if(!el||!el.isConnected)return;
+     if(el.tagName==='IMG'){
+       el.src=src;el.alt='شعار ماستر كارد بالدائرتين الحمراء والبرتقالية';el.loading='eager';el.className='sada-v257-mastercard-image';return;
+     }
+     const img=document.createElement('img');img.src=src;img.alt='شعار ماستر كارد بالدائرتين الحمراء والبرتقالية';img.loading='eager';img.decoding='async';img.className='sada-v257-mastercard-image';el.replaceWith(img);
+   };
+   card.querySelectorAll('.sada-v152-mc-brand,.sada-v158-mc-logo,.sada-mc-logo,.sada-mc-mini,.sada-mc-mini-logo,.sada-mc-brand').forEach(replace);
+   // Repair old markup that had only a dark rounded rectangle saying “Mastercard”.
+   const head=card.querySelector('button');
+   if(head){
+     const first=[...head.children].find(el=>/mastercard/i.test(String(el.textContent||''))||/mc-(?:logo|mini|brand)/i.test(String(el.className||'')));
+     if(first && first.tagName!=='IMG')replace(first);
+     else if(!head.querySelector('img.sada-v257-mastercard-image')){
+       const img=document.createElement('img');img.src=src;img.alt='شعار ماستر كارد';img.className='sada-v257-mastercard-image';img.loading='eager';head.insertBefore(img,head.firstChild);
+     }
+     head.querySelectorAll('strong,span').forEach(el=>{if(el.children.length===0&&/mastercard/i.test(el.textContent||''))el.textContent=el.textContent.replace(/mastercard/ig,'ماستر كارد')});
+   }
+ }
+ function bindWalletObserver(){const wallet=$('pg-wallet');if(wallet&&!wallet.__sada257McObserver&&window.MutationObserver){wallet.__sada257McObserver=new MutationObserver(()=>{try{fixMastercard()}catch(_){}});wallet.__sada257McObserver.observe(wallet,{childList:true,subtree:true});}fixMastercard();}
+ const previousRender=window.addMastercardUserCard||window.addMC||window.renderWallet158;
+ function finalRenderMastercard(){let result;try{if(typeof previousRender==='function')result=previousRender.apply(this,arguments)}catch(e){console.warn('Mastercard renderer fallback',e)}setTimeout(bindWalletObserver,0);setTimeout(bindWalletObserver,250);return result}
+ window.addMastercardUserCard=finalRenderMastercard;window.addMC=finalRenderMastercard;
+ const nav0=window.nav;if(typeof nav0==='function'&&!nav0.__sada1683McOrderFix){const wrapped=function(name){const result=nav0.apply(this,arguments);if(name==='wallet'){setTimeout(bindWalletObserver,25);setTimeout(bindWalletObserver,250)}if(name==='order'){setTimeout(queueClean,0);setTimeout(queueClean,150);setTimeout(queueClean,700)}return result};wrapped.__sada1683McOrderFix=true;window.nav=wrapped;}
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{bindWalletObserver();queueClean()},{once:true});else {bindWalletObserver();queueClean()}
+ // Force the visible/original “إدارة الخدمات” panel to use the same platform-first manager as the newer page.
+ function bindNativeServicesManager(){
+   const pages=window.__SADA237_ADMIN_PAGES__;
+   if(!pages||typeof pages.loadServices!=='function')return false;
+   const prior=window.loadAdmSvcsFull;
+   const run=async function(){
+     const target=$('adm-svcs-content');
+     if(target)return pages.loadServices('adm-svcs-content');
+     return prior&&prior!==run?prior.apply(this,arguments):undefined;
+   };
+   run.__sada1683PlatformFirst=true;window.loadAdmSvcsFull=run;return true;
+ }
+ function wrapAdminNav(){
+   const base=window.admNavTo;if(typeof base!=='function'||base.__sada1683PlatformFirst)return;
+   const wrapped=function(sub,el){const out=base.apply(this,arguments);if(sub==='services')setTimeout(()=>{bindNativeServicesManager();window.loadAdmSvcsFull?.()},80);if(sub==='sada237-services')setTimeout(()=>window.__SADA237_ADMIN_PAGES__?.loadServices?.(),80);return out};
+   wrapped.__sada1683PlatformFirst=true;window.admNavTo=wrapped;
+ }
+ function init(){bindNativeServicesManager();wrapAdminNav();if($('adm-svcs-content')&&$('adm-sub-services')?.classList.contains('on'))window.loadAdmSvcsFull?.();}
+ init();if(window.addEventListener)window.addEventListener('load',init);if(document.body&&window.MutationObserver){let queued=false;new MutationObserver(()=>{if(queued)return;queued=true;setTimeout(()=>{queued=false;init()},100)}).observe(document.body,{childList:true,subtree:true})}
+ window.SADA_FINAL_UI_1683={buildId:BUILD,removeLegacyOrderPromo,fixMastercard,loadServicesPlatformFirst:()=>window.loadAdmSvcsFull?.()};
+})();
 </script>
