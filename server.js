@@ -44,8 +44,8 @@ function purgeCatalogServiceSnapshots(){
 }
 purgeCatalogServiceSnapshots();
 const APP_NAME = 'صدى العراق';
-const APP_VERSION = '1.6.85';
-const BUILD_ID = 'SADA-1.6.85-PROVIDERLESS-ORDER-FIX-20261020';
+const APP_VERSION = '1.6.86';
+const BUILD_ID = 'SADA-1.6.86-FLAT-ORDER-PRICE-20261020';
 // Keep the owner's admin identity available after packaging, but store only a scrypt hash
 // in the project. Railway variables can still explicitly override this packaged credential.
 function loadBundledAdminAuth(){
@@ -3736,13 +3736,13 @@ function adminManualServicePublic(row,key=''){
   const description=String(row.description||row.desc||'');
   const category=String(row.category||'خدمات خاصة').trim();
   const platform=String(row.platform||row.serviceApp||'Other');
-  const rate=Number(row.sellingUsd??row.rateUsd??row.rate??0);
+  const rate=Number(row.orderPriceUsd??row.fixedPriceUsd??row.sellingUsd??row.rateUsd??row.rate??0);
   return {
     key:String(key||row.key||row.fbKey||''),fbKey:String(key||row.key||row.fbKey||''),id:siteServiceId,siteServiceId,internalServiceId:siteServiceId,sadaServiceId:siteServiceId,
     name:String(row.name||'خدمة خاصة'),description,desc:description,descriptionOverride:description,
     category,groups:[category],categories:[category],platform,app:platform,serviceApp:platform,
     providerId:'manual-support',providerName:'التنفيذ عبر الدعم الفني',providerServiceId:'',serviceId:siteServiceId,smmpartyId:'',
-    sellingUsd:Number.isFinite(rate)&&rate>=0?rate:0,rateUsd:Number.isFinite(rate)&&rate>=0?rate:0,price:Number.isFinite(rate)&&rate>=0?rate*FIXED_RATE:0,
+    sellingUsd:Number.isFinite(rate)&&rate>=0?rate:0,rateUsd:Number.isFinite(rate)&&rate>=0?rate:0,orderPriceUsd:Number.isFinite(rate)&&rate>=0?rate:0,fixedPriceUsd:Number.isFinite(rate)&&rate>=0?rate:0,manualPriceMode:'fixed_order',price:Number.isFinite(rate)&&rate>=0?rate*FIXED_RATE:0,
     min:Math.max(1,Math.floor(Number(row.min)||1)),max:Math.max(Math.max(1,Math.floor(Number(row.min)||1)),Math.floor(Number(row.max)||100)),
     perAccountLimit:Math.max(0,Math.floor(Number(row.perAccountLimit)||0)),enabled:row.enabled!==false,providerAvailable:true,
     serviceKind:'manual_support',manualService:true,adminManualService:true,adminManualServiceKey:String(key||row.key||row.fbKey||''),source:'manual-support'
@@ -4880,12 +4880,12 @@ async function handleManualSupportOrder(req,res,b,username,orderSession){
   try{const u=new URL(link);if(!['https:','http:'].includes(u.protocol)||!u.hostname.includes('.')||u.username||u.password)return {status:422,body:{ok:false,error:'الرابط غير صالح.',stage:'manual_validate'}};}catch(_){return {status:422,body:{ok:false,error:'الرابط غير صالح.',stage:'manual_validate'}};}
   const min=Math.max(1,Math.floor(Number(svc.min)||1)),max=Math.max(min,Math.floor(Number(svc.max)||100));
   if(quantity<min||quantity>max)return {status:422,body:{ok:false,error:'الكمية خارج حدود الخدمة المحددة.',stage:'manual_quantity',min,max}};
-  const serviceRate=Number(svc.sellingUsd??svc.rateUsd??0);
-  if(!Number.isFinite(serviceRate)||serviceRate<0)return {status:409,body:{ok:false,error:'سعر الخدمة غير مضبوط؛ لم يُنشأ الطلب.',stage:'manual_price'}};
+  const serviceRate=Number(svc.orderPriceUsd??svc.fixedPriceUsd??svc.sellingUsd??svc.rateUsd??((Number(svc.price)||0)/FIXED_RATE));
+  if(!Number.isFinite(serviceRate)||serviceRate<0)return {status:409,body:{ok:false,error:'السعر الثابت للطلب غير مضبوط؛ لم يُنشأ الطلب.',stage:'manual_price'}};
   const isAdminSession=orderSession?.role==='admin';let verifiedUser=null,walletUserPath='',localUser=readJSON('users.json',{users:{}}).users?.[username]||{};
   if(!isAdminSession){try{verifiedUser=await findRemoteUserByUsername(username);walletUserPath=String(verifiedUser?.firebasePath||'');}catch(e){return {status:503,body:{ok:false,error:'تعذر التحقق من رصيد المستخدم في Firebase؛ لم يتم إنشاء الطلب.',stage:'manual_wallet_lookup'}};}if(!verifiedUser?.user||!walletUserPath)return {status:503,body:{ok:false,error:'لم يُعثر على سجل رصيد المستخدم في Firebase؛ لم يتم إنشاء الطلب.',stage:'manual_wallet_lookup'}};}
   const userDiscount=Math.max(0,Math.min(100,Number(verifiedUser?.user?.discountPct??verifiedUser?.user?.discount??localUser.discountPct??orderSession?.discountPct??0)||0));
-  const calculatedChargeUsd=Number((Math.max(0,quantity/1000*serviceRate*(1-userDiscount/100))).toFixed(6));
+  const calculatedChargeUsd=Number((Math.max(0,serviceRate*(1-userDiscount/100))).toFixed(6));
   const chargedUsd=isAdminSession?0:calculatedChargeUsd,chargeIQD=Number((chargedUsd*FIXED_RATE).toFixed(4));
   let reservation=null;
   if(!isAdminSession){
@@ -4896,7 +4896,7 @@ async function handleManualSupportOrder(req,res,b,username,orderSession){
   try{publicOrderNo=await nextPublicOrderNumber();}
   catch(e){if(reservation?.ok){const rel=await releaseManualSupportUsageAndWallet(walletUserPath,username,serviceKey,localId);if(!rel.ok)return {status:503,body:{ok:false,uncertain:true,error:'تعذر تخصيص رقم الطلب وتعذر تأكيد استرجاع الحجز؛ تواصل مع الدعم قبل إعادة المحاولة.',stage:'manual_release'}};}return {status:503,body:{ok:false,error:'تعذر تخصيص رقم طلب؛ لم يتم حفظ الطلب.',stage:'manual_public_number'}};}
   const createdAt=nowISO(),profile=verifiedUser?.user||localUser||{},siteOrderId=localId;
-  const order={id:siteOrderId,localId,publicOrderNo,user:username,userName:String(profile.fullName||profile.displayName||profile.name||profile.userName||profile.username||username),memberId:String(profile.id||profile.userId||profile.user_id||profile.uid||profile.firebaseUid||profile.authUid||username),orderSource:'app',origin:'app',providerId:'manual-support',providerName:'التنفيذ عبر الدعم الفني',providerOrderId:'',providerServiceId:'',serviceId:siteServiceId,siteServiceId,manualServiceKey:serviceKey,serviceKind:'manual_support',manualSupport:true,manualSupportStatus:'awaiting_contact',serviceName:String(svc.name||'خدمة خاصة'),description:String(svc.description||svc.desc||''),serviceApp:String(svc.platform||svc.serviceApp||'Other'),platform:String(svc.platform||svc.serviceApp||'Other'),category:String(svc.category||''),link,quantity,unitSellingUsd:serviceRate,discountPct:userDiscount,chargeUsd:chargedUsd,sellingPriceUsd:calculatedChargeUsd,quotedChargeUsd:calculatedChargeUsd,total:chargeIQD,totalIQD:chargeIQD,status:'pending',statusText:'بانتظار التواصل مع الدعم',billingMode:isAdminSession?'admin-test':'user',free:calculatedChargeUsd<=0,createdAt,updatedAt:createdAt,providerCostUnknown:true};
+  const order={id:siteOrderId,localId,publicOrderNo,user:username,userName:String(profile.fullName||profile.displayName||profile.name||profile.userName||profile.username||username),memberId:String(profile.id||profile.userId||profile.user_id||profile.uid||profile.firebaseUid||profile.authUid||username),orderSource:'app',origin:'app',providerId:'manual-support',providerName:'التنفيذ عبر الدعم الفني',providerOrderId:'',providerServiceId:'',serviceId:siteServiceId,siteServiceId,manualServiceKey:serviceKey,serviceKind:'manual_support',manualSupport:true,manualSupportStatus:'awaiting_contact',serviceName:String(svc.name||'خدمة خاصة'),description:String(svc.description||svc.desc||''),serviceApp:String(svc.platform||svc.serviceApp||'Other'),platform:String(svc.platform||svc.serviceApp||'Other'),category:String(svc.category||''),link,quantity,unitSellingUsd:serviceRate,orderPriceUsd:serviceRate,manualPriceMode:'fixed_order',discountPct:userDiscount,chargeUsd:chargedUsd,sellingPriceUsd:calculatedChargeUsd,quotedChargeUsd:calculatedChargeUsd,total:chargeIQD,totalIQD:chargeIQD,status:'pending',statusText:'بانتظار التواصل مع الدعم',billingMode:isAdminSession?'admin-test':'user',free:calculatedChargeUsd<=0,createdAt,updatedAt:createdAt,providerCostUnknown:true};
   order.supportMessage=manualSupportMessage(order);
   try{await persistOrderToFirebase(order);}
   catch(e){
@@ -4996,18 +4996,18 @@ async function routeAPI(req,res,urlObj){
     }
     if(action!=='save')return json(res,422,{ok:false,error:'الإجراء غير مدعوم.'});
     const name=String(b.name||'').trim(),description=String(b.description||'').trim(),platform=String(b.platform||'Other').trim(),category=String(b.category||'').trim();
-    const min=Math.floor(Number(b.min)),max=Math.floor(Number(b.max)),perAccountLimit=Math.floor(Number(b.perAccountLimit)),sellingUsd=Number(b.sellingUsd);
+    const min=Math.floor(Number(b.min)),max=Math.floor(Number(b.max)),perAccountLimit=Math.floor(Number(b.perAccountLimit)),sellingUsd=Number(b.orderPriceUsd??b.fixedPriceUsd??b.sellingUsd);
     if(!name||name.length>200||!category||category.length>160)return json(res,422,{ok:false,error:'أدخل اسم الخدمة والقسم. الحد الأقصى للاسم 200 حرف والقسم 160 حرفاً.'});
     if(description.length>4000)return json(res,422,{ok:false,error:'الوصف طويل جداً؛ الحد الأقصى 4000 حرف.'});
     if(!Number.isSafeInteger(min)||min<1||!Number.isSafeInteger(max)||max<min||max>1000000000)return json(res,422,{ok:false,error:'حدود الكمية غير صحيحة.'});
     if(!Number.isSafeInteger(perAccountLimit)||perAccountLimit<0||perAccountLimit>100)return json(res,422,{ok:false,error:'حد الطلبات لكل حساب يجب أن يكون بين 0 و100. استخدم صفر لإلغاء الحد.'});
-    if(!Number.isFinite(sellingUsd)||sellingUsd<0||sellingUsd>1000000)return json(res,422,{ok:false,error:'سعر البيع لكل 1000 يجب أن يكون رقماً صحيحاً غير سالب.'});
+    if(!Number.isFinite(sellingUsd)||sellingUsd<0||sellingUsd>1000000)return json(res,422,{ok:false,error:'السعر الثابت للطلب بالدولار يجب أن يكون رقماً صحيحاً غير سالب.'});
     const validPlatforms=new Set(['Instagram','Tiktok','Youtube','Facebook','Telegram','Twitter','Snapchat','Whatsapp','Linkedin','Other']);if(!validPlatforms.has(platform))return json(res,422,{ok:false,error:'المنصة المختارة غير مدعومة.'});
     let serviceKey=key,old=null;
     if(key){old=root[key];if(!old||old.deleted===true||old.serviceKind!=='manual_support')return json(res,404,{ok:false,error:'الخدمة المراد تعديلها غير موجودة.'});}
     else{serviceKey='manual_'+crypto.randomBytes(12).toString('hex');}
     const siteServiceId=String(old?.siteServiceId||nextManualSiteServiceId());
-    const record={...(old||{}),key:serviceKey,fbKey:serviceKey,id:siteServiceId,siteServiceId,internalServiceId:siteServiceId,sadaServiceId:siteServiceId,name,description,desc:description,platform,serviceApp:platform,category,groups:[category],categories:[category],sellingUsd:Number(sellingUsd.toFixed(6)),rateUsd:Number(sellingUsd.toFixed(6)),price:Number((sellingUsd*FIXED_RATE).toFixed(4)),min,max,perAccountLimit,enabled:b.enabled===undefined?(old?.enabled!==false):b.enabled===true,deleted:false,serviceKind:'manual_support',manualService:true,adminManualService:true,providerId:'manual-support',providerName:'التنفيذ عبر الدعم الفني',providerServiceId:'',createdAt:old?.createdAt||at,updatedAt:at,createdBy:old?.createdBy||actor,updatedBy:actor};
+    const record={...(old||{}),key:serviceKey,fbKey:serviceKey,id:siteServiceId,siteServiceId,internalServiceId:siteServiceId,sadaServiceId:siteServiceId,name,description,desc:description,platform,serviceApp:platform,category,groups:[category],categories:[category],sellingUsd:Number(sellingUsd.toFixed(6)),rateUsd:Number(sellingUsd.toFixed(6)),orderPriceUsd:Number(sellingUsd.toFixed(6)),fixedPriceUsd:Number(sellingUsd.toFixed(6)),manualPriceMode:'fixed_order',price:Number((sellingUsd*FIXED_RATE).toFixed(4)),min,max,perAccountLimit,enabled:b.enabled===undefined?(old?.enabled!==false):b.enabled===true,deleted:false,serviceKind:'manual_support',manualService:true,adminManualService:true,providerId:'manual-support',providerName:'التنفيذ عبر الدعم الفني',providerServiceId:'',createdAt:old?.createdAt||at,updatedAt:at,createdBy:old?.createdBy||actor,updatedBy:actor};
     root[serviceKey]=record;writeJSON('manual_services.json',root);
     return json(res,200,{ok:true,service:{...adminManualServicePublic(record,serviceKey),...record,key:serviceKey,siteServiceId},storageMode:DATA_IS_EXTERNAL?'persistent-volume':'release-local',warning:!DATA_IS_EXTERNAL?'تم الحفظ داخل مجلد النشر الحالي؛ اربط Railway Volume حتى تبقى الخدمة بعد إعادة النشر.':''});
   }
@@ -7338,7 +7338,7 @@ async function routeAPI(req,res,urlObj){
     try { buildFile=fs.readFileSync(path.join(ROOT,'BUILD_ID.txt'),'utf8').trim(); } catch(_) {}
     const deploymentConsistent=uiVersion===APP_VERSION && uiBuildId===BUILD_ID && versionFile===APP_VERSION && buildFile===BUILD_ID;
     const dbInfo=firebaseDatabaseDiagnosticInfo();
-    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.85',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
+    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.86',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
     // Keep operational configuration details private; only an authenticated admin can inspect them.
     if(isAdmin(req)){const credentialStatus=firebaseServiceAccountStatus();health.firebaseDatabase={host:dbInfo.host,source:dbInfo.source,databaseProjectHint:dbInfo.databaseProjectHint,serviceAccountProjectId:dbInfo.serviceAccountProjectId||null,configuredWebProjectId:dbInfo.configuredWebProjectId||null,serviceAccountProjectMatch:dbInfo.serviceAccountProjectMatch};health.securityConfig={sessionSecretConfigured:!!String(process.env.SESSION_SECRET||'').trim(),dedicatedEncryptionKeyConfigured:!!String(process.env.SADA_ENCRYPTION_KEY||'').trim(),stableEncryptionAvailable:telegramEncryptionReady(),firebaseConfigured:!!FIREBASE_DATABASE_URL,firebaseServiceAccountConfigured:credentialStatus.ok,firebaseCredentialStatus:{ok:credentialStatus.ok,code:credentialStatus.code,source:credentialStatus.source,message:credentialStatus.message},firebaseDatabaseSecretConfigured:!!String(process.env.FIREBASE_DATABASE_SECRET||'').trim(),firebaseAuthAvailable:firebaseAuthAvailable(),emailServiceConfigured:!!(String(process.env.RESEND_API_KEY||'').trim()&&String(process.env.RESEND_FROM_EMAIL||process.env.EMAIL_FROM||'').trim()),telegramTokenFromEnvironment:!!String(process.env.TELEGRAM_BOT_TOKEN||'').trim(),adminPasswordFromEnvironment:!!(String(process.env.ADMIN_PASSWORD||'').trim()||String(process.env.ADMIN_PASSWORD_HASH||'').trim()),adminPasswordConfigured:adminPasswordConfigured()};}
     return json(res,200,health);

@@ -1,7 +1,7 @@
 {
   "appName": "صدى العراق",
-  "version": "2.59",
-  "buildId": "SADA-1.6.85-PROVIDERLESS-ORDER-FIX-20261020",
+  "version": "2.60",
+  "buildId": "SADA-1.6.86-FLAT-ORDER-PRICE-20261020",
   "currency": "USD",
   "exchangeRate": 1250,
   "fixedRecharge": "5000 IQD = 4 USD",
