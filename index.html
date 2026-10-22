@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
-<meta name="sada-version" content="1.6.89">
-<meta name="sada-build-id" content="SADA-1.6.89-ORDERS-INDEX-FALLBACK-20261020">
+<meta name="sada-version" content="1.6.90">
+<meta name="sada-build-id" content="SADA-1.6.90-CUSTOM-SHOP-EMAIL-LOGIN-20261022">
 <script id="sada168-session-presence">try{window.__SADA_BOOT_HAD_SESSION=Boolean(localStorage.getItem('sadairaq_session_token')||localStorage.getItem('tz_u'));}catch(_){window.__SADA_BOOT_HAD_SESSION=false}</script>
 
 <style id="sada167-preboot-splash-style">
@@ -13052,7 +13052,7 @@ body:has(#modal-mask.on) #wa-float{display:none!important}
 <script id="sada1666-welcome-refunds-admin-splash">
 (function(){
  'use strict';
- const BUILD='SADA-1.6.89-ORDERS-INDEX-FALLBACK-20261020';
+ const BUILD='SADA-1.6.90-CUSTOM-SHOP-EMAIL-LOGIN-20261022';
  const $=id=>document.getElementById(id);
  const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
  const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -13258,7 +13258,7 @@ body:has(#modal-mask.on) #wa-float{display:none!important}
 <script id="sada167-earn-notifications-dashboard">
 (function(){
 'use strict';
-const BUILD='SADA-1.6.89-ORDERS-INDEX-FALLBACK-20261020';
+const BUILD='SADA-1.6.90-CUSTOM-SHOP-EMAIL-LOGIN-20261022';
 const $=id=>document.getElementById(id);
 const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const money=v=>'$'+Math.max(0,Number(v)||0).toFixed(2);
@@ -14503,21 +14503,22 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
   }
   function adminCanOpen(){return String(window.CU?.role||'')==='admin';}
   function mountAdminEntry(){
-    // Retired UI: remove historical custom-shop shortcuts/cards every time the admin service area rerenders.
-    $('sada-custom-shop-admin-button')?.remove();
-    $('sada-custom-shop-admin-entry')?.remove();
-    const host=$('adm-sub-services');
-    host?.querySelectorAll('[id^=sada-custom-shop-admin],.sada-custom-shop-admin-entry').forEach(el=>el.remove());
+    const nav=$('adm-panel')?.querySelector('.adm-sb');if(!nav)return;
+    let group=$('sada-custom-shop-admin-group-252'),entry=$('sada-custom-shop-admin-entry-252');
+    const systemSection=[...nav.querySelectorAll('.adm-sb-sec')].find(el=>String(el.textContent||'').trim()==='النظام')||null;
+    if(!group){group=node('div','adm-sb-sec','خدمات يدوية');group.id='sada-custom-shop-admin-group-252';nav.insertBefore(group,systemSection);}
+    if(!entry){entry=node('div','adm-sb-item');entry.id='sada-custom-shop-admin-entry-252';entry.setAttribute('role','button');entry.tabIndex=0;const ico=node('i','fas fa-store');const label=node('span','','خدمات من عندك');entry.append(ico,label);const open=()=>{if(!adminCanOpen()){toast('هذه الإدارة مخصصة للمشرف فقط.','err');return;}nav.querySelectorAll('.adm-sb-item').forEach(el=>el.classList.remove('on'));entry.classList.add('on');openAdminManager();};entry.addEventListener('click',open);entry.addEventListener('keydown',ev=>{if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();open();}});nav.insertBefore(entry,systemSection);}
+    entry.style.display=adminCanOpen()?'':'none';
   }
   function mountUserEntry(){
-    // Retired customer-facing custom-shop section; leave ordinary service orders intact.
-    $('sada-custom-shop-user-entry')?.remove();
-    $('snav-custom-shop')?.remove();
+    const body=$('sb')?.querySelector('.sb-body');if(!body)return;
+    let entry=$('snav-custom-shop');if(entry&&entry.parentElement!==body){entry.remove();entry=null;}
+    if(!entry){entry=node('div','sb-link');entry.id='snav-custom-shop';entry.setAttribute('role','button');entry.tabIndex=0;entry.append(node('i','fas fa-store'),node('span','','خدمات من عندك'));const open=()=>{openPublicCatalog();try{window.closeSB?.()}catch(_){}};entry.addEventListener('click',open);entry.addEventListener('keydown',ev=>{if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();open();}});const after=$('snav-orders');if(after?.parentElement===body)after.insertAdjacentElement('afterend',entry);else body.appendChild(entry);}
   }
   let shopAdminBusy=false;
   async function openAdminManager(){
     if(!adminCanOpen()){toast('هذه الإدارة مخصصة للمشرف فقط.','err');return;}if(shopAdminBusy)return;shopAdminBusy=true;
-    try{window.openModal('قسم من عندك — إدارة الخدمات اليدوية',async body=>{
+    try{window.openModal('خدمات من عندك — إدارة الأقسام والخدمات',async body=>{
       const root=node('div','');root.style.cssText='display:flex;flex-direction:column;gap:12px;max-height:75vh;overflow:auto;padding:2px';
       const intro=node('div','card');intro.style.cssText='padding:12px;border:1px solid rgba(139,92,246,.25);font-size:11px;line-height:1.9;color:var(--t1)';intro.textContent='هذا المخزن مستقل عن خدمات المزودين. الأقسام والخدمات تُحفظ في Firebase تحت customShop فقط. حذف قسم من هنا يحذف الخدمات التابعة له من هذا المخزن فقط ولا يمسّ أقسام أو خدمات المزود.';root.appendChild(intro);
       const tabs=node('div','');tabs.style.cssText='display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px';const pane=node('div','');pane.style.cssText='display:flex;flex-direction:column;gap:10px';root.append(tabs,pane);body.appendChild(root);
@@ -14577,7 +14578,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
   let publicBusy=false;
   async function openPublicCatalog(){
     if(publicBusy)return;publicBusy=true;
-    try{window.openModal('الخدمات والاشتراكات الخاصة',async body=>{
+    try{window.openModal('خدمات من عندك — الخدمات والاشتراكات',async body=>{
       const root=node('div','');root.style.cssText='display:flex;flex-direction:column;gap:12px;max-height:76vh;overflow:auto;padding:2px';const intro=node('div','card');intro.style.cssText='padding:12px;line-height:1.9;font-size:11px;color:var(--t1);border:1px solid rgba(139,92,246,.25)';intro.textContent='اختر المنصة والقسم والخدمة. بعد نجاح الشراء سيظهر لك تأكيد، ويمكنك التواصل مع الدعم عبر واتساب لإكمال التنفيذ اليدوي.';root.appendChild(intro);
       const filters=node('div','card');filters.style.cssText='padding:10px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px';const platform=field(filters,'المنصة',select([['all','كل المنصات'],...PLATFORMS],'اختر المنصة'));platform.value='all';const cat=field(filters,'القسم',select([], 'كل الأقسام'));root.append(filters);const list=node('div','');list.style.cssText='display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr));gap:9px';root.appendChild(list);body.appendChild(root);
       let categories=[],services=[],wa='';
@@ -14603,11 +14604,37 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
       });
     });
   }
-  function showPurchaseSuccess(data,service,waFallback){
-    const wa=String(data.supportWhatsappUrl||waFallback||'https://wa.me/9647762267959');const orderNo=String(data.publicOrderNo||data.order?.publicOrderNo||data.siteOrderId||'');const total=Number(data.totalIQD??data.order?.totalIQD??0);
-    window.openModal('مبروك! تم شراء الخدمة',body=>{const root=node('div','');root.style.cssText='display:flex;flex-direction:column;gap:12px;text-align:center';const icon=node('div','', '🎉');icon.style.fontSize='44px';const title=node('div','', 'تم الشراء بنجاح');title.style.cssText='font-size:18px;font-weight:950;color:#5eead4';const message=node('div','', 'مبروك عليك! تم تسجيل طلب «'+String(service.name||'الخدمة')+'» بنجاح. رقم الطلب: '+orderNo+' · الإجمالي: '+total.toLocaleString('ar-IQ',{maximumFractionDigits:2})+' د.ع.');message.style.cssText='font-size:12px;line-height:2;color:var(--t1)';const note=node('div','card','هذه الخدمة تُنفّذ يدوياً. راسلنا على واتساب وأرسل رقم الطلب حتى نكمل خدمتك.');note.style.cssText='padding:12px;font-size:11px;line-height:1.9';const anchor=node('a','btn bok btn-w','');anchor.href=wa;anchor.target='_blank';anchor.rel='noopener noreferrer';anchor.style.cssText='display:block;text-decoration:none;text-align:center;font-family:"Tajawal","Cairo",system-ui,sans-serif;font-size:14px;font-weight:900;min-height:48px;padding:12px;border-radius:14px;box-shadow:0 8px 23px rgba(35,217,201,.12)';anchor.innerHTML='<i class="fab fa-whatsapp"></i> راسلنا عبر واتساب';const done=node('button','btn bs2 btn-w','إغلاق');done.type='button';done.onclick=()=>window.closeModal?.();root.append(icon,title,message,note,anchor,done);body.appendChild(root)});
+  async function copyOrderNumber(orderNo,button){
+    const value=String(orderNo||'').trim();if(!value){toast('رقم الطلب غير متوفر للنسخ.','err');return;}
+    try{
+      if(navigator.clipboard?.writeText){await navigator.clipboard.writeText(value);}
+      else{const area=node('textarea','');area.value=value;area.setAttribute('readonly','');area.style.cssText='position:fixed;opacity:0;pointer-events:none;left:-9999px;top:0';document.body.appendChild(area);area.select();const ok=document.execCommand('copy');area.remove();if(!ok)throw new Error('copy unavailable');}
+      const old=button.textContent;button.textContent='تم نسخ رقم الطلب ✓';toast('تم نسخ رقم الطلب '+value,'ok');setTimeout(()=>{if(button.isConnected)button.textContent=old},1600);
+    }catch(_){toast('تعذر النسخ تلقائياً؛ اضغط مطولاً على رقم الطلب لنسخه.','wrn');}
   }
-  function init(){mountAdminEntry();mountUserEntry();const admin=$('adm-sub-services');if(admin)new MutationObserver(()=>mountAdminEntry()).observe(admin,{childList:true,subtree:true});const sb=$('sb')?.querySelector('.sb-body');if(sb)new MutationObserver(()=>mountUserEntry()).observe(sb,{childList:true,subtree:true});const prev=window.admNavTo;if(typeof prev==='function'&&!prev.__sadaCustomShop252){const wrapped=function(sub,el){const out=prev.apply(this,arguments);if(sub==='services')setTimeout(mountAdminEntry,80);return out};wrapped.__sadaCustomShop252=true;window.admNavTo=wrapped;}window.SADA_CUSTOM_SHOP_252={mountAdmin:mountAdminEntry,mountUser:mountUserEntry};}
+  function showPurchaseSuccess(data,service,waFallback){
+    const waBase=String(data.supportWhatsappUrl||waFallback||'');const orderNo=String(data.publicOrderNo||data.order?.publicOrderNo||data.siteOrderId||'').trim();const total=Number(data.totalIQD??data.order?.totalIQD??0);const serviceName=String(service.name||'الخدمة');
+    const whatsappMessage='السلام عليكم، تم شراء خدمة '+serviceName+' من صدى العراق. رقم الطلب: '+(orderNo||'غير متوفر')+'. أرجو إكمال تسليم الطلب.';let wa=waBase;
+    try{const u=new URL(waBase);if(['wa.me','api.whatsapp.com','www.whatsapp.com'].includes(u.hostname.toLowerCase()))u.searchParams.set('text',whatsappMessage);wa=u.toString();}catch(_){}
+    window.openModal('🎉 تم الشراء بنجاح',body=>{
+      const root=node('div','');root.style.cssText='display:flex;flex-direction:column;gap:13px;text-align:center;padding:2px';
+      const hero=node('div','');hero.style.cssText='padding:17px 12px;border-radius:18px;background:linear-gradient(135deg,rgba(20,184,166,.16),rgba(59,130,246,.10));border:1px solid rgba(45,212,191,.25)';
+      const icon=node('div','', '🎉');icon.style.cssText='font-size:42px;margin-bottom:6px';const title=node('div','', 'مبروك عليك! تم الشراء');title.style.cssText='font-size:18px;font-weight:950;color:#5eead4';const message=node('div','', 'تم تسجيل طلب «'+serviceName+'» بنجاح. تواصل معنا عبر واتساب لتسليم طلبك وإكماله.');message.style.cssText='font-size:12px;line-height:2;color:var(--t1);margin-top:5px';hero.append(icon,title,message);
+      const orderCard=node('div','card');orderCard.style.cssText='padding:12px;display:flex;flex-direction:column;gap:8px;border:1px solid rgba(45,212,191,.25)';const orderLabel=node('div','', 'رقم الطلب');orderLabel.style.cssText='font-size:11px;color:var(--t2)';const orderValue=node('div','',orderNo||'غير متوفر');orderValue.dir='ltr';orderValue.style.cssText='font-size:23px;font-weight:950;letter-spacing:1px;color:var(--t0);user-select:text;overflow-wrap:anywhere';const copy=node('button','btn bs2 btn-w','نسخ رقم الطلب');copy.type='button';copy.disabled=!orderNo;copy.addEventListener('click',()=>copyOrderNumber(orderNo,copy));orderCard.append(orderLabel,orderValue,copy);
+      const totalEl=node('div','', 'إجمالي الطلب: '+total.toLocaleString('ar-IQ',{maximumFractionDigits:2})+' د.ع');totalEl.style.cssText='font-size:12px;font-weight:850;color:var(--t1)';
+      const note=node('div','card','هذه خدمة تُنفّذ يدوياً وليست مرتبطة بمزود خارجي. اضغط واتساب وسيتم تجهيز رسالة تتضمن رقم الطلب.');note.style.cssText='padding:11px;font-size:11px;line-height:1.9';
+      const anchor=node('a','btn bok btn-w','');anchor.href=wa||'#';anchor.target='_blank';anchor.rel='noopener noreferrer';anchor.style.cssText='display:block;text-decoration:none;text-align:center;font-family:"Tajawal","Cairo",system-ui,sans-serif;font-size:14px;font-weight:900;min-height:48px;padding:12px;border-radius:14px;box-shadow:0 8px 23px rgba(35,217,201,.12)';anchor.innerHTML='<i class="fab fa-whatsapp"></i> التواصل عبر واتساب';if(!wa)anchor.addEventListener('click',e=>{e.preventDefault();toast('رابط واتساب غير مضبوط في إعدادات الموقع.','err')});
+      const done=node('button','btn bs2 btn-w','إغلاق');done.type='button';done.onclick=()=>window.closeModal?.();root.append(hero,orderCard,totalEl,note,anchor,done);body.appendChild(root);
+    });
+  }
+  function init(){
+    mountAdminEntry();mountUserEntry();
+    const admin=$('adm-sub-services');if(admin)new MutationObserver(()=>mountAdminEntry()).observe(admin,{childList:true,subtree:true});
+    const sb=$('sb')?.querySelector('.sb-body');if(sb)new MutationObserver(()=>mountUserEntry()).observe(sb,{childList:true,subtree:true});
+    const prev=window.admNavTo;if(typeof prev==='function'&&!prev.__sadaCustomShop252){const wrapped=function(sub,el){const out=prev.apply(this,arguments);if(sub==='services')setTimeout(mountAdminEntry,80);return out};wrapped.__sadaCustomShop252=true;window.admNavTo=wrapped;}
+    const prevLaunch=window.launchApp;if(typeof prevLaunch==='function'&&!prevLaunch.__sadaCustomShop252){const wrappedLaunch=function(){const out=prevLaunch.apply(this,arguments);const refresh=()=>setTimeout(()=>{mountAdminEntry();mountUserEntry()},120);if(out&&typeof out.then==='function')Promise.resolve(out).then(refresh,refresh);else refresh();return out;};wrappedLaunch.__sadaCustomShop252=true;window.launchApp=wrappedLaunch;}
+    window.SADA_CUSTOM_SHOP_252={mountAdmin:mountAdminEntry,mountUser:mountUserEntry,openAdmin:openAdminManager,openPublic:openPublicCatalog};
+  }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();window.addEventListener('load',()=>setTimeout(init,400));
 })();
 </script>
@@ -14684,7 +14711,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 
 
 
-<!-- Sada Iraq 1.6.89: lightweight service dropdown pagination -->
+<!-- Sada Iraq 1.6.90: custom shop, email login, and purchase receipt improvements -->
 <script id="sadairaq-v263-performance-optimizations">
 (function(){
   'use strict';
@@ -15954,7 +15981,7 @@ window.SADA1637_UI_FIXES={version:'1.6.86',openAsiaCell:openWizard,polishOrderFo
 </style>
 <script id="sada-1.6.86-final-ui-enforcement">
 (()=>{'use strict';
- const BUILD='SADA-1.6.89-ORDERS-INDEX-FALLBACK-20261020';
+ const BUILD='SADA-1.6.90-CUSTOM-SHOP-EMAIL-LOGIN-20261022';
  const $=id=>document.getElementById(id);
  const oldPromo=/(?:اشتراكات\s*و\s*خدمات\s*خاصة|تصفح\s*الخدمات\s*الخاصة|خدمات\s+مستقلة\s+عن\s+المزود)/i;
  const browse=/تصفح\s*الخدمات\s*الخاصة/i;

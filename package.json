@@ -1,16 +1,16 @@
 {
   "name": "sadairaq-railway",
-  "version": "1.6.89",
+  "version": "1.6.90",
   "private": true,
-  "description": "صدى العراق — server-authoritative catalog/orders, quantity-based manual pricing, and responsive order selector",
+  "description": "صدى العراق — custom services, email/username login, and server-authoritative orders",
   "scripts": {
     "start": "node server.js",
-    "test": "node --check server.js && node --check tests/performance-release.test.js && node tests/performance-release.test.js && node tests/orders-index-fallback.test.js"
+    "test": "node --check server.js && node --check tests/performance-release.test.js && node tests/performance-release.test.js && node tests/orders-index-fallback.test.js && node tests/auth-email-login.test.js && node tests/custom-shop-release.test.js"
   },
   "engines": {
     "node": ">=22"
   },
-  "buildId": "SADA-1.6.89-ORDERS-INDEX-FALLBACK-20261020",
+  "buildId": "SADA-1.6.90-CUSTOM-SHOP-EMAIL-LOGIN-20261022",
   "dependencies": {
     "google-auth-library": "^11.2.0",
     "firebase-admin": "^14.5.0"

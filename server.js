@@ -44,8 +44,8 @@ function purgeCatalogServiceSnapshots(){
 }
 purgeCatalogServiceSnapshots();
 const APP_NAME = 'صدى العراق';
-const APP_VERSION = '1.6.89';
-const BUILD_ID = 'SADA-1.6.89-ORDERS-INDEX-FALLBACK-20261020';
+const APP_VERSION = '1.6.90';
+const BUILD_ID = 'SADA-1.6.90-CUSTOM-SHOP-EMAIL-LOGIN-20261022';
 // Keep the owner's admin identity available after packaging, but store only a scrypt hash
 // in the project. Railway variables can still explicitly override this packaged credential.
 function loadBundledAdminAuth(){
@@ -1323,11 +1323,20 @@ async function ensureAdminFirebaseUserProfile(){
   return {ok:true,created:!!tx.result?.created,linked:!!tx.result?.linked,username:String(verify.username||ADMIN_USER),email};
 }
 async function findAccountByEmail(email){
-  const normalized=normalizeEmail(email),store=readJSON('users.json',{users:{}}),users=store.users||{};
-  const local=Object.entries(users).find(([key,u])=>u&&normalizeEmail(u.email||u.mail||u.emailAddress)===normalized);
-  if(local)return {username:local[0],user:local[1],firebasePath:'users/'+firebaseSafeKey(local[0]),source:'local'};
+  const normalized=normalizeEmail(email);if(!validEmail(normalized))return null;
+  const store=readJSON('users.json',{users:{}}),users=store.users&&typeof store.users==='object'?store.users:{};
+  // The local file is a mirror; match every supported legacy email field, not only email/mail.
+  const localMatches=Object.entries(users).filter(([,u])=>u&&typeof u==='object'&&firebaseRecordEmail(u)===normalized);
+  if(localMatches.length>1)throw new Error('البريد مرتبط بأكثر من سجل محلي؛ يلزم توحيد الحسابات يدوياً لتجنب الدخول إلى حساب خاطئ.');
+  if(localMatches.length===1){const [key,user]=localMatches[0];return {username:String(user.username||key),user,firebasePath:'users/'+firebaseSafeKey(key),source:'local'};}
   if(normalized===normalizeEmail(ADMIN_USER))return {username:ADMIN_USER,user:{email:ADMIN_USER,role:'admin'},source:'admin'};
-  try{const all=await firebaseGetJson('users',5000);if(all&&typeof all==='object'){const found=collectionEntries(all).find(([key,u])=>u&&typeof u==='object'&&!Array.isArray(u)&&normalizeEmail(u.email||u.mail||u.emailAddress)===normalized);if(found)return {username:String(found[1].username||found[1].userName||decodeFirebaseSafeKey(found[0])||found[0]),user:found[1],firebasePath:'users/'+found[0],source:'firebase'};}return null;}catch(e){throw e;}
+  const all=await firebaseGetJson('users',5000);if(!all||typeof all!=='object'||Array.isArray(all))return null;
+  const matches=collectionEntries(all).filter(([key,u])=>u&&typeof u==='object'&&!Array.isArray(u)&&firebaseRecordEmail(u)===normalized);
+  // Different Firebase child keys for the same email are ambiguous; never guess which password record to use.
+  const unique=new Map();for(const [key,row] of matches){const username=String(row.username||row.userName||row.handle||decodeFirebaseSafeKey(key)||key).trim();const identity=username.toLocaleLowerCase('en-US');if(!unique.has(identity))unique.set(identity,{key,row,username});}
+  if(unique.size>1)throw new Error('البريد مرتبط بأكثر من حساب في Firebase؛ يلزم توحيد الحسابات قبل تسجيل الدخول.');
+  const found=[...unique.values()][0];if(!found)return null;
+  return {username:found.username,user:found.row,firebasePath:'users/'+found.key,source:'firebase'};
 }
 function envProvider(){
   const id=String(process.env.SMM_PROVIDER_ID||process.env.PROVIDER_ID||'').trim();
@@ -6667,14 +6676,22 @@ async function routeAPI(req,res,urlObj){
       const adminIdentity=isBundledOwner?BUNDLED_ADMIN_AUTH.email:ADMIN_USER;
       const sessionToken=setSession(res,{role:'admin',username:adminIdentity});return json(res,200,{ok:true,role:'admin',username:adminIdentity,sessionToken});
     }
-    const store=readJSON('users.json',{users:{}});let actualUsername=u;let user=store.users?.[u]||null;
-    if(!user){const found=Object.entries(store.users||{}).find(([key,val])=>key.toLowerCase()===u.toLowerCase()||String(val?.username||'').toLowerCase()===u.toLowerCase());if(found){actualUsername=found[0];user=found[1];}}
-    let remoteRecord=null,remoteLookupFailed=false;
-    if(!user){try{remoteRecord=await findRemoteUserByUsername(u);if(remoteRecord){actualUsername=remoteRecord.username||u;user=remoteRecord.user;}}catch(e){remoteLookupFailed=true;console.warn('Legacy Firebase login lookup failed:',String(e.message||e).slice(0,120));}}
-    if(!user&&validEmail(u)){
-      try{const foundByEmail=await findAccountByEmail(u);if(foundByEmail&&foundByEmail.source!=='admin'){actualUsername=String(foundByEmail.username||foundByEmail.user?.username||u);user=foundByEmail.user;remoteRecord={username:actualUsername,user,firebasePath:foundByEmail.firebasePath||('users/'+firebaseSafeKey(actualUsername))};}}
-      catch(e){remoteLookupFailed=true;console.warn('Email login lookup failed:',String(e.message||e).slice(0,120));}
+    const store=readJSON('users.json',{users:{}});let actualUsername=u,user=null,remoteRecord=null,remoteLookupFailed=false;
+    // Resolve a valid email against the email field first. Searching the generic username
+    // resolver first can match a legacy alias before the true email owner is checked.
+    if(validEmail(u)){
+      try{
+        const foundByEmail=await findAccountByEmail(u);
+        if(foundByEmail&&foundByEmail.source!=='admin'){
+          actualUsername=String(foundByEmail.username||foundByEmail.user?.username||u);user=foundByEmail.user;
+          if(foundByEmail.source==='firebase'&&foundByEmail.firebasePath)remoteRecord={username:actualUsername,user,firebasePath:foundByEmail.firebasePath};
+        }
+      }catch(e){remoteLookupFailed=true;console.warn('Email login lookup failed:',String(e.message||e).slice(0,120));}
     }
+    // If this is actually a username (including a legacy username formatted as an email),
+    // preserve username login after the email lookup returns no match.
+    if(!user&&!remoteLookupFailed){const found=Object.entries(store.users||{}).find(([key,val])=>key.toLowerCase()===u.toLowerCase()||String(val?.username||'').toLowerCase()===u.toLowerCase());if(found){actualUsername=found[0];user=found[1];}}
+    if(!user&&!remoteLookupFailed){try{remoteRecord=await findRemoteUserByUsername(u);if(remoteRecord){actualUsername=remoteRecord.username||u;user=remoteRecord.user;}}catch(e){remoteLookupFailed=true;console.warn('Legacy Firebase login lookup failed:',String(e.message||e).slice(0,120));}}
     if(user&&String(user.passwordHash||user.password||user.passHash||user.pass||'').length>0&&verifyPassword(pw,user.passwordHash||user.password||user.passHash||user.pass||'')){
       if(isSadaAdminBannedAccount(user)||SADA_ADMIN_BANNED_USERNAMES.has(String(actualUsername||u).trim().toLowerCase()))return json(res,403,{ok:false,code:'account_banned',error:'تم حظر حسابك من تسجيل الدخول. يرجى التواصل مع الإدارة.'});
       // Mirror a remote-only legacy account locally without replacing its financial/order fields.
@@ -7366,7 +7383,7 @@ async function routeAPI(req,res,urlObj){
     try { buildFile=fs.readFileSync(path.join(ROOT,'BUILD_ID.txt'),'utf8').trim(); } catch(_) {}
     const deploymentConsistent=uiVersion===APP_VERSION && uiBuildId===BUILD_ID && versionFile===APP_VERSION && buildFile===BUILD_ID;
     const dbInfo=firebaseDatabaseDiagnosticInfo();
-    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.89',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
+    const health={ok:true,app:APP_NAME,version:APP_VERSION,buildId:BUILD_ID,uiVersion,uiBuildId,versionFile,buildFile,deploymentConsistent,dataStorageMode:DATA_IS_EXTERNAL?'external-directory':'release-local',firebaseUrlConfigured:!!FIREBASE_DATABASE_URL,firebaseDatabaseSource:FIREBASE_DATABASE_URL_SOURCE,firebaseServerAuthConfigured:firebaseAuthAvailable(),firebaseDatabaseDriver:firebaseAdminEnabled()?'admin-sdk':'rest-oauth',priceGuard:PRICE_GUARD_ENABLED,securityPatch:'1.6.90',providerCount:Object.keys(providerStore().providers||{}).length,time:new Date().toISOString(),node:process.version};
     // Keep operational configuration details private; only an authenticated admin can inspect them.
     if(isAdmin(req)){const credentialStatus=firebaseServiceAccountStatus();health.firebaseDatabase={host:dbInfo.host,source:dbInfo.source,databaseProjectHint:dbInfo.databaseProjectHint,serviceAccountProjectId:dbInfo.serviceAccountProjectId||null,configuredWebProjectId:dbInfo.configuredWebProjectId||null,serviceAccountProjectMatch:dbInfo.serviceAccountProjectMatch};health.securityConfig={sessionSecretConfigured:!!String(process.env.SESSION_SECRET||'').trim(),dedicatedEncryptionKeyConfigured:!!String(process.env.SADA_ENCRYPTION_KEY||'').trim(),stableEncryptionAvailable:telegramEncryptionReady(),firebaseConfigured:!!FIREBASE_DATABASE_URL,firebaseServiceAccountConfigured:credentialStatus.ok,firebaseCredentialStatus:{ok:credentialStatus.ok,code:credentialStatus.code,source:credentialStatus.source,message:credentialStatus.message},firebaseDatabaseSecretConfigured:!!String(process.env.FIREBASE_DATABASE_SECRET||'').trim(),firebaseAuthAvailable:firebaseAuthAvailable(),emailServiceConfigured:!!(String(process.env.RESEND_API_KEY||'').trim()&&String(process.env.RESEND_FROM_EMAIL||process.env.EMAIL_FROM||'').trim()),telegramTokenFromEnvironment:!!String(process.env.TELEGRAM_BOT_TOKEN||'').trim(),adminPasswordFromEnvironment:!!(String(process.env.ADMIN_PASSWORD||'').trim()||String(process.env.ADMIN_PASSWORD_HASH||'').trim()),adminPasswordConfigured:adminPasswordConfigured()};}
     return json(res,200,health);
